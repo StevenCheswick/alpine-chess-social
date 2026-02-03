@@ -138,7 +138,7 @@ export default function ChessBoard({
   const topIsBlack = orientation === 'white';
 
   return (
-    <div className={`w-full ${className}`}>
+    <div className={`w-full lg:max-w-sm ${className}`}>
       <div className="card overflow-hidden">
         {/* Top Player */}
         {topPlayer && (

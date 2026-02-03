@@ -80,29 +80,6 @@ export default function LeftSidebar() {
         })}
       </nav>
 
-      {/* Linked Accounts Preview */}
-      <div className="mt-8 p-4 bg-slate-900 rounded-lg border border-slate-800">
-        <h3 className="text-sm font-medium text-slate-400 mb-3">Linked Accounts</h3>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm">
-            <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center">
-              <span className="text-white text-xs font-bold">C</span>
-            </div>
-            <span className="text-slate-300">Chess.com</span>
-            <span className="ml-auto text-slate-500 text-xs">Not linked</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <div className="w-6 h-6 bg-slate-600 rounded flex items-center justify-center">
-              <span className="text-white text-xs font-bold">L</span>
-            </div>
-            <span className="text-slate-300">Lichess</span>
-            <span className="ml-auto text-slate-500 text-xs">Not linked</span>
-          </div>
-        </div>
-        <button className="mt-3 text-sm text-primary-400 hover:text-primary-300 transition-colors">
-          Link accounts →
-        </button>
-      </div>
     </aside>
   );
 }

@@ -314,35 +314,56 @@ def get_result_code(result: str, user_is_white: bool) -> str:
 @app.get("/api/games")
 async def get_games(
     username: str = Query(..., description="Chess.com username"),
-    year: Optional[int] = Query(None, description="Year to fetch (default: current year)"),
-    month: Optional[int] = Query(None, description="Month to fetch 1-12 (default: current month)")
+    months_back: int = Query(6, description="Number of months to fetch (default: 6)"),
+    year: Optional[int] = Query(None, description="Specific year to fetch (overrides months_back)"),
+    month: Optional[int] = Query(None, description="Specific month to fetch 1-12 (requires year)")
 ):
     """
     Fetch and analyze games for a user.
     Returns games with tags for detected patterns (Queen Sacrifice, etc.)
+    Default: fetches last 6 months of games.
     """
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
 
-    # Default to current year, all months
     now = datetime.now()
-    if year is None:
-        year = now.year
-
-    # Fetch games from Chess.com
     client = ChessComClient()
-    if month:
-        print(f"Fetching games for {username} in {year}/{month:02d}...")
+    all_pgn_tcn_pairs = []
+
+    # If specific year/month provided, use that
+    if year is not None:
+        if month:
+            print(f"Fetching games for {username} in {year}/{month:02d}...")
+        else:
+            print(f"Fetching games for {username} in {year} (all months)...")
+        try:
+            pgn_tcn_pairs = client.fetch_user_games(username, year=year, month=month, include_tcn=True)
+            all_pgn_tcn_pairs.extend(pgn_tcn_pairs or [])
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching games: {str(e)}")
     else:
-        print(f"Fetching games for {username} in {year} (all months)...")
+        # Fetch last N months
+        print(f"Fetching games for {username} for last {months_back} months...")
+        for i in range(months_back):
+            # Calculate year/month going backwards
+            target_month = now.month - i
+            target_year = now.year
+            while target_month <= 0:
+                target_month += 12
+                target_year -= 1
+            
+            try:
+                pgn_tcn_pairs = client.fetch_user_games(username, year=target_year, month=target_month, include_tcn=True)
+                if pgn_tcn_pairs:
+                    all_pgn_tcn_pairs.extend(pgn_tcn_pairs)
+                    print(f"  {target_year}/{target_month:02d}: {len(pgn_tcn_pairs)} games")
+            except Exception as e:
+                print(f"  {target_year}/{target_month:02d}: Error - {e}")
 
-    try:
-        pgn_tcn_pairs = client.fetch_user_games(username, year=year, month=month, include_tcn=True)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching games: {str(e)}")
-
-    if not pgn_tcn_pairs:
-        return {"username": username, "year": year, "month": month, "games": [], "total": 0}
+    if not all_pgn_tcn_pairs:
+        return {"username": username, "months_back": months_back, "games": [], "total": 0}
+    
+    pgn_tcn_pairs = all_pgn_tcn_pairs
 
     # Parse PGNs
     pgns = [pgn for pgn, tcn in pgn_tcn_pairs]

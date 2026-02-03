@@ -33,9 +33,10 @@ export default function ProfilePage() {
   }, [username]);
 
   const handleProfileUpdate = (updatedProfile: Profile) => {
-    setProfile(updatedProfile);
-    // Also update the auth store if it's the current user
-    if (updatedProfile.isOwnProfile && user) {
+    // Preserve isOwnProfile since the PUT response doesn't include it
+    setProfile({ ...updatedProfile, isOwnProfile: true });
+    // Update the auth store - we know it's our own profile since we're editing it
+    if (user) {
       updateUser({
         displayName: updatedProfile.displayName,
         bio: updatedProfile.bio,

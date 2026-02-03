@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { profileService, type Profile, type UpdateProfileData } from '../services/profileService';
+import { API_BASE_URL } from '../config/api';
 
 interface EditProfileModalProps {
   profile: Profile;
@@ -65,6 +66,16 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
       }
 
       const updatedProfile = await profileService.updateProfile(data);
+      
+      // If user just linked a Chess.com account, trigger initial games sync
+      const newlyLinkedChessCom = !profile.chessComUsername && data.chessComUsername;
+      if (newlyLinkedChessCom) {
+        // Trigger games sync in background (don't await - let it run)
+        fetch(`${API_BASE_URL}/api/games?username=${encodeURIComponent(data.chessComUsername)}`)
+          .then(() => console.log('Initial games sync started'))
+          .catch(err => console.error('Failed to start games sync:', err));
+      }
+      
       onSave(updatedProfile);
       onClose();
     } catch (err) {
