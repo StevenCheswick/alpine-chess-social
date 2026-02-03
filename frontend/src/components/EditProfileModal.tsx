@@ -10,6 +10,7 @@ interface EditProfileModalProps {
 export default function EditProfileModal({ profile, onClose, onSave }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio || '');
+  const [chessComUsername, setChessComUsername] = useState(profile.chessComUsername || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +38,12 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
       return;
     }
 
+    if (chessComUsername.length > 50) {
+      setError('Chess.com username must be at most 50 characters');
+      setLoading(false);
+      return;
+    }
+
     try {
       const data: UpdateProfileData = {};
 
@@ -46,6 +53,9 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
       }
       if (bio !== (profile.bio || '')) {
         data.bio = bio.trim();
+      }
+      if (chessComUsername !== (profile.chessComUsername || '')) {
+        data.chessComUsername = chessComUsername.trim();
       }
 
       // If nothing changed, just close
@@ -118,6 +128,31 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
               disabled={loading}
             />
             <p className="mt-1 text-xs text-slate-500">{bio.length}/500 characters</p>
+          </div>
+
+          <div className="pt-4 border-t border-slate-800">
+            <h3 className="text-sm font-medium text-slate-300 mb-3">Linked Accounts</h3>
+            <div>
+              <label htmlFor="chessComUsername" className="block text-sm font-medium text-slate-300 mb-2">
+                Chess.com Username
+              </label>
+              <div className="flex gap-2">
+                <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-sm font-bold">C</span>
+                </div>
+                <input
+                  type="text"
+                  id="chessComUsername"
+                  value={chessComUsername}
+                  onChange={(e) => setChessComUsername(e.target.value)}
+                  className="input flex-1"
+                  placeholder="your_chess_com_username"
+                  maxLength={50}
+                  disabled={loading}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Enter your Chess.com username to sync your games</p>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">

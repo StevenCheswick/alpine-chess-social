@@ -26,7 +26,7 @@ class RegisterRequest(BaseModel):
     username: str
     email: EmailStr
     password: str
-    chessComUsername: str
+    chessComUsername: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -39,7 +39,7 @@ class UserResponse(BaseModel):
     username: str
     displayName: str
     email: str
-    chessComUsername: str
+    chessComUsername: Optional[str] = None
     bio: Optional[str] = None
     avatarUrl: Optional[str] = None
     createdAt: str
@@ -55,7 +55,7 @@ class AuthResponse(BaseModel):
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -147,7 +147,7 @@ async def register(request: RegisterRequest):
             username=request.username,
             email=request.email,
             password_hash=password_hash,
-            chess_com_username=request.chessComUsername,
+            chess_com_username=request.chessComUsername or "",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
@@ -202,7 +202,7 @@ class ProfileResponse(BaseModel):
     id: int
     username: str
     displayName: str
-    chessComUsername: str
+    chessComUsername: Optional[str] = None
     bio: Optional[str] = None
     avatarUrl: Optional[str] = None
     createdAt: str
@@ -213,6 +213,7 @@ class ProfileResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     displayName: Optional[str] = None
     bio: Optional[str] = None
+    chessComUsername: Optional[str] = None
 
 
 @app.get("/api/users/{username}", response_model=ProfileResponse)
@@ -266,11 +267,17 @@ async def update_user_profile(
         if len(request.bio) > 500:
             raise HTTPException(status_code=400, detail="Bio must be at most 500 characters")
 
+    # Validate chess.com username if provided
+    if request.chessComUsername is not None:
+        if len(request.chessComUsername) > 50:
+            raise HTTPException(status_code=400, detail="Chess.com username must be at most 50 characters")
+
     # Update the account
     updated_account = db.update_account(
         account_id=user["id"],
         display_name=request.displayName,
         bio=request.bio,
+        chess_com_username=request.chessComUsername,
     )
 
     if not updated_account:

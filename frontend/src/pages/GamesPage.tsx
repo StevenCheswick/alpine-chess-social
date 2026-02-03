@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { ChessBoard, MiniChessBoard } from '../components/chess';
-
+import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
+
 const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 25;
-// TODO: Get from auth context when login is implemented
-const TEST_USERNAME = 'brexwick';
 
 interface Game {
   id: string;
@@ -50,19 +50,23 @@ function formatDate(dateStr: string): string {
 }
 
 export default function GamesPage() {
-  const [username] = useState(TEST_USERNAME);
+  const { user } = useAuthStore();
+  const chessComUsername = user?.chessComUsername;
+  
   const [games, setGames] = useState<Game[]>([]);
-  const [loading, setLoading] = useState(true); // Start loading
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
   const [lastAnalyzed, setLastAnalyzed] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Load stored games on mount
+  // Load stored games on mount if user has linked Chess.com account
   useEffect(() => {
-    loadStoredGames(TEST_USERNAME);
-  }, []);
+    if (chessComUsername) {
+      loadStoredGames(chessComUsername);
+    }
+  }, [chessComUsername]);
 
   // Load games from database (fast, no re-analysis)
   const loadStoredGames = async (user: string) => {
@@ -84,11 +88,13 @@ export default function GamesPage() {
   };
 
   const analyzeGames = async () => {
+    if (!chessComUsername) return;
+    
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/games?username=${encodeURIComponent(username)}`);
+      const response = await fetch(`${API_BASE}/api/games?username=${encodeURIComponent(chessComUsername)}`);
       if (!response.ok) {
         throw new Error(`Failed to analyze games: ${response.statusText}`);
       }
@@ -144,6 +150,36 @@ export default function GamesPage() {
   const toggleGame = (gameId: string) => {
     setExpandedGameId(prev => prev === gameId ? null : gameId);
   };
+
+  // Show link account prompt if no Chess.com username
+  if (!chessComUsername) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">My Games</h1>
+          <p className="text-slate-400 text-sm mt-1">
+            Analyze your games to discover patterns and tag notable moments
+          </p>
+        </div>
+
+        <div className="card p-8 text-center">
+          <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">&#9823;</span>
+          </div>
+          <h2 className="text-xl font-semibold text-white mb-2">Link your Chess.com account</h2>
+          <p className="text-slate-400 mb-6">
+            Connect your Chess.com account to sync and analyze your games.
+          </p>
+          <Link
+            to={user ? `/${user.username}` : '/'}
+            className="inline-block px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          >
+            Go to Profile Settings
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -313,11 +349,11 @@ export default function GamesPage() {
                         moves={game.moves}
                         orientation={game.userColor}
                         whitePlayer={{
-                          username: game.userColor === 'white' ? username : game.opponent,
+                          username: game.userColor === 'white' ? chessComUsername : game.opponent,
                           rating: game.userColor === 'white' ? game.userRating || undefined : game.opponentRating || undefined,
                         }}
                         blackPlayer={{
-                          username: game.userColor === 'black' ? username : game.opponent,
+                          username: game.userColor === 'black' ? chessComUsername : game.opponent,
                           rating: game.userColor === 'black' ? game.userRating || undefined : game.opponentRating || undefined,
                         }}
                       />
@@ -376,7 +412,7 @@ export default function GamesPage() {
       {/* Empty State */}
       {!loading && games.length === 0 && !error && (
         <div className="text-center py-12 text-slate-500">
-          No games found. Click "Analyze Games" to scan for patterns.
+          No games found. Click "Analyze Games" to sync and scan for patterns.
         </div>
       )}
     </div>

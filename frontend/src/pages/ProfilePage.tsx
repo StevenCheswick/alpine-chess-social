@@ -39,6 +39,7 @@ export default function ProfilePage() {
       updateUser({
         displayName: updatedProfile.displayName,
         bio: updatedProfile.bio,
+        chessComUsername: updatedProfile.chessComUsername,
       });
     }
   };
@@ -111,7 +112,7 @@ export default function ProfilePage() {
                 <span className="text-slate-400 ml-1">Following</span>
               </div>
               <div>
-                <span className="font-bold text-white">{profile.gamesCount.toLocaleString()}</span>
+                <span className="font-bold text-white">{(profile.gamesCount || 0).toLocaleString()}</span>
                 <span className="text-slate-400 ml-1">Games</span>
               </div>
               <div>
@@ -122,11 +123,11 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Linked Chess.com Account */}
-        {profile.chessComUsername && (
-          <div className="mt-6 pt-6 border-t border-slate-800">
-            <h3 className="text-sm font-medium text-slate-400 mb-3">Linked Accounts</h3>
-            <div className="flex gap-4">
+        {/* Linked Accounts Section */}
+        <div className="mt-6 pt-6 border-t border-slate-800">
+          <h3 className="text-sm font-medium text-slate-400 mb-3">Linked Accounts</h3>
+          <div className="flex gap-4">
+            {profile.chessComUsername ? (
               <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg">
                 <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center">
                   <span className="text-white text-xs font-bold">C</span>
@@ -136,9 +137,32 @@ export default function ProfilePage() {
                   <p className="text-xs text-slate-400">Chess.com</p>
                 </div>
               </div>
-            </div>
+            ) : profile.isOwnProfile ? (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <div className="w-6 h-6 bg-slate-600 rounded flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">C</span>
+                </div>
+                <div className="text-left">
+                  <p className="text-sm text-white">Link Chess.com</p>
+                  <p className="text-xs text-slate-400">Not linked</p>
+                </div>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg opacity-50">
+                <div className="w-6 h-6 bg-slate-600 rounded flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">C</span>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-400">Chess.com</p>
+                  <p className="text-xs text-slate-500">Not linked</p>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Tabs */}

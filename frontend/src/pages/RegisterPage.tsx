@@ -8,7 +8,6 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [chessComUsername, setChessComUsername] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuthStore();
@@ -28,11 +27,6 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!chessComUsername.trim()) {
-      setError('Chess.com username is required');
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -40,7 +34,6 @@ export default function RegisterPage() {
         username,
         email,
         password,
-        chessComUsername,
       });
 
       login(response.user, response.token);
@@ -100,22 +93,6 @@ export default function RegisterPage() {
             placeholder="you@example.com"
             required
           />
-        </div>
-
-        <div>
-          <label htmlFor="chessComUsername" className="block text-sm font-medium text-slate-300 mb-1">
-            Chess.com Username
-          </label>
-          <input
-            id="chessComUsername"
-            type="text"
-            value={chessComUsername}
-            onChange={(e) => setChessComUsername(e.target.value)}
-            className="input w-full"
-            placeholder="your_chess_com_username"
-            required
-          />
-          <p className="mt-1 text-xs text-slate-500">We'll sync your games from Chess.com</p>
         </div>
 
         <div>

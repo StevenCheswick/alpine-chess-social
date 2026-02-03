@@ -19,6 +19,7 @@ export interface Profile {
 export interface UpdateProfileData {
   displayName?: string;
   bio?: string;
+  chessComUsername?: string;
 }
 
 export const profileService = {

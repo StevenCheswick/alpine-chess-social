@@ -14,7 +14,6 @@ interface RegisterData {
   username: string;
   email: string;
   password: string;
-  chessComUsername: string;
 }
 
 interface LoginData {

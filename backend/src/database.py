@@ -335,7 +335,8 @@ def username_exists(username: str) -> bool:
 def update_account(
     account_id: int,
     display_name: Optional[str] = None,
-    bio: Optional[str] = None
+    bio: Optional[str] = None,
+    chess_com_username: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Update an account's profile fields. Returns updated account."""
     with get_connection() as conn:
@@ -352,6 +353,10 @@ def update_account(
         if bio is not None:
             updates.append("bio = ?")
             params.append(bio)
+
+        if chess_com_username is not None:
+            updates.append("chess_com_username = ?")
+            params.append(chess_com_username)
 
         if not updates:
             return get_account_by_id(account_id)
