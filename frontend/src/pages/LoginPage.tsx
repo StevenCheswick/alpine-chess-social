@@ -1,20 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-
-// Mock user for development
-const mockUser = {
-  id: '1',
-  username: 'chessplayer',
-  displayName: 'Chess Player',
-  email: 'player@example.com',
-  bio: 'Love playing chess!',
-  avatarUrl: null,
-  createdAt: new Date().toISOString(),
-  isVerified: true,
-  followerCount: 42,
-  followingCount: 15,
-};
+import { authService } from '../services/authService';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -29,18 +16,15 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Mock login - accept any credentials for now
-    if (email && password) {
-      login(mockUser, 'mock-jwt-token');
+    try {
+      const response = await authService.login({ email, password });
+      login(response.user, response.token);
       navigate('/');
-    } else {
-      setError('Please enter email and password');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (

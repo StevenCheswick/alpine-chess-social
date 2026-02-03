@@ -1,8 +1,9 @@
 """
 Chess Social Media Backend API
 """
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import re
@@ -12,18 +13,190 @@ from src.pgn_parser import parse_pgns
 from src.unified_analyzer import UnifiedAnalyzer
 from src.analyzers.queen_sacrifice import UnifiedQueenSacrificeAnalyzer
 from src import database as db
+from src import auth
 
 app = FastAPI(title="Chess Social Media API")
+
+
+# ============================================
+# Pydantic models for request/response
+# ============================================
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    chessComUsername: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    displayName: str
+    email: str
+    chessComUsername: str
+    bio: Optional[str] = None
+    avatarUrl: Optional[str] = None
+    createdAt: str
+    isVerified: bool = False
+    followerCount: int = 0
+    followingCount: int = 0
+
+
+class AuthResponse(BaseModel):
+    user: UserResponse
+    token: str
 
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# ============================================
+# Auth helper functions
+# ============================================
+
+def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[Dict[str, Any]]:
+    """Extract and verify the current user from the Authorization header."""
+    if not authorization:
+        return None
+
+    # Expect "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+    user_id = auth.get_user_id_from_token(token)
+
+    if user_id is None:
+        return None
+
+    return db.get_account_by_id(user_id)
+
+
+def require_auth(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Dependency that requires authentication."""
+    user = get_current_user(authorization)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def account_to_user_response(account: Dict[str, Any]) -> UserResponse:
+    """Convert account dict to UserResponse."""
+    return UserResponse(
+        id=account["id"],
+        username=account["username"],
+        displayName=account.get("displayName") or account["username"],
+        email=account["email"],
+        chessComUsername=account.get("chessComUsername", ""),
+        bio=account.get("bio"),
+        avatarUrl=account.get("avatarUrl"),
+        createdAt=account.get("createdAt", ""),
+        isVerified=False,
+        followerCount=0,
+        followingCount=0,
+    )
+
+
+# ============================================
+# Auth endpoints
+# ============================================
+
+@app.post("/api/auth/register", response_model=AuthResponse)
+async def register(request: RegisterRequest):
+    """Register a new user account."""
+    # Validate username length
+    if len(request.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(request.username) > 20:
+        raise HTTPException(status_code=400, detail="Username must be at most 20 characters")
+
+    # Validate username format (alphanumeric and underscores only)
+    if not re.match(r'^[a-zA-Z0-9_]+$', request.username):
+        raise HTTPException(status_code=400, detail="Username can only contain letters, numbers, and underscores")
+
+    # Validate password length
+    if len(request.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    # Check if email already exists
+    if db.email_exists(request.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # Check if username already exists
+    if db.username_exists(request.username):
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    # Hash password and create account
+    password_hash = auth.hash_password(request.password)
+
+    try:
+        account_id = db.create_account(
+            username=request.username,
+            email=request.email,
+            password_hash=password_hash,
+            chess_com_username=request.chessComUsername,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
+
+    # Get the created account
+    account = db.get_account_by_id(account_id)
+    if not account:
+        raise HTTPException(status_code=500, detail="Failed to retrieve created account")
+
+    # Create JWT token
+    token = auth.create_access_token({"user_id": account_id})
+
+    return AuthResponse(
+        user=account_to_user_response(account),
+        token=token,
+    )
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+async def login(request: LoginRequest):
+    """Login with email and password."""
+    # Get account by email
+    account = db.get_account_by_email(request.email)
+
+    if not account:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Verify password
+    if not auth.verify_password(request.password, account["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Create JWT token
+    token = auth.create_access_token({"user_id": account["id"]})
+
+    return AuthResponse(
+        user=account_to_user_response(account),
+        token=token,
+    )
+
+
+@app.get("/api/auth/me", response_model=UserResponse)
+async def get_current_user_endpoint(user: Dict[str, Any] = Depends(require_auth)):
+    """Get the current authenticated user."""
+    return account_to_user_response(user)
+
+
+# ============================================
+# Helper functions
+# ============================================
 
 def format_date(date_str: Optional[str]) -> str:
     """Format date string from PGN to ISO format."""

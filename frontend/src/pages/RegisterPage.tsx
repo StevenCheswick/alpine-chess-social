@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { authService } from '../services/authService';
 
 export default function RegisterPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [chessComUsername, setChessComUsername] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuthStore();
@@ -26,28 +28,28 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!chessComUsername.trim()) {
+      setError('Chess.com username is required');
+      return;
+    }
+
     setLoading(true);
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const response = await authService.register({
+        username,
+        email,
+        password,
+        chessComUsername,
+      });
 
-    // Mock registration
-    const newUser = {
-      id: '1',
-      username,
-      displayName: username,
-      email,
-      bio: null,
-      avatarUrl: null,
-      createdAt: new Date().toISOString(),
-      isVerified: false,
-      followerCount: 0,
-      followingCount: 0,
-    };
-
-    login(newUser, 'mock-jwt-token');
-    navigate('/');
-    setLoading(false);
+      login(response.user, response.token);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -98,6 +100,22 @@ export default function RegisterPage() {
             placeholder="you@example.com"
             required
           />
+        </div>
+
+        <div>
+          <label htmlFor="chessComUsername" className="block text-sm font-medium text-slate-300 mb-1">
+            Chess.com Username
+          </label>
+          <input
+            id="chessComUsername"
+            type="text"
+            value={chessComUsername}
+            onChange={(e) => setChessComUsername(e.target.value)}
+            className="input w-full"
+            placeholder="your_chess_com_username"
+            required
+          />
+          <p className="mt-1 text-xs text-slate-500">We'll sync your games from Chess.com</p>
         </div>
 
         <div>

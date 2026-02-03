@@ -1,9 +1,10 @@
 // User types
 export interface User {
-  id: string;
+  id: string | number;
   username: string;
   displayName: string;
   email: string;
+  chessComUsername?: string;
   bio: string | null;
   avatarUrl: string | null;
   createdAt: string;

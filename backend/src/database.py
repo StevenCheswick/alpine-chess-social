@@ -37,7 +37,32 @@ def init_db():
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # Users table
+        # Accounts table (for app authentication)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                email TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                password_hash TEXT NOT NULL,
+                display_name TEXT,
+                chess_com_username TEXT NOT NULL COLLATE NOCASE,
+                bio TEXT,
+                avatar_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Indexes for accounts
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_email
+            ON accounts(email)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_accounts_username
+            ON accounts(username)
+        """)
+
+        # Users table (for chess.com game sync - legacy)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,6 +210,126 @@ def get_user_games_count(user_id: int) -> int:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (user_id,))
         return cursor.fetchone()[0]
+
+
+# ============================================
+# Account functions (for app authentication)
+# ============================================
+
+def create_account(
+    username: str,
+    email: str,
+    password_hash: str,
+    chess_com_username: str,
+    display_name: Optional[str] = None
+) -> int:
+    """Create a new account. Returns the account ID."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO accounts (username, email, password_hash, chess_com_username, display_name)
+            VALUES (?, ?, ?, ?, ?)
+        """, (username, email, password_hash, chess_com_username, display_name or username))
+        return cursor.lastrowid
+
+
+def get_account_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Get an account by email address."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, username, email, password_hash, display_name,
+                   chess_com_username, bio, avatar_url, created_at
+            FROM accounts
+            WHERE email = ? COLLATE NOCASE
+        """, (email,))
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "email": row["email"],
+            "password_hash": row["password_hash"],
+            "displayName": row["display_name"],
+            "chessComUsername": row["chess_com_username"],
+            "bio": row["bio"],
+            "avatarUrl": row["avatar_url"],
+            "createdAt": row["created_at"],
+        }
+
+
+def get_account_by_username(username: str) -> Optional[Dict[str, Any]]:
+    """Get an account by username."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, username, email, password_hash, display_name,
+                   chess_com_username, bio, avatar_url, created_at
+            FROM accounts
+            WHERE username = ? COLLATE NOCASE
+        """, (username,))
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "email": row["email"],
+            "password_hash": row["password_hash"],
+            "displayName": row["display_name"],
+            "chessComUsername": row["chess_com_username"],
+            "bio": row["bio"],
+            "avatarUrl": row["avatar_url"],
+            "createdAt": row["created_at"],
+        }
+
+
+def get_account_by_id(account_id: int) -> Optional[Dict[str, Any]]:
+    """Get an account by ID."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, username, email, display_name,
+                   chess_com_username, bio, avatar_url, created_at
+            FROM accounts
+            WHERE id = ?
+        """, (account_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "email": row["email"],
+            "displayName": row["display_name"],
+            "chessComUsername": row["chess_com_username"],
+            "bio": row["bio"],
+            "avatarUrl": row["avatar_url"],
+            "createdAt": row["created_at"],
+        }
+
+
+def email_exists(email: str) -> bool:
+    """Check if an email is already registered."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM accounts WHERE email = ? COLLATE NOCASE", (email,))
+        return cursor.fetchone() is not None
+
+
+def username_exists(username: str) -> bool:
+    """Check if a username is already taken."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM accounts WHERE username = ? COLLATE NOCASE", (username,))
+        return cursor.fetchone() is not None
 
 
 # Initialize database on module import
