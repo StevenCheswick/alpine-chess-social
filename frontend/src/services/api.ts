@@ -2,7 +2,7 @@
  * Base API client for making HTTP requests to the backend.
  */
 
-const API_BASE_URL = 'http://localhost:8001';
+import { API_BASE_URL } from '../config/api';
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';

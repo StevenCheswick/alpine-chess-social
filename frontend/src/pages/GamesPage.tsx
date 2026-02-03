@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ChessBoard, MiniChessBoard } from '../components/chess';
 
-const API_BASE = 'http://localhost:8000';
+import { API_BASE_URL } from '../config/api';
+const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 25;
 // TODO: Get from auth context when login is implemented
 const TEST_USERNAME = 'brexwick';
