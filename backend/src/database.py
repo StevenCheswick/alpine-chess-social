@@ -332,5 +332,83 @@ def username_exists(username: str) -> bool:
         return cursor.fetchone() is not None
 
 
+def update_account(
+    account_id: int,
+    display_name: Optional[str] = None,
+    bio: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Update an account's profile fields. Returns updated account."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Build dynamic update query
+        updates = []
+        params = []
+
+        if display_name is not None:
+            updates.append("display_name = ?")
+            params.append(display_name)
+
+        if bio is not None:
+            updates.append("bio = ?")
+            params.append(bio)
+
+        if not updates:
+            return get_account_by_id(account_id)
+
+        params.append(account_id)
+
+        cursor.execute(f"""
+            UPDATE accounts
+            SET {', '.join(updates)}
+            WHERE id = ?
+        """, params)
+
+    return get_account_by_id(account_id)
+
+
+def get_public_profile(username: str) -> Optional[Dict[str, Any]]:
+    """Get public profile data by username (no password_hash or email)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, username, display_name, chess_com_username,
+                   bio, avatar_url, created_at
+            FROM accounts
+            WHERE username = ? COLLATE NOCASE
+        """, (username,))
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "displayName": row["display_name"],
+            "chessComUsername": row["chess_com_username"],
+            "bio": row["bio"],
+            "avatarUrl": row["avatar_url"],
+            "createdAt": row["created_at"],
+        }
+
+
+def get_games_count_by_chess_com_username(chess_com_username: str) -> int:
+    """Get count of synced games for a Chess.com username."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # First get the user_id from users table (for game sync)
+        cursor.execute(
+            "SELECT id FROM users WHERE chess_com_username = ? COLLATE NOCASE",
+            (chess_com_username,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return 0
+
+        cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (row["id"],))
+        return cursor.fetchone()[0]
+
+
 # Initialize database on module import
 init_db()

@@ -195,6 +195,91 @@ async def get_current_user_endpoint(user: Dict[str, Any] = Depends(require_auth)
 
 
 # ============================================
+# Profile endpoints
+# ============================================
+
+class ProfileResponse(BaseModel):
+    id: int
+    username: str
+    displayName: str
+    chessComUsername: str
+    bio: Optional[str] = None
+    avatarUrl: Optional[str] = None
+    createdAt: str
+    gamesCount: int = 0
+    isOwnProfile: bool = False
+
+
+class UpdateProfileRequest(BaseModel):
+    displayName: Optional[str] = None
+    bio: Optional[str] = None
+
+
+@app.get("/api/users/{username}", response_model=ProfileResponse)
+async def get_user_profile(
+    username: str,
+    authorization: Optional[str] = Header(None)
+):
+    """Get a user's public profile by username."""
+    profile = db.get_public_profile(username)
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get games count
+    games_count = db.get_games_count_by_chess_com_username(
+        profile.get("chessComUsername", "")
+    )
+
+    # Check if this is the current user's own profile
+    current_user = get_current_user(authorization)
+    is_own_profile = current_user is not None and current_user["id"] == profile["id"]
+
+    return ProfileResponse(
+        id=profile["id"],
+        username=profile["username"],
+        displayName=profile.get("displayName") or profile["username"],
+        chessComUsername=profile.get("chessComUsername", ""),
+        bio=profile.get("bio"),
+        avatarUrl=profile.get("avatarUrl"),
+        createdAt=profile.get("createdAt", ""),
+        gamesCount=games_count,
+        isOwnProfile=is_own_profile,
+    )
+
+
+@app.put("/api/users/me", response_model=UserResponse)
+async def update_user_profile(
+    request: UpdateProfileRequest,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """Update the current user's profile."""
+    # Validate display name if provided
+    if request.displayName is not None:
+        if len(request.displayName) < 1:
+            raise HTTPException(status_code=400, detail="Display name cannot be empty")
+        if len(request.displayName) > 50:
+            raise HTTPException(status_code=400, detail="Display name must be at most 50 characters")
+
+    # Validate bio if provided
+    if request.bio is not None:
+        if len(request.bio) > 500:
+            raise HTTPException(status_code=400, detail="Bio must be at most 500 characters")
+
+    # Update the account
+    updated_account = db.update_account(
+        account_id=user["id"],
+        display_name=request.displayName,
+        bio=request.bio,
+    )
+
+    if not updated_account:
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
+    return account_to_user_response(updated_account)
+
+
+# ============================================
 # Helper functions
 # ============================================
 
