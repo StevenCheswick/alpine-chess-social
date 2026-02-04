@@ -11,7 +11,6 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
 import PostPage from './pages/PostPage';
-import SettingsPage from './pages/SettingsPage';
 import AchievementsPage from './pages/AchievementsPage';
 import GamesPage from './pages/GamesPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -75,7 +74,6 @@ function App() {
           <Route path="/post/:postId" element={<PostPage />} />
           <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/games" element={<GamesPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
         </Route>
 
         {/* 404 */}

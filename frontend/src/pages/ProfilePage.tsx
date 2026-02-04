@@ -2,7 +2,51 @@ import { useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { profileService, type Profile } from '../services/profileService';
+import { postService, type Post as ApiPost } from '../services/postService';
 import EditProfileModal from '../components/EditProfileModal';
+import PostCard from '../components/feed/PostCard';
+import type { Post } from '../types';
+
+// Transform API post to full Post type (same as HomePage)
+function transformPost(apiPost: ApiPost): Post {
+  return {
+    id: String(apiPost.id),
+    author: {
+      id: apiPost.author.id,
+      username: apiPost.author.username,
+      displayName: apiPost.author.displayName,
+      email: '',
+      bio: null,
+      avatarUrl: apiPost.author.avatarUrl,
+      createdAt: '',
+      isVerified: false,
+      followerCount: 0,
+      followingCount: 0,
+    },
+    postType: apiPost.postType,
+    content: apiPost.content,
+    gameData: apiPost.gameData ? {
+      id: apiPost.gameData.id,
+      platform: 'chess_com',
+      pgn: '',
+      white: { username: '', rating: apiPost.gameData.opponentRating || 0 },
+      black: { username: apiPost.gameData.opponent, rating: apiPost.gameData.opponentRating || 0 },
+      result: apiPost.gameData.result as '1-0' | '0-1' | '1/2-1/2',
+      timeControl: apiPost.gameData.timeControl || '',
+      playedAt: apiPost.gameData.date || '',
+      gameUrl: '',
+      allMoves: apiPost.gameData.moves,
+      keyPositionFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      keyPositionIndex: apiPost.gameData.keyPositionIndex || 0,
+    } : null,
+    achievementData: null,
+    likeCount: 0,
+    commentCount: 0,
+    isLiked: false,
+    createdAt: apiPost.createdAt,
+    updatedAt: apiPost.createdAt,
+  };
+}
 
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
@@ -12,6 +56,13 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Posts state
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsError, setPostsError] = useState<string | null>(null);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [totalPosts, setTotalPosts] = useState(0);
 
   useEffect(() => {
     if (!username) return;
@@ -31,6 +82,39 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, [username]);
+
+  // Fetch posts when username changes
+  useEffect(() => {
+    if (!username) return;
+
+    const fetchPosts = async () => {
+      setPostsLoading(true);
+      setPostsError(null);
+      try {
+        const response = await postService.getUserPosts(username);
+        setPosts(response.posts.map(transformPost));
+        setHasMorePosts(response.hasMore);
+        setTotalPosts(response.total);
+      } catch (err) {
+        setPostsError(err instanceof Error ? err.message : 'Failed to load posts');
+      } finally {
+        setPostsLoading(false);
+      }
+    };
+
+    fetchPosts();
+  }, [username]);
+
+  const loadMorePosts = async () => {
+    if (!username || !hasMorePosts) return;
+    try {
+      const response = await postService.getUserPosts(username, 20, posts.length);
+      setPosts((prev) => [...prev, ...response.posts.map(transformPost)]);
+      setHasMorePosts(response.hasMore);
+    } catch (err) {
+      console.error('Failed to load more posts:', err);
+    }
+  };
 
   const handleProfileUpdate = (updatedProfile: Profile) => {
     // Preserve isOwnProfile since the PUT response doesn't include it
@@ -117,8 +201,8 @@ export default function ProfilePage() {
                 <span className="text-slate-400 ml-1">Games</span>
               </div>
               <div>
-                <span className="font-bold text-white">0</span>
-                <span className="text-slate-400 ml-1">Achievements</span>
+                <span className="font-bold text-white">{totalPosts}</span>
+                <span className="text-slate-400 ml-1">Posts</span>
               </div>
             </div>
           </div>
@@ -179,10 +263,36 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      {/* Posts placeholder */}
-      <div className="card p-8 text-center text-slate-400">
-        <p>No posts yet</p>
-      </div>
+      {/* Posts Section */}
+      {postsLoading ? (
+        <div className="card p-8 text-center text-slate-400">
+          <p>Loading posts...</p>
+        </div>
+      ) : postsError ? (
+        <div className="card p-8 text-center text-red-400">
+          <p>{postsError}</p>
+        </div>
+      ) : posts.length === 0 ? (
+        <div className="card p-8 text-center text-slate-400">
+          <p>No posts yet</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {posts.map((post) => (
+            <PostCard key={post.id} post={post} />
+          ))}
+          {hasMorePosts && (
+            <div className="py-4 text-center">
+              <button
+                onClick={loadMorePosts}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                Load more posts
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Edit Profile Modal */}
       {showEditModal && (

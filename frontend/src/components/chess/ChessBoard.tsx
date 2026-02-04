@@ -98,31 +98,48 @@ export default function ChessBoard({
 
   const goToMove = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex > moves.length) return;
+    if (targetIndex === currentMoveIndex) return;
 
-    const chess = new Chess();
-    for (let i = 0; i < targetIndex && i < moves.length; i++) {
-      const move = chess.move(moves[i]);
-      if (!move) break;
-    }
+    const chess = chessRef.current;
 
-    // Play sound for the move we just made
-    if (targetIndex > 0 && targetIndex <= moves.length) {
-      const tempChess = new Chess();
-      for (let i = 0; i < targetIndex - 1; i++) {
-        tempChess.move(moves[i]);
-      }
-      const lastMove = tempChess.move(moves[targetIndex - 1]);
-      if (lastMove) {
-        playMoveSound(getMoveType(lastMove), 0.6);
+    // Moving forward - just push the next moves
+    if (targetIndex > currentMoveIndex) {
+      for (let i = currentMoveIndex; i < targetIndex; i++) {
+        const move = chess.move(moves[i]);
+        if (!move) break;
+        // Play sound only for the last move
+        if (i === targetIndex - 1) {
+          playMoveSound(getMoveType(move), 0.6);
+        }
       }
     }
+    // Moving backward - undo moves
+    else {
+      // Undo the moves first
+      for (let i = currentMoveIndex; i > targetIndex; i--) {
+        chess.undo();
+      }
+      
+      // Play sound for the position we landed on
+      if (targetIndex > 0) {
+        const tempChess = new Chess();
+        for (let i = 0; i < targetIndex - 1; i++) {
+          tempChess.move(moves[i]);
+        }
+        const moveObj = tempChess.move(moves[targetIndex - 1]);
+        if (moveObj) {
+          playMoveSound(getMoveType(moveObj), 0.6);
+        }
+      } else {
+        playMoveSound('move', 0.6);
+      }
+    }
 
-    chessRef.current = chess;
     const newFen = chess.fen();
     setCurrentPosition(newFen);
     setCurrentMoveIndex(targetIndex);
     onPositionChange?.(newFen, targetIndex);
-  }, [moves, onPositionChange]);
+  }, [moves, currentMoveIndex, onPositionChange]);
 
   const goToStart = () => goToMove(0);
   const goToPrevious = () => goToMove(Math.max(0, currentMoveIndex - 1));

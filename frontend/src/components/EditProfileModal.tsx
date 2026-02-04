@@ -71,7 +71,7 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
       const newlyLinkedChessCom = !profile.chessComUsername && data.chessComUsername;
       if (newlyLinkedChessCom) {
         // Trigger games sync in background (don't await - let it run)
-        fetch(`${API_BASE_URL}/api/games?username=${encodeURIComponent(data.chessComUsername)}`)
+        fetch(`${API_BASE_URL}/api/games?username=${encodeURIComponent(data.chessComUsername!)}`)
           .then(() => console.log('Initial games sync started'))
           .catch(err => console.error('Failed to start games sync:', err));
       }
