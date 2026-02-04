@@ -107,40 +107,46 @@ export function useStockfish(
   const multiPvRef = useRef(opts.multiPv);
   const depthRef = useRef(opts.depth);
 
-  // Throttling: accumulate updates and flush periodically
-  const pendingStateRef = useRef<Partial<StockfishState>>({});
+  // Store analysis data in refs to avoid re-renders on every engine message
+  const linesRef = useRef<EngineLine[]>([]);
+  const currentDepthRef = useRef(0);
+  const currentEvalRef = useRef<{ evaluation: number | null; isMate: boolean; mateIn: number | null }>({
+    evaluation: null,
+    isMate: false,
+    mateIn: null,
+  });
+
+  // Throttling
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastUpdateRef = useRef<number>(0);
-  const THROTTLE_MS = 150; // Only update UI every 150ms
+  const THROTTLE_MS = 200; // Only update UI every 200ms
 
-  // Throttled state update - batches rapid updates
-  const flushState = useCallback(() => {
-    const pending = pendingStateRef.current;
-    if (Object.keys(pending).length > 0) {
-      setState(s => ({ ...s, ...pending }));
-      pendingStateRef.current = {};
-    }
+  // Flush accumulated ref data to state
+  const flushToState = useCallback(() => {
+    setState(s => ({
+      ...s,
+      depth: currentDepthRef.current,
+      lines: linesRef.current,
+      evaluation: currentEvalRef.current.evaluation,
+      isMate: currentEvalRef.current.isMate,
+      mateIn: currentEvalRef.current.mateIn,
+    }));
     throttleTimerRef.current = null;
   }, []);
 
-  const throttledSetState = useCallback((updates: Partial<StockfishState>) => {
-    pendingStateRef.current = { ...pendingStateRef.current, ...updates };
-
+  // Schedule a throttled state update
+  const scheduleUpdate = useCallback(() => {
     const now = Date.now();
-    const timeSinceLastUpdate = now - lastUpdateRef.current;
-
-    // If enough time has passed, update immediately
-    if (timeSinceLastUpdate >= THROTTLE_MS) {
+    if (now - lastUpdateRef.current >= THROTTLE_MS) {
       lastUpdateRef.current = now;
-      flushState();
+      flushToState();
     } else if (!throttleTimerRef.current) {
-      // Schedule an update
       throttleTimerRef.current = setTimeout(() => {
         lastUpdateRef.current = Date.now();
-        flushState();
-      }, THROTTLE_MS - timeSinceLastUpdate);
+        flushToState();
+      }, THROTTLE_MS);
     }
-  }, [flushState]);
+  }, [flushToState]);
 
   // Initialize worker
   useEffect(() => {
@@ -178,7 +184,6 @@ export function useStockfish(
             const turn = getTurnFromFen(currentFenRef.current);
             const multiplier = turn === 'b' ? -1 : 1;
 
-            // Adjust the score
             const adjustedScore = {
               type: parsed.score.type,
               value: parsed.score.value * multiplier,
@@ -186,61 +191,39 @@ export function useStockfish(
 
             const adjustedParsed = { ...parsed, score: adjustedScore };
 
-            // Update lines in pending state (will be batched)
-            setState(s => {
-              const newLines = [...s.lines];
-              const idx = adjustedParsed.multipv - 1;
-              newLines[idx] = adjustedParsed;
+            // Update refs (no re-render)
+            const idx = adjustedParsed.multipv - 1;
+            const newLines = [...linesRef.current];
+            newLines[idx] = adjustedParsed;
+            linesRef.current = newLines.slice(0, multiPvRef.current);
+            currentDepthRef.current = Math.max(currentDepthRef.current, adjustedParsed.depth);
 
-              const primaryLine = newLines[0];
-              const newEval = primaryLine?.score.type === 'cp' ? primaryLine.score.value : null;
-              const newIsMate = primaryLine?.score.type === 'mate';
-              const newMateIn = primaryLine?.score.type === 'mate' ? primaryLine.score.value : null;
+            const primaryLine = linesRef.current[0];
+            const newEval = primaryLine?.score.type === 'cp' ? primaryLine.score.value : null;
+            const newIsMate = primaryLine?.score.type === 'mate';
+            const newMateIn = primaryLine?.score.type === 'mate' ? primaryLine.score.value : null;
 
-              // Cache the evaluation at higher depths
-              if (adjustedParsed.depth >= 12 && currentFenRef.current) {
-                setCachedEval(currentFenRef.current, {
-                  evaluation: newEval,
-                  isMate: newIsMate,
-                  mateIn: newMateIn,
-                });
-              }
+            // Cache at higher depths
+            if (adjustedParsed.depth >= 12 && currentFenRef.current) {
+              setCachedEval(currentFenRef.current, {
+                evaluation: newEval,
+                isMate: newIsMate,
+                mateIn: newMateIn,
+              });
+            }
 
-              // Minimum depth before we trust the eval for display
-              const MIN_DISPLAY_DEPTH = 8;
-
-              // Don't update eval display until we have reliable depth
-              // This prevents the "sharp drop then recovery" on position change
-              if (adjustedParsed.depth < MIN_DISPLAY_DEPTH) {
-                // Update lines and depth indicator, but keep previous eval
-                return {
-                  ...s,
-                  depth: Math.max(s.depth, adjustedParsed.depth),
-                  lines: newLines.slice(0, multiPvRef.current),
-                  // Keep existing eval until we have reliable data
-                };
-              }
-
-              // Throttle UI updates at higher depths
-              const significantUpdate =
-                adjustedParsed.depth === MIN_DISPLAY_DEPTH || // First reliable depth
-                adjustedParsed.depth % 3 === 0 || // Update every 3 depths
-                adjustedParsed.depth >= depthRef.current! - 1; // Always show near-final
-
-              if (!significantUpdate && s.depth >= MIN_DISPLAY_DEPTH) {
-                // Skip this update but keep lines current
-                return { ...s, lines: newLines.slice(0, multiPvRef.current) };
-              }
-
-              return {
-                ...s,
-                depth: Math.max(s.depth, adjustedParsed.depth),
-                lines: newLines.slice(0, multiPvRef.current),
+            // Only update eval ref after minimum reliable depth
+            const MIN_DISPLAY_DEPTH = 8;
+            if (adjustedParsed.depth >= MIN_DISPLAY_DEPTH) {
+              currentEvalRef.current = {
                 evaluation: newEval,
                 isMate: newIsMate,
                 mateIn: newMateIn,
               };
-            });
+            }
+
+            // Schedule throttled UI update
+            scheduleUpdate();
           }
         }
 
@@ -322,14 +305,12 @@ export function useStockfish(
     // Check cache first - show cached result instantly while re-analyzing
     const cached = getCachedEval(fenToAnalyze);
     if (cached) {
-      setState(s => ({
-        ...s,
-        evaluation: cached.evaluation,
-        isMate: cached.isMate,
-        mateIn: cached.mateIn,
-        depth: 12, // Indicate this is from cache
-        error: null,
-      }));
+      currentEvalRef.current = cached;
+      currentDepthRef.current = 12; // Indicate from cache
+    } else {
+      // Reset refs for fresh analysis
+      linesRef.current = [];
+      currentDepthRef.current = 0;
     }
 
     if (!workerRef.current || !isEngineReadyRef.current) {
@@ -338,12 +319,16 @@ export function useStockfish(
     }
 
     currentFenRef.current = fenToAnalyze;
-    // Only clear lines if no cache, keeps UI stable
+
+    // Single state update to start analysis
     setState(s => ({
       ...s,
       isAnalyzing: true,
       lines: cached ? s.lines : [],
-      depth: cached ? s.depth : 0,
+      depth: cached ? 12 : 0,
+      evaluation: cached ? cached.evaluation : s.evaluation,
+      isMate: cached ? cached.isMate : s.isMate,
+      mateIn: cached ? cached.mateIn : s.mateIn,
       error: null,
     }));
 
