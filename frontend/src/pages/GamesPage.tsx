@@ -70,30 +70,30 @@ export default function GamesPage() {
   // Load stored games on mount if user has linked Chess.com account
   useEffect(() => {
     if (chessComUsername) {
-      loadStoredGames(chessComUsername, 1);
+      loadStoredGames(chessComUsername, 1, []);
       loadAllTags(chessComUsername);
     }
   }, [chessComUsername]);
 
-  // Get currently selected tag (only support single tag filter for now)
-  const selectedTag = selectedTags.size > 0 ? Array.from(selectedTags)[0] : null;
+  // Convert selected tags to array for API calls
+  const selectedTagsArray = Array.from(selectedTags);
 
   // Load games when page or tag filter changes
   useEffect(() => {
     if (chessComUsername && currentPage > 0) {
-      loadStoredGames(chessComUsername, currentPage, selectedTag);
+      loadStoredGames(chessComUsername, currentPage, selectedTagsArray);
     }
-  }, [currentPage, selectedTag]);
+  }, [currentPage, JSON.stringify(selectedTagsArray)]);
 
-  // Load games from database with pagination and optional tag filter
-  const loadStoredGames = async (user: string, page: number, tag: string | null) => {
+  // Load games from database with pagination and optional tag filters
+  const loadStoredGames = async (user: string, page: number, tags: string[]) => {
     setLoading(true);
     setError(null);
 
     const offset = (page - 1) * GAMES_PER_PAGE;
     let url = `${API_BASE}/api/games/stored?username=${encodeURIComponent(user)}&limit=${GAMES_PER_PAGE}&offset=${offset}`;
-    if (tag) {
-      url += `&tag=${encodeURIComponent(tag)}`;
+    if (tags.length > 0) {
+      url += `&tags=${encodeURIComponent(tags.join(','))}`;
     }
 
     try {
@@ -112,11 +112,14 @@ export default function GamesPage() {
   };
 
   // Load tag counts from dedicated endpoint
-  const loadAllTags = async (user: string) => {
+  // If selectedTags is provided, returns counts of games that have ALL selectedTags AND each other tag
+  const loadAllTags = async (user: string, selectedTags: string[] = []) => {
     try {
-      const response = await fetch(
-        `${API_BASE}/api/games/tags?username=${encodeURIComponent(user)}`
-      );
+      let url = `${API_BASE}/api/games/tags?username=${encodeURIComponent(user)}`;
+      if (selectedTags.length > 0) {
+        url += `&selected_tags=${encodeURIComponent(selectedTags.join(','))}`;
+      }
+      const response = await fetch(url);
       if (!response.ok) return;
       const data = await response.json();
       setAllTags(new Map(Object.entries(data.tags || {})));
@@ -138,7 +141,7 @@ export default function GamesPage() {
       // Reload games from database after sync
       setCurrentPage(1);
       setSelectedTags(new Set()); // Clear filter after sync
-      await loadStoredGames(chessComUsername, 1, null);
+      await loadStoredGames(chessComUsername, 1, []);
       await loadAllTags(chessComUsername);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync games');
@@ -154,11 +157,11 @@ export default function GamesPage() {
     setError(null);
 
     try {
-      const result: AnalyzeResponse = await gameService.analyzeGames(50);
+      const result: AnalyzeResponse = await gameService.analyzeGames(1000);
       setUnanalyzedCount(result.remaining);
 
       // Reload games to show new tags
-      await loadStoredGames(chessComUsername, currentPage, selectedTag);
+      await loadStoredGames(chessComUsername, currentPage, selectedTagsArray);
       await loadAllTags(chessComUsername);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to analyze games');
@@ -183,20 +186,33 @@ export default function GamesPage() {
   };
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(prev => {
-      // Single tag selection - clicking same tag deselects, clicking different tag switches
-      if (prev.has(tag)) {
-        return new Set(); // Deselect
-      } else {
-        return new Set([tag]); // Select only this tag
-      }
-    });
+    let newSelectedTags: string[];
+
+    if (selectedTags.has(tag)) {
+      // Remove tag from selection
+      newSelectedTags = Array.from(selectedTags).filter(t => t !== tag);
+      setSelectedTags(new Set(newSelectedTags));
+    } else {
+      // Add tag to selection
+      newSelectedTags = [...Array.from(selectedTags), tag];
+      setSelectedTags(new Set(newSelectedTags));
+    }
+
     setCurrentPage(1); // Reset to first page when filtering
+
+    // Reload tag counts filtered by the new selection
+    if (chessComUsername) {
+      loadAllTags(chessComUsername, newSelectedTags);
+    }
   };
 
   const clearTags = () => {
     setSelectedTags(new Set());
     setCurrentPage(1);
+    // Reload all tag counts (unfiltered)
+    if (chessComUsername) {
+      loadAllTags(chessComUsername, []);
+    }
   };
 
   const toggleGame = (gameId: string) => {

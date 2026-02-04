@@ -107,12 +107,10 @@ class UnifiedRookSacrificeAnalyzer(UnifiedAnalyzerBase):
                     'material_advantage': material_advantage,
                     'rook_pinned': rook_pinned,
                 }
-                print(f"[RookSac] Potential rook capture: {move_san}")
                 return
 
         # Check if opponent recaptures
         if context.is_opponent_move and self.potential_sacrifice:
-            print(f"[RookSac] Checking opponent recapture...")
             captured_square = self.potential_sacrifice['captured_square']
 
             if context.move_number == self.potential_sacrifice['sacrifice_move_number'] + 1:
@@ -159,18 +157,14 @@ class UnifiedRookSacrificeAnalyzer(UnifiedAnalyzerBase):
             return
 
         material_advantage = self.potential_sacrifice.get('material_advantage', 0)
-        sacrifice_san = self.potential_sacrifice.get('sacrifice_san', '?')
-        print(f"[RookSac] Potential sacrifice: {sacrifice_san}, material_adv: {material_advantage}")
 
         # For rook sacs, allow if not too far ahead (rook is worth 5)
         if material_advantage >= 5:
-            print(f"[RookSac] Rejected - too far ahead ({material_advantage})")
             self.potential_sacrifice = None
             return
 
         rook_pinned = self.potential_sacrifice.get('rook_pinned', False)
         if rook_pinned:
-            print(f"[RookSac] Rejected - rook was pinned")
             self.potential_sacrifice = None
             return
 
@@ -235,7 +229,6 @@ class UnifiedRookSacrificeAnalyzer(UnifiedAnalyzerBase):
 
     def get_final_results(self) -> List[Dict[str, Any]]:
         """Get final results after processing all games."""
-        print(f"[RookSac] Found {len(self.all_sacrifice_refs)} rook sacrifices")
         if not self.all_sacrifice_refs:
             return []
 
