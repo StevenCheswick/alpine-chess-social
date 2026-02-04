@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChessBoard, MiniChessBoard } from '../components/chess';
+import { AnalyzableChessBoard, MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { gameService, type SyncResponse, type AnalyzeResponse } from '../services/gameService';
@@ -19,17 +19,6 @@ interface Game {
   tags: string[];
   moves: string[];
   userColor: 'white' | 'black';
-}
-
-// Get all unique tags with counts
-function getTagCounts(games: Game[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  games.forEach(game => {
-    game.tags.forEach(tag => {
-      counts.set(tag, (counts.get(tag) || 0) + 1);
-    });
-  });
-  return counts;
 }
 
 const resultColors = {
@@ -70,7 +59,7 @@ export default function GamesPage() {
   // Load stored games on mount if user has linked Chess.com account
   useEffect(() => {
     if (chessComUsername) {
-      loadStoredGames(chessComUsername, 1);
+      loadStoredGames(chessComUsername, 1, null);
       loadAllTags(chessComUsername);
     }
   }, [chessComUsername]);
@@ -445,7 +434,7 @@ export default function GamesPage() {
                   {/* Expanded Game Board */}
                   {isExpanded && (
                     <div className="border-t border-slate-800 p-4">
-                      <ChessBoard
+                      <AnalyzableChessBoard
                         moves={game.moves}
                         orientation={game.userColor}
                         whitePlayer={{
@@ -456,6 +445,7 @@ export default function GamesPage() {
                           username: game.userColor === 'black' ? chessComUsername : game.opponent,
                           rating: game.userColor === 'black' ? game.userRating || undefined : game.opponentRating || undefined,
                         }}
+                        showAnalysis={true}
                       />
                     </div>
                   )}

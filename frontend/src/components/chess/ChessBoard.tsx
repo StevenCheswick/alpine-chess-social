@@ -1,5 +1,5 @@
 import { Chessboard } from 'react-chessboard';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import { getMoveType, playMoveSound, playGameSound } from '../../utils/chessSounds';
 
