@@ -68,6 +68,8 @@ class UnifiedAnalyzer:
     # Pre-filter: Skip win-based analyzers if user didn't win
     WIN_ANALYZERS = {
         'UnifiedQueenSacrificeAnalyzer',
+        'UnifiedKnightForkAnalyzer',
+        'UnifiedRookSacrificeAnalyzer',
     }
 
     def __init__(self, username: str):

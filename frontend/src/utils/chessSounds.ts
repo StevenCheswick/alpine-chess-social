@@ -4,6 +4,9 @@
 
 export type MoveType = 'move' | 'capture' | 'check' | 'checkmate' | 'promotion' | 'castle';
 
+// Game event sounds (for game start/end)
+export type GameEventType = 'gamestart' | 'victory' | 'defeat' | 'draw';
+
 /**
  * Determines the type of move for sound selection
  */
@@ -79,5 +82,31 @@ export function playMoveSound(moveType: MoveType, volume: number = 0.5): void {
     });
   } catch (error) {
     console.error('[ChessSounds] Error playing sound:', error);
+  }
+}
+
+/**
+ * Plays game event sounds (start, victory, defeat, draw)
+ */
+export function playGameSound(eventType: GameEventType, volume: number = 0.5): void {
+  try {
+    const soundMap: Record<GameEventType, string> = {
+      gamestart: '/sounds/game-start.mp3',
+      victory: '/sounds/game-win-long.mp3',
+      defeat: '/sounds/game-lose-long.mp3',
+      draw: '/sounds/game-draw.mp3',
+    };
+
+    const soundPath = soundMap[eventType];
+    if (!soundPath) return;
+
+    const adjustedVolume = isIOS() ? volume * 0.8 : volume;
+    const audio = new Audio(soundPath);
+    audio.volume = Math.max(0, Math.min(1, adjustedVolume));
+    audio.play().catch(() => {
+      // Silently fail - user may not have interacted with page yet
+    });
+  } catch (error) {
+    console.error('[ChessSounds] Error playing game sound:', error);
   }
 }

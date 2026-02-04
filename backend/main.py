@@ -12,6 +12,8 @@ from src.chess_com_client import ChessComClient
 from src.pgn_parser import parse_pgns
 from src.unified_analyzer import UnifiedAnalyzer
 from src.analyzers.queen_sacrifice import UnifiedQueenSacrificeAnalyzer
+from src.analyzers.knight_fork import UnifiedKnightForkAnalyzer
+from src.analyzers.rook_sacrifice import UnifiedRookSacrificeAnalyzer
 from src import database as db
 from src import auth
 
@@ -55,8 +57,8 @@ class AuthResponse(BaseModel):
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176", "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -372,10 +374,14 @@ async def get_games(
 
     print(f"Parsed {len(games)} games")
 
-    # Analyze games with Queen Sacrifice analyzer
+    # Analyze games with analyzers
     analyzer = UnifiedAnalyzer(username)
     queen_sac_analyzer = UnifiedQueenSacrificeAnalyzer(username)
+    knight_fork_analyzer = UnifiedKnightForkAnalyzer(username)
+    rook_sac_analyzer = UnifiedRookSacrificeAnalyzer(username)
     analyzer.register_analyzer(queen_sac_analyzer)
+    analyzer.register_analyzer(knight_fork_analyzer)
+    analyzer.register_analyzer(rook_sac_analyzer)
 
     # Analyze all games
     analyzer.analyze_games(games)
@@ -383,12 +389,32 @@ async def get_games(
     # Get queen sacrifice findings
     queen_sac_findings = queen_sac_analyzer.get_final_results()
 
+    # Get knight fork findings
+    knight_fork_findings = knight_fork_analyzer.get_final_results()
+
+    # Get rook sacrifice findings
+    rook_sac_findings = rook_sac_analyzer.get_final_results()
+
     # Build a set of game links that have queen sacrifices
     queen_sac_games = {}
     for finding in queen_sac_findings:
         link = finding.get("game_metadata", {}).get("link")
         if link:
             queen_sac_games[link] = finding
+
+    # Build a set of game links that have knight forks
+    knight_fork_games = {}
+    for finding in knight_fork_findings:
+        link = finding.get("game_metadata", {}).get("link")
+        if link:
+            knight_fork_games[link] = finding
+
+    # Build a set of game links that have rook sacrifices
+    rook_sac_games = {}
+    for finding in rook_sac_findings:
+        link = finding.get("game_metadata", {}).get("link")
+        if link:
+            rook_sac_games[link] = finding
 
     # Build response with all games
     response_games = []
@@ -406,10 +432,14 @@ async def get_games(
         user_elo_match = re.search(rf'\[{user_elo_header}\s+"(\d+)"\]', game.pgn)
         user_elo = int(user_elo_match.group(1)) if user_elo_match else None
 
-        # Check if this game has a queen sacrifice
+        # Check if this game has tactical highlights
         tags = []
         if game.metadata.link and game.metadata.link in queen_sac_games:
             tags.append("Queen Sacrifice")
+        if game.metadata.link and game.metadata.link in knight_fork_games:
+            tags.append("Knight Fork")
+        if game.metadata.link and game.metadata.link in rook_sac_games:
+            tags.append("Rook Sacrifice")
 
         response_games.append({
             "id": game.metadata.link or f"{game.metadata.white}_{game.metadata.black}_{game.metadata.date}",

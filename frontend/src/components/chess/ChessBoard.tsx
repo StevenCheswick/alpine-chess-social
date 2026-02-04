@@ -1,7 +1,7 @@
 import { Chessboard } from 'react-chessboard';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Chess } from 'chess.js';
-import { getMoveType, playMoveSound } from '../../utils/chessSounds';
+import { getMoveType, playMoveSound, playGameSound } from '../../utils/chessSounds';
 
 interface ChessBoardProps {
   /** Initial FEN position to display */
@@ -24,6 +24,8 @@ interface ChessBoardProps {
   onPositionChange?: (fen: string, moveIndex: number) => void;
   /** Additional CSS classes */
   className?: string;
+  /** Game result: 'W' = user won, 'L' = user lost, 'D' = draw */
+  gameResult?: 'W' | 'L' | 'D';
 }
 
 export default function ChessBoard({
@@ -37,6 +39,7 @@ export default function ChessBoard({
   showControls = true,
   onPositionChange,
   className = '',
+  gameResult,
 }: ChessBoardProps) {
   const [currentPosition, setCurrentPosition] = useState<string>(
     fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -98,31 +101,62 @@ export default function ChessBoard({
 
   const goToMove = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex > moves.length) return;
+    if (targetIndex === currentMoveIndex) return;
 
-    const chess = new Chess();
-    for (let i = 0; i < targetIndex && i < moves.length; i++) {
-      const move = chess.move(moves[i]);
-      if (!move) break;
+    const chess = chessRef.current;
+
+    // Moving forward - just push the next moves
+    if (targetIndex > currentMoveIndex) {
+      for (let i = currentMoveIndex; i < targetIndex; i++) {
+        const move = chess.move(moves[i]);
+        if (!move) break;
+        // Play sound only for the last move
+        if (i === targetIndex - 1) {
+          const moveType = getMoveType(move);
+          // If this is the final move and NOT checkmate, play game result sound
+          if (targetIndex === moves.length && moveType !== 'checkmate' && gameResult) {
+            if (gameResult === 'W') {
+              playGameSound('victory', 0.7);
+            } else if (gameResult === 'L') {
+              playGameSound('defeat', 0.7);
+            } else if (gameResult === 'D') {
+              playGameSound('draw', 0.7);
+            }
+          } else {
+            playMoveSound(moveType, 0.6);
+          }
+        }
+      }
+    }
+    // Moving backward - undo moves
+    else {
+      // Undo the moves first
+      for (let i = currentMoveIndex; i > targetIndex; i--) {
+        chess.undo();
+      }
+      
+      // Play sound for the position we landed on
+      // Use temp chess to get full move object with check/checkmate/capture info
+      if (targetIndex > 0) {
+        const tempChess = new Chess();
+        for (let i = 0; i < targetIndex - 1; i++) {
+          tempChess.move(moves[i]);
+        }
+        const moveObj = tempChess.move(moves[targetIndex - 1]);
+        if (moveObj) {
+          playMoveSound(getMoveType(moveObj), 0.6);
+        }
+      } else {
+        // Going back to start
+        playMoveSound('move', 0.6);
+      }
     }
 
-    // Play sound for the move we just made
-    if (targetIndex > 0 && targetIndex <= moves.length) {
-      const tempChess = new Chess();
-      for (let i = 0; i < targetIndex - 1; i++) {
-        tempChess.move(moves[i]);
-      }
-      const lastMove = tempChess.move(moves[targetIndex - 1]);
-      if (lastMove) {
-        playMoveSound(getMoveType(lastMove), 0.6);
-      }
-    }
-
-    chessRef.current = chess;
     const newFen = chess.fen();
     setCurrentPosition(newFen);
     setCurrentMoveIndex(targetIndex);
     onPositionChange?.(newFen, targetIndex);
-  }, [moves, onPositionChange]);
+  }, [moves, currentMoveIndex, onPositionChange, gameResult]);
 
   const goToStart = () => goToMove(0);
   const goToPrevious = () => goToMove(Math.max(0, currentMoveIndex - 1));
@@ -163,6 +197,7 @@ export default function ChessBoard({
                 position: currentPosition,
                 boardOrientation: orientation,
                 allowDragging: false,
+                animationDurationInMs: 150,
               }}
             />
           )}
