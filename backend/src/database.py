@@ -104,6 +104,32 @@ def init_db():
             ON user_games(date DESC)
         """)
 
+        # Posts table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                post_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                game_id INTEGER,
+                key_position_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts(id),
+                FOREIGN KEY (game_id) REFERENCES user_games(id)
+            )
+        """)
+
+        # Indexes for posts
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_posts_account_id
+            ON posts(account_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_posts_created_at
+            ON posts(created_at DESC)
+        """)
+
 
 def get_or_create_user(username: str) -> int:
     """Get user ID, creating if doesn't exist."""
@@ -413,6 +439,306 @@ def get_games_count_by_chess_com_username(chess_com_username: str) -> int:
 
         cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (row["id"],))
         return cursor.fetchone()[0]
+
+
+def get_games_by_chess_com_username(chess_com_username: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Get games for a Chess.com username."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # First get the user_id from users table
+        cursor.execute(
+            "SELECT id FROM users WHERE chess_com_username = ? COLLATE NOCASE",
+            (chess_com_username,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return []
+
+        user_id = row["id"]
+        cursor.execute("""
+            SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
+                   result, user_color, time_control, date, moves, tags
+            FROM user_games
+            WHERE user_id = ?
+            ORDER BY date DESC
+            LIMIT ?
+        """, (user_id, limit))
+
+        games = []
+        for row in cursor.fetchall():
+            games.append({
+                "id": row["id"],  # Database ID for game_share posts
+                "chessComGameId": row["chess_com_game_id"],
+                "opponent": row["opponent"],
+                "opponentRating": row["opponent_rating"],
+                "userRating": row["user_rating"],
+                "result": row["result"],
+                "userColor": row["user_color"],
+                "timeControl": row["time_control"],
+                "date": row["date"],
+                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "tags": json.loads(row["tags"]) if row["tags"] else [],
+            })
+
+        return games
+
+
+# ============================================
+# Posts functions
+# ============================================
+
+def create_post(
+    account_id: int,
+    post_type: str,
+    content: str,
+    game_id: Optional[int] = None,
+    key_position_index: int = 0
+) -> int:
+    """Create a new post. Returns the post ID."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO posts (account_id, post_type, content, game_id, key_position_index)
+            VALUES (?, ?, ?, ?, ?)
+        """, (account_id, post_type, content, game_id, key_position_index))
+        return cursor.lastrowid
+
+
+def get_posts(limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get posts feed with author info and optional game data."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT
+                p.id,
+                p.post_type,
+                p.content,
+                p.game_id,
+                p.key_position_index,
+                p.created_at,
+                p.updated_at,
+                a.id as author_id,
+                a.username as author_username,
+                a.display_name as author_display_name,
+                a.avatar_url as author_avatar_url,
+                g.chess_com_game_id,
+                g.opponent,
+                g.opponent_rating,
+                g.user_rating,
+                g.result,
+                g.user_color,
+                g.time_control,
+                g.date as game_date,
+                g.moves,
+                g.tags
+            FROM posts p
+            JOIN accounts a ON p.account_id = a.id
+            LEFT JOIN user_games g ON p.game_id = g.id
+            ORDER BY p.created_at DESC
+            LIMIT ? OFFSET ?
+        """, (limit, offset))
+        
+        posts = []
+        for row in cursor.fetchall():
+            post = {
+                "id": row["id"],
+                "postType": row["post_type"],
+                "content": row["content"],
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+                "author": {
+                    "id": row["author_id"],
+                    "username": row["author_username"],
+                    "displayName": row["author_display_name"] or row["author_username"],
+                    "avatarUrl": row["author_avatar_url"],
+                },
+                "gameData": None,
+            }
+            
+            # Add game data if this is a game share
+            if row["game_id"] and row["chess_com_game_id"]:
+                post["gameData"] = {
+                    "id": row["chess_com_game_id"],
+                    "opponent": row["opponent"],
+                    "opponentRating": row["opponent_rating"],
+                    "userRating": row["user_rating"],
+                    "result": row["result"],
+                    "userColor": row["user_color"],
+                    "timeControl": row["time_control"],
+                    "date": row["game_date"],
+                    "moves": json.loads(row["moves"]) if row["moves"] else [],
+                    "tags": json.loads(row["tags"]) if row["tags"] else [],
+                    "keyPositionIndex": row["key_position_index"] or 0,
+                }
+            
+            posts.append(post)
+        
+        return posts
+
+
+def get_posts_count() -> int:
+    """Get total count of posts."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM posts")
+        return cursor.fetchone()[0]
+
+
+def get_posts_by_username(username: str, limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get posts by a specific user's username."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                p.id,
+                p.post_type,
+                p.content,
+                p.game_id,
+                p.key_position_index,
+                p.created_at,
+                p.updated_at,
+                a.id as author_id,
+                a.username as author_username,
+                a.display_name as author_display_name,
+                a.avatar_url as author_avatar_url,
+                g.chess_com_game_id,
+                g.opponent,
+                g.opponent_rating,
+                g.user_rating,
+                g.result,
+                g.user_color,
+                g.time_control,
+                g.date as game_date,
+                g.moves,
+                g.tags
+            FROM posts p
+            JOIN accounts a ON p.account_id = a.id
+            LEFT JOIN user_games g ON p.game_id = g.id
+            WHERE a.username = ? COLLATE NOCASE
+            ORDER BY p.created_at DESC
+            LIMIT ? OFFSET ?
+        """, (username, limit, offset))
+
+        posts = []
+        for row in cursor.fetchall():
+            post = {
+                "id": row["id"],
+                "postType": row["post_type"],
+                "content": row["content"],
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+                "author": {
+                    "id": row["author_id"],
+                    "username": row["author_username"],
+                    "displayName": row["author_display_name"] or row["author_username"],
+                    "avatarUrl": row["author_avatar_url"],
+                },
+                "gameData": None,
+            }
+
+            if row["game_id"] and row["chess_com_game_id"]:
+                post["gameData"] = {
+                    "id": row["chess_com_game_id"],
+                    "opponent": row["opponent"],
+                    "opponentRating": row["opponent_rating"],
+                    "userRating": row["user_rating"],
+                    "result": row["result"],
+                    "userColor": row["user_color"],
+                    "timeControl": row["time_control"],
+                    "date": row["game_date"],
+                    "moves": json.loads(row["moves"]) if row["moves"] else [],
+                    "tags": json.loads(row["tags"]) if row["tags"] else [],
+                    "keyPositionIndex": row["key_position_index"] or 0,
+                }
+
+            posts.append(post)
+
+        return posts
+
+
+def get_posts_count_by_username(username: str) -> int:
+    """Get total count of posts by a user."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM posts p
+            JOIN accounts a ON p.account_id = a.id
+            WHERE a.username = ? COLLATE NOCASE
+        """, (username,))
+        return cursor.fetchone()[0]
+
+
+def get_post_by_id(post_id: int) -> Optional[Dict[str, Any]]:
+    """Get a single post by ID with author and game data."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT
+                p.id,
+                p.post_type,
+                p.content,
+                p.game_id,
+                p.key_position_index,
+                p.created_at,
+                p.updated_at,
+                a.id as author_id,
+                a.username as author_username,
+                a.display_name as author_display_name,
+                a.avatar_url as author_avatar_url,
+                g.chess_com_game_id,
+                g.opponent,
+                g.opponent_rating,
+                g.user_rating,
+                g.result,
+                g.user_color,
+                g.time_control,
+                g.date as game_date,
+                g.moves,
+                g.tags
+            FROM posts p
+            JOIN accounts a ON p.account_id = a.id
+            LEFT JOIN user_games g ON p.game_id = g.id
+            WHERE p.id = ?
+        """, (post_id,))
+        
+        row = cursor.fetchone()
+        if not row:
+            return None
+        
+        post = {
+            "id": row["id"],
+            "postType": row["post_type"],
+            "content": row["content"],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+            "author": {
+                "id": row["author_id"],
+                "username": row["author_username"],
+                "displayName": row["author_display_name"] or row["author_username"],
+                "avatarUrl": row["author_avatar_url"],
+            },
+            "gameData": None,
+        }
+        
+        if row["game_id"] and row["chess_com_game_id"]:
+            post["gameData"] = {
+                "id": row["chess_com_game_id"],
+                "opponent": row["opponent"],
+                "opponentRating": row["opponent_rating"],
+                "userRating": row["user_rating"],
+                "result": row["result"],
+                "userColor": row["user_color"],
+                "timeControl": row["time_control"],
+                "date": row["game_date"],
+                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "tags": json.loads(row["tags"]) if row["tags"] else [],
+                "keyPositionIndex": row["key_position_index"] or 0,
+            }
+
+        return post
 
 
 # Initialize database on module import

@@ -288,6 +288,198 @@ async def update_user_profile(
     return account_to_user_response(updated_account)
 
 
+class GameResponse(BaseModel):
+    """Game data for selection."""
+    id: int
+    chessComGameId: str
+    opponent: str
+    opponentRating: Optional[int] = None
+    userRating: Optional[int] = None
+    result: str
+    userColor: str
+    timeControl: Optional[str] = None
+    date: Optional[str] = None
+    tags: List[str] = []
+    moves: List[str] = []
+
+
+class UserGamesResponse(BaseModel):
+    """Response for user's games list."""
+    games: List[GameResponse]
+    total: int
+
+
+@app.get("/api/users/me/games", response_model=UserGamesResponse)
+async def get_my_games(
+    limit: int = Query(50, le=100, description="Max games to return"),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """Get the current user's synced games."""
+    chess_com_username = user.get("chessComUsername", "")
+    if not chess_com_username:
+        return UserGamesResponse(games=[], total=0)
+
+    games = db.get_games_by_chess_com_username(chess_com_username, limit)
+    return UserGamesResponse(
+        games=[GameResponse(**g) for g in games],
+        total=len(games)
+    )
+
+
+# ============================================
+# Posts models and endpoints
+# ============================================
+
+class CreatePostRequest(BaseModel):
+    content: str
+    postType: str  # 'text' or 'game_share'
+    gameId: Optional[int] = None
+    keyPositionIndex: Optional[int] = 0  # Move index to display from
+
+
+class AuthorResponse(BaseModel):
+    id: int
+    username: str
+    displayName: str
+    avatarUrl: Optional[str] = None
+
+
+class GameDataResponse(BaseModel):
+    id: str
+    opponent: str
+    opponentRating: Optional[int] = None
+    userRating: Optional[int] = None
+    result: str
+    userColor: str
+    timeControl: Optional[str] = None
+    date: Optional[str] = None
+    moves: List[str] = []
+    tags: List[str] = []
+    keyPositionIndex: int = 0
+
+
+class PostResponse(BaseModel):
+    id: int
+    author: AuthorResponse
+    postType: str
+    content: str
+    gameData: Optional[GameDataResponse] = None
+    createdAt: str
+
+
+class PostsListResponse(BaseModel):
+    posts: List[PostResponse]
+    total: int
+    hasMore: bool
+
+
+@app.post("/api/posts", response_model=PostResponse)
+async def create_post(
+    request: CreatePostRequest,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """Create a new post."""
+    # Validate content
+    if not request.content or not request.content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+    
+    if len(request.content) > 2000:
+        raise HTTPException(status_code=400, detail="Content must be at most 2000 characters")
+    
+    # Validate post type
+    if request.postType not in ("text", "game_share"):
+        raise HTTPException(status_code=400, detail="Invalid post type")
+    
+    # If game_share, gameId is required
+    if request.postType == "game_share" and not request.gameId:
+        raise HTTPException(status_code=400, detail="gameId is required for game_share posts")
+    
+    # Create the post
+    post_id = db.create_post(
+        account_id=user["id"],
+        post_type=request.postType,
+        content=request.content.strip(),
+        game_id=request.gameId,
+        key_position_index=request.keyPositionIndex or 0,
+    )
+    
+    # Fetch and return the created post
+    post = db.get_post_by_id(post_id)
+    if not post:
+        raise HTTPException(status_code=500, detail="Failed to create post")
+    
+    return PostResponse(
+        id=post["id"],
+        author=AuthorResponse(
+            id=post["author"]["id"],
+            username=post["author"]["username"],
+            displayName=post["author"]["displayName"],
+            avatarUrl=post["author"]["avatarUrl"],
+        ),
+        postType=post["postType"],
+        content=post["content"],
+        gameData=GameDataResponse(**post["gameData"]) if post["gameData"] else None,
+        createdAt=post["createdAt"],
+    )
+
+
+@app.get("/api/posts", response_model=PostsListResponse)
+async def get_posts(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """Get posts feed."""
+    posts = db.get_posts(limit=limit, offset=offset)
+    total = db.get_posts_count()
+    
+    post_responses = []
+    for post in posts:
+        post_responses.append(PostResponse(
+            id=post["id"],
+            author=AuthorResponse(
+                id=post["author"]["id"],
+                username=post["author"]["username"],
+                displayName=post["author"]["displayName"],
+                avatarUrl=post["author"]["avatarUrl"],
+            ),
+            postType=post["postType"],
+            content=post["content"],
+            gameData=GameDataResponse(**post["gameData"]) if post["gameData"] else None,
+            createdAt=post["createdAt"],
+        ))
+    
+    return PostsListResponse(
+        posts=post_responses,
+        total=total,
+        hasMore=offset + limit < total,
+    )
+
+
+@app.get("/api/users/{username}/posts", response_model=PostsListResponse)
+async def get_user_posts(
+    username: str,
+    limit: int = Query(20, le=100, description="Max posts to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+):
+    """Get posts by a specific user."""
+    posts = db.get_posts_by_username(username, limit=limit, offset=offset)
+    total = db.get_posts_count_by_username(username)
+
+    return PostsListResponse(
+        posts=[PostResponse(
+            id=p["id"],
+            author=AuthorResponse(**p["author"]),
+            postType=p["postType"],
+            content=p["content"],
+            gameData=GameDataResponse(**p["gameData"]) if p["gameData"] else None,
+            createdAt=p["createdAt"],
+        ) for p in posts],
+        total=total,
+        hasMore=offset + len(posts) < total,
+    )
+
+
 # ============================================
 # Helper functions
 # ============================================
