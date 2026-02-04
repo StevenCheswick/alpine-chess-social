@@ -67,9 +67,16 @@ def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 chess_com_username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                last_synced_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Add last_synced_at column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_synced_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # User games table
         cursor.execute("""
@@ -87,12 +94,19 @@ def init_db():
                 pgn TEXT,
                 moves TEXT,
                 tags TEXT,
+                analyzed_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 UNIQUE(user_id, chess_com_game_id)
             )
         """)
+
+        # Add analyzed_at column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE user_games ADD COLUMN analyzed_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
         # Index for faster lookups
         cursor.execute("""
@@ -154,6 +168,28 @@ def get_or_create_user(username: str) -> int:
         return cursor.lastrowid
 
 
+def get_user_last_synced(user_id: int) -> Optional[str]:
+    """Get the last sync timestamp for a user."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT last_synced_at FROM users WHERE id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        return row["last_synced_at"] if row else None
+
+
+def update_user_last_synced(user_id: int) -> None:
+    """Update the last sync timestamp for a user to now."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET last_synced_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (user_id,)
+        )
+
+
 def upsert_game(user_id: int, game: Dict[str, Any]) -> None:
     """Insert or update a game for a user."""
     with get_connection() as conn:
@@ -193,12 +229,46 @@ def upsert_game(user_id: int, game: Dict[str, Any]) -> None:
 
 
 def upsert_games(user_id: int, games: List[Dict[str, Any]]) -> int:
-    """Insert or update multiple games for a user."""
-    count = 0
-    for game in games:
-        upsert_game(user_id, game)
-        count += 1
-    return count
+    """Insert or update multiple games for a user (batched for performance)."""
+    if not games:
+        return 0
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        for game in games:
+            cursor.execute("""
+                INSERT INTO user_games (
+                    user_id, chess_com_game_id, opponent, opponent_rating, user_rating,
+                    result, user_color, time_control, date, pgn, moves, tags
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, chess_com_game_id) DO UPDATE SET
+                    opponent = excluded.opponent,
+                    opponent_rating = excluded.opponent_rating,
+                    user_rating = excluded.user_rating,
+                    result = excluded.result,
+                    user_color = excluded.user_color,
+                    time_control = excluded.time_control,
+                    date = excluded.date,
+                    pgn = excluded.pgn,
+                    moves = excluded.moves,
+                    tags = excluded.tags,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (
+                user_id,
+                game["id"],
+                game["opponent"],
+                game.get("opponentRating"),
+                game.get("userRating"),
+                game["result"],
+                game["userColor"],
+                game.get("timeControl"),
+                game.get("date"),
+                game.get("pgn"),
+                json.dumps(game.get("moves", [])),
+                json.dumps(game.get("tags", []))
+            ))
+        # Single commit for all games
+        return len(games)
 
 
 def get_user_games(user_id: int) -> List[Dict[str, Any]]:
@@ -236,6 +306,147 @@ def get_user_games_count(user_id: int) -> int:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (user_id,))
         return cursor.fetchone()[0]
+
+
+def get_user_tag_counts(user_id: int) -> Dict[str, int]:
+    """Get tag counts for a user's games."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT tags FROM user_games WHERE user_id = ? AND tags IS NOT NULL AND tags != '[]'",
+            (user_id,)
+        )
+
+        tag_counts: Dict[str, int] = {}
+        for row in cursor.fetchall():
+            tags = json.loads(row["tags"])
+            for tag in tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+        return tag_counts
+
+
+def get_user_games_paginated(
+    user_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    tag_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Get games for a user with pagination and optional tag filter."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        if tag_filter:
+            # Filter by tag (using LIKE for JSON array search)
+            cursor.execute("""
+                SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
+                       result, user_color, time_control, date, moves, tags
+                FROM user_games
+                WHERE user_id = ? AND tags LIKE ?
+                ORDER BY date DESC
+                LIMIT ? OFFSET ?
+            """, (user_id, f'%"{tag_filter}"%', limit, offset))
+        else:
+            cursor.execute("""
+                SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
+                       result, user_color, time_control, date, moves, tags
+                FROM user_games
+                WHERE user_id = ?
+                ORDER BY date DESC
+                LIMIT ? OFFSET ?
+            """, (user_id, limit, offset))
+
+        games = []
+        for row in cursor.fetchall():
+            games.append({
+                "id": row["id"],
+                "chessComGameId": row["chess_com_game_id"],
+                "opponent": row["opponent"],
+                "opponentRating": row["opponent_rating"],
+                "userRating": row["user_rating"],
+                "result": row["result"],
+                "userColor": row["user_color"],
+                "timeControl": row["time_control"],
+                "date": row["date"],
+                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "tags": json.loads(row["tags"]) if row["tags"] else [],
+            })
+
+        return games
+
+
+def get_user_games_count_filtered(user_id: int, tag_filter: Optional[str] = None) -> int:
+    """Get count of games for a user, optionally filtered by tag."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if tag_filter:
+            cursor.execute(
+                "SELECT COUNT(*) FROM user_games WHERE user_id = ? AND tags LIKE ?",
+                (user_id, f'%"{tag_filter}"%')
+            )
+        else:
+            cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (user_id,))
+        return cursor.fetchone()[0]
+
+
+def get_unanalyzed_games(user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+    """Get games that haven't been analyzed yet."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM user_games
+            WHERE user_id = ? AND analyzed_at IS NULL
+            ORDER BY date DESC
+            LIMIT ?
+        """, (user_id, limit))
+
+        games = []
+        for row in cursor.fetchall():
+            games.append({
+                "id": row["id"],
+                "chessComGameId": row["chess_com_game_id"],
+                "opponent": row["opponent"],
+                "opponentRating": row["opponent_rating"],
+                "userRating": row["user_rating"],
+                "result": row["result"],
+                "userColor": row["user_color"],
+                "timeControl": row["time_control"],
+                "date": row["date"],
+                "pgn": row["pgn"],
+                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "tags": json.loads(row["tags"]) if row["tags"] else [],
+            })
+        return games
+
+
+def get_unanalyzed_games_count(user_id: int) -> int:
+    """Get count of unanalyzed games for a user."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM user_games WHERE user_id = ? AND analyzed_at IS NULL",
+            (user_id,)
+        )
+        return cursor.fetchone()[0]
+
+
+def mark_games_analyzed(game_ids: List[int], tags_map: Dict[int, List[str]]) -> int:
+    """Mark games as analyzed and update their tags."""
+    if not game_ids:
+        return 0
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        updated = 0
+        for game_id in game_ids:
+            tags = tags_map.get(game_id, [])
+            cursor.execute("""
+                UPDATE user_games
+                SET analyzed_at = CURRENT_TIMESTAMP, tags = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (json.dumps(tags), game_id))
+            updated += cursor.rowcount
+        return updated
 
 
 # ============================================

@@ -65,11 +65,38 @@ class UnifiedAnalyzerBase:
 class UnifiedAnalyzer:
     """Main unified analyzer that processes games move-by-move."""
 
-    # Pre-filter: Skip win-based analyzers if user didn't win
+    # Pre-filter 1: Skip mate analyzers if game doesn't end in checkmate
+    MATE_ANALYZERS = {
+        'UnifiedSmotheredMateAnalyzer',
+        'UnifiedKingMateAnalyzer',
+        'UnifiedCastleMateAnalyzer',
+        'UnifiedPawnMateAnalyzer',
+        'UnifiedKnightPromotionMateAnalyzer',
+        'UnifiedPromotionMateAnalyzer',
+        'UnifiedQuickestMateAnalyzer',
+        'UnifiedEnPassantMateAnalyzer',
+        'UnifiedBackRankMateAnalyzer',
+        'UnifiedKnightBishopMateAnalyzer',
+        'UnifiedKingWalkAnalyzer',
+    }
+
+    # Pre-filter 2: Skip win-based analyzers if user didn't win
     WIN_ANALYZERS = {
         'UnifiedQueenSacrificeAnalyzer',
         'UnifiedKnightForkAnalyzer',
         'UnifiedRookSacrificeAnalyzer',
+        'UnifiedQuickestMateAnalyzer',
+        'UnifiedBiggestComebackAnalyzer',
+        'UnifiedClutchWinAnalyzer',
+        'UnifiedBestGameAnalyzer',
+        'UnifiedLongestGameAnalyzer',
+        'UnifiedKingWalkAnalyzer',
+        'UnifiedWindmillAnalyzer',
+    }
+
+    # Pre-filter 3: Skip stalemate analyzer if game isn't a draw
+    DRAW_ANALYZERS = {
+        'UnifiedStalemateAnalyzer',
     }
 
     def __init__(self, username: str):
@@ -91,16 +118,27 @@ class UnifiedAnalyzer:
             return False
 
     def _get_active_analyzers(self, game_data: GameData, user_is_white: bool) -> List[UnifiedAnalyzerBase]:
-        """Get list of analyzers that should be active for this game."""
+        """Get list of analyzers that should be active for this game based on pre-filters."""
+        # Determine game conditions
+        has_checkmate = game_data.moves and '#' in game_data.moves[-1] if game_data.moves else False
         result = game_data.metadata.result
         user_won = (result == "1-0" and user_is_white) or (result == "0-1" and not user_is_white)
+        is_draw = result == "1/2-1/2"
 
         active_analyzers = []
         for analyzer in self.analyzers:
             analyzer_name = analyzer.__class__.__name__
 
-            # Skip win-based analyzers if user didn't win
+            # Filter 1: Skip mate analyzers if no checkmate
+            if analyzer_name in self.MATE_ANALYZERS and not has_checkmate:
+                continue
+
+            # Filter 2: Skip win-based analyzers if user didn't win
             if analyzer_name in self.WIN_ANALYZERS and not user_won:
+                continue
+
+            # Filter 3: Skip stalemate analyzer if not a draw
+            if analyzer_name in self.DRAW_ANALYZERS and not is_draw:
                 continue
 
             active_analyzers.append(analyzer)

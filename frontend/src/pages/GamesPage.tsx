@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChessBoard, MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
+import { gameService, type SyncResponse, type AnalyzeResponse } from '../services/gameService';
 
 const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 25;
@@ -54,32 +55,55 @@ export default function GamesPage() {
   const chessComUsername = user?.chessComUsername;
   
   const [games, setGames] = useState<Game[]>([]);
+  const [totalGames, setTotalGames] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
-  const [lastAnalyzed, setLastAnalyzed] = useState<string | null>(null);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [unanalyzedCount, setUnanalyzedCount] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [allTags, setAllTags] = useState<Map<string, number>>(new Map());
 
   // Load stored games on mount if user has linked Chess.com account
   useEffect(() => {
     if (chessComUsername) {
-      loadStoredGames(chessComUsername);
+      loadStoredGames(chessComUsername, 1);
+      loadAllTags(chessComUsername);
     }
   }, [chessComUsername]);
 
-  // Load games from database (fast, no re-analysis)
-  const loadStoredGames = async (user: string) => {
+  // Get currently selected tag (only support single tag filter for now)
+  const selectedTag = selectedTags.size > 0 ? Array.from(selectedTags)[0] : null;
+
+  // Load games when page or tag filter changes
+  useEffect(() => {
+    if (chessComUsername && currentPage > 0) {
+      loadStoredGames(chessComUsername, currentPage, selectedTag);
+    }
+  }, [currentPage, selectedTag]);
+
+  // Load games from database with pagination and optional tag filter
+  const loadStoredGames = async (user: string, page: number, tag: string | null) => {
     setLoading(true);
     setError(null);
 
+    const offset = (page - 1) * GAMES_PER_PAGE;
+    let url = `${API_BASE}/api/games/stored?username=${encodeURIComponent(user)}&limit=${GAMES_PER_PAGE}&offset=${offset}`;
+    if (tag) {
+      url += `&tag=${encodeURIComponent(tag)}`;
+    }
+
     try {
-      const response = await fetch(`${API_BASE}/api/games/stored?username=${encodeURIComponent(user)}`);
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to load games: ${response.statusText}`);
       }
       const data = await response.json();
       setGames(data.games || []);
+      setTotalGames(data.total || 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load games');
     } finally {
@@ -87,57 +111,85 @@ export default function GamesPage() {
     }
   };
 
-  const analyzeGames = async () => {
-    if (!chessComUsername) return;
-    
-    setLoading(true);
-    setError(null);
-
+  // Load tag counts from dedicated endpoint
+  const loadAllTags = async (user: string) => {
     try {
-      const response = await fetch(`${API_BASE}/api/games?username=${encodeURIComponent(chessComUsername)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to analyze games: ${response.statusText}`);
-      }
+      const response = await fetch(
+        `${API_BASE}/api/games/tags?username=${encodeURIComponent(user)}`
+      );
+      if (!response.ok) return;
       const data = await response.json();
-      setGames(data.games || []);
-      setLastAnalyzed(new Date().toLocaleTimeString());
-      setCurrentPage(1); // Reset to first page on new analysis
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze games');
-    } finally {
-      setLoading(false);
+      setAllTags(new Map(Object.entries(data.tags || {})));
+    } catch {
+      // Ignore errors for tag loading
     }
   };
 
-  const tagCounts = getTagCounts(games);
-  const allTags = Array.from(tagCounts.keys()).sort();
+  const syncGames = async () => {
+    if (!chessComUsername) return;
 
-  const filteredGames = selectedTags.size === 0
-    ? games
-    : games.filter(game =>
-        Array.from(selectedTags).every(tag => game.tags.includes(tag))
-      );
+    setSyncing(true);
+    setError(null);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredGames.length / GAMES_PER_PAGE);
+    try {
+      const syncResult: SyncResponse = await gameService.syncGames();
+      setLastSynced(syncResult.lastSyncedAt);
+
+      // Reload games from database after sync
+      setCurrentPage(1);
+      setSelectedTags(new Set()); // Clear filter after sync
+      await loadStoredGames(chessComUsername, 1, null);
+      await loadAllTags(chessComUsername);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync games');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const analyzeGames = async () => {
+    if (!chessComUsername) return;
+
+    setAnalyzing(true);
+    setError(null);
+
+    try {
+      const result: AnalyzeResponse = await gameService.analyzeGames(50);
+      setUnanalyzedCount(result.remaining);
+
+      // Reload games to show new tags
+      await loadStoredGames(chessComUsername, currentPage, selectedTag);
+      await loadAllTags(chessComUsername);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze games');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const sortedTags = Array.from(allTags.keys()).sort();
+
+  // Server-side pagination - games already paginated from API
+  const totalPages = Math.ceil(totalGames / GAMES_PER_PAGE);
   const startIndex = (currentPage - 1) * GAMES_PER_PAGE;
-  const endIndex = startIndex + GAMES_PER_PAGE;
-  const paginatedGames = filteredGames.slice(startIndex, endIndex);
+  const endIndex = Math.min(startIndex + GAMES_PER_PAGE, totalGames);
 
   const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-    setExpandedGameId(null); // Collapse any expanded game when changing pages
+    const newPage = Math.max(1, Math.min(page, totalPages));
+    if (newPage !== currentPage) {
+      setCurrentPage(newPage);
+      setExpandedGameId(null); // Collapse any expanded game when changing pages
+    }
   };
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev => {
-      const next = new Set(prev);
-      if (next.has(tag)) {
-        next.delete(tag);
+      // Single tag selection - clicking same tag deselects, clicking different tag switches
+      if (prev.has(tag)) {
+        return new Set(); // Deselect
       } else {
-        next.add(tag);
+        return new Set([tag]); // Select only this tag
       }
-      return next;
     });
     setCurrentPage(1); // Reset to first page when filtering
   };
@@ -191,52 +243,100 @@ export default function GamesPage() {
         </p>
       </div>
 
-      {/* Analyze Section */}
-      <div className="card p-4">
+      {/* Sync & Analyze Section */}
+      <div className="card p-4 space-y-4">
+        {/* Sync Row */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-white font-medium">Re-analyze games to detect new patterns</p>
-            {lastAnalyzed && (
-              <p className="text-slate-500 text-xs mt-1">Last analyzed: {lastAnalyzed}</p>
+            <p className="text-white font-medium">Sync games from Chess.com</p>
+            <p className="text-slate-500 text-xs mt-1">
+              {lastSynced
+                ? `Last synced: ${new Date(lastSynced).toLocaleString()}`
+                : games.length === 0
+                  ? 'First sync will fetch all your games'
+                  : 'Sync to fetch new games'}
+            </p>
+          </div>
+          <button
+            onClick={syncGames}
+            disabled={syncing || loading || analyzing}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+          >
+            {syncing ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                Syncing...
+              </>
+            ) : (
+              'Sync Games'
             )}
+          </button>
+        </div>
+
+        {/* Analyze Row */}
+        <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+          <div>
+            <p className="text-white font-medium">Analyze games for patterns</p>
+            <p className="text-slate-500 text-xs mt-1">
+              {unanalyzedCount !== null
+                ? unanalyzedCount > 0
+                  ? `${unanalyzedCount} games need analysis`
+                  : 'All games analyzed'
+                : 'Detect queen sacrifices, knight forks, and more'}
+            </p>
           </div>
           <button
             onClick={analyzeGames}
-            disabled={loading}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={analyzing || loading || syncing || games.length === 0}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
-            {loading ? 'Analyzing...' : 'Analyze Games'}
+            {analyzing ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                Analyzing...
+              </>
+            ) : (
+              'Analyze Games'
+            )}
           </button>
         </div>
+
         {error && (
           <p className="text-red-500 text-sm mt-2">{error}</p>
         )}
       </div>
 
       {/* Loading State */}
-      {loading && (
+      {(loading || syncing || analyzing) && (
         <div className="text-center py-12">
           <div className="inline-block w-8 h-8 border-4 border-slate-700 border-t-primary-500 rounded-full animate-spin"></div>
-          <p className="text-slate-400 mt-4">Loading games...</p>
+          <p className="text-slate-400 mt-4">
+            {syncing ? 'Syncing games from Chess.com...' : analyzing ? 'Analyzing games...' : 'Loading games...'}
+          </p>
+          {syncing && (
+            <p className="text-slate-500 text-sm mt-2">This may take a moment for first-time sync</p>
+          )}
+          {analyzing && (
+            <p className="text-slate-500 text-sm mt-2">Detecting patterns in your games</p>
+          )}
         </div>
       )}
 
       {/* Games Content */}
-      {!loading && games.length > 0 && (
+      {!loading && !syncing && !analyzing && (games.length > 0 || totalGames > 0) && (
         <>
           {/* Stats */}
           <div className="flex items-center justify-between">
             <p className="text-slate-400 text-sm">
-              {filteredGames.length} {filteredGames.length === 1 ? 'game' : 'games'}
-              {selectedTags.size > 0 && ` (filtered from ${games.length})`}
+              {totalGames} {totalGames === 1 ? 'game' : 'games'}
             </p>
           </div>
 
           {/* Tag Filter */}
-          {allTags.length > 0 && (
+          {sortedTags.length > 0 && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                {allTags.map(tag => {
+                {sortedTags.map(tag => {
                   const isSelected = selectedTags.has(tag);
                   return (
                     <button
@@ -248,7 +348,7 @@ export default function GamesPage() {
                           : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                       }`}
                     >
-                      {tag} ({tagCounts.get(tag)})
+                      {tag} ({allTags.get(tag)})
                     </button>
                   );
                 })}
@@ -268,7 +368,7 @@ export default function GamesPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between text-sm text-slate-400">
               <span>
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredGames.length)} of {filteredGames.length}
+                Showing {startIndex + 1}-{endIndex} of {totalGames}
               </span>
               <span>Page {currentPage} of {totalPages}</span>
             </div>
@@ -276,7 +376,7 @@ export default function GamesPage() {
 
           {/* Games List */}
           <div className="space-y-3">
-            {paginatedGames.map(game => {
+            {games.map(game => {
               const isExpanded = expandedGameId === game.id;
               return (
                 <div
@@ -363,9 +463,9 @@ export default function GamesPage() {
               );
             })}
 
-            {paginatedGames.length === 0 && (
+            {games.length === 0 && (
               <div className="text-center py-12 text-slate-500">
-                No games match the selected filters
+                No games on this page
               </div>
             )}
           </div>
@@ -410,9 +510,9 @@ export default function GamesPage() {
       )}
 
       {/* Empty State */}
-      {!loading && games.length === 0 && !error && (
+      {!loading && !syncing && !analyzing && totalGames === 0 && !error && (
         <div className="text-center py-12 text-slate-500">
-          No games found. Click "Analyze Games" to sync and scan for patterns.
+          No games found. Click "Sync Games" to download your Chess.com games.
         </div>
       )}
     </div>

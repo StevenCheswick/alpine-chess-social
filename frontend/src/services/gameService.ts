@@ -23,12 +23,41 @@ export interface GamesResponse {
   total: number;
 }
 
+export interface SyncResponse {
+  username: string;
+  synced: number;
+  total: number;
+  lastSyncedAt: string | null;
+  isFirstSync: boolean;
+}
+
+export interface AnalyzeResponse {
+  analyzed: number;
+  remaining: number;
+  total: number;
+}
+
 export const gameService = {
   /**
    * Get current user's synced games.
    */
   async getMyGames(limit: number = 50): Promise<GamesResponse> {
     return api.get<GamesResponse>(`/api/users/me/games?limit=${limit}`);
+  },
+
+  /**
+   * Sync games from Chess.com (download only, no analysis).
+   * First sync fetches all games, subsequent syncs only fetch new games.
+   */
+  async syncGames(): Promise<SyncResponse> {
+    return api.post<SyncResponse>('/api/games/sync', {});
+  },
+
+  /**
+   * Analyze unanalyzed games and add tags.
+   */
+  async analyzeGames(limit: number = 50): Promise<AnalyzeResponse> {
+    return api.post<AnalyzeResponse>(`/api/games/analyze?limit=${limit}`, {});
   },
 };
 

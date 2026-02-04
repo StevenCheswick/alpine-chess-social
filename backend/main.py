@@ -11,9 +11,88 @@ import re
 from src.chess_com_client import ChessComClient
 from src.pgn_parser import parse_pgns
 from src.unified_analyzer import UnifiedAnalyzer
-from src.analyzers.queen_sacrifice import UnifiedQueenSacrificeAnalyzer
-from src.analyzers.knight_fork import UnifiedKnightForkAnalyzer
-from src.analyzers.rook_sacrifice import UnifiedRookSacrificeAnalyzer
+from src.analyzers import (
+    UnifiedQueenSacrificeAnalyzer,
+    UnifiedKnightForkAnalyzer,
+    UnifiedRookSacrificeAnalyzer,
+    UnifiedBackRankMateAnalyzer,
+    UnifiedBestGameAnalyzer,
+    UnifiedBiggestComebackAnalyzer,
+    UnifiedCaptureSequenceAnalyzer,
+    UnifiedCastleMateAnalyzer,
+    UnifiedClutchWinAnalyzer,
+    UnifiedEnPassantMateAnalyzer,
+    UnifiedHungQueenAnalyzer,
+    UnifiedKingMateAnalyzer,
+    UnifiedKingWalkAnalyzer,
+    UnifiedKnightBishopMateAnalyzer,
+    UnifiedKnightPromotionMateAnalyzer,
+    UnifiedLongestGameAnalyzer,
+    UnifiedPawnMateAnalyzer,
+    UnifiedPromotionMateAnalyzer,
+    UnifiedQuickestMateAnalyzer,
+    UnifiedSmotheredMateAnalyzer,
+    UnifiedStalemateAnalyzer,
+    UnifiedWindmillAnalyzer,
+)
+
+# Mapping of analyzer classes to their display tag names
+ANALYZER_TAGS = {
+    UnifiedQueenSacrificeAnalyzer: "Queen Sacrifice",
+    UnifiedKnightForkAnalyzer: "Knight Fork",
+    UnifiedRookSacrificeAnalyzer: "Rook Sacrifice",
+    UnifiedBackRankMateAnalyzer: "Back Rank Mate",
+    UnifiedSmotheredMateAnalyzer: "Smothered Mate",
+    UnifiedKingMateAnalyzer: "King Mate",
+    UnifiedCastleMateAnalyzer: "Castle Mate",
+    UnifiedPawnMateAnalyzer: "Pawn Mate",
+    UnifiedKnightPromotionMateAnalyzer: "Knight Promotion Mate",
+    UnifiedPromotionMateAnalyzer: "Promotion Mate",
+    UnifiedQuickestMateAnalyzer: "Quickest Mate",
+    UnifiedEnPassantMateAnalyzer: "En Passant Mate",
+    UnifiedKnightBishopMateAnalyzer: "Knight Bishop Mate",
+    UnifiedKingWalkAnalyzer: "King Walk",
+    UnifiedBiggestComebackAnalyzer: "Biggest Comeback",
+    UnifiedClutchWinAnalyzer: "Clutch Win",
+    UnifiedBestGameAnalyzer: "Best Game",
+    UnifiedLongestGameAnalyzer: "Longest Game",
+    UnifiedHungQueenAnalyzer: "Hung Queen",
+    UnifiedCaptureSequenceAnalyzer: "Capture Sequence",
+    UnifiedStalemateAnalyzer: "Stalemate",
+    UnifiedWindmillAnalyzer: "Windmill",
+}
+
+
+def create_analyzers(username: str):
+    """Create all analyzer instances for a user."""
+    analyzers = {}
+    for analyzer_class in ANALYZER_TAGS.keys():
+        analyzers[analyzer_class] = analyzer_class(username)
+    return analyzers
+
+
+def setup_unified_analyzer(username: str):
+    """Set up the unified analyzer with all registered analyzers."""
+    analyzer = UnifiedAnalyzer(username)
+    individual_analyzers = create_analyzers(username)
+    for ind_analyzer in individual_analyzers.values():
+        analyzer.register_analyzer(ind_analyzer)
+    return analyzer, individual_analyzers
+
+
+def get_game_tags(game_link: str, analyzers: dict) -> list:
+    """Get tags for a game based on analyzer findings."""
+    tags = []
+    for analyzer_class, analyzer in analyzers.items():
+        if hasattr(analyzer, 'get_final_results'):
+            findings = analyzer.get_final_results()
+            for finding in findings:
+                link = finding.get("game_metadata", {}).get("link")
+                if link == game_link:
+                    tag = ANALYZER_TAGS.get(analyzer_class)
+                    if tag and tag not in tags:
+                        tags.append(tag)
+    return tags
 from src import database as db
 from src import auth
 
@@ -566,47 +645,21 @@ async def get_games(
 
     print(f"Parsed {len(games)} games")
 
-    # Analyze games with analyzers
-    analyzer = UnifiedAnalyzer(username)
-    queen_sac_analyzer = UnifiedQueenSacrificeAnalyzer(username)
-    knight_fork_analyzer = UnifiedKnightForkAnalyzer(username)
-    rook_sac_analyzer = UnifiedRookSacrificeAnalyzer(username)
-    analyzer.register_analyzer(queen_sac_analyzer)
-    analyzer.register_analyzer(knight_fork_analyzer)
-    analyzer.register_analyzer(rook_sac_analyzer)
-
-    # Analyze all games
+    # Analyze games with all analyzers
+    analyzer, individual_analyzers = setup_unified_analyzer(username)
     analyzer.analyze_games(games)
 
-    # Get queen sacrifice findings
-    queen_sac_findings = queen_sac_analyzer.get_final_results()
-
-    # Get knight fork findings
-    knight_fork_findings = knight_fork_analyzer.get_final_results()
-
-    # Get rook sacrifice findings
-    rook_sac_findings = rook_sac_analyzer.get_final_results()
-
-    # Build a set of game links that have queen sacrifices
-    queen_sac_games = {}
-    for finding in queen_sac_findings:
-        link = finding.get("game_metadata", {}).get("link")
-        if link:
-            queen_sac_games[link] = finding
-
-    # Build a set of game links that have knight forks
-    knight_fork_games = {}
-    for finding in knight_fork_findings:
-        link = finding.get("game_metadata", {}).get("link")
-        if link:
-            knight_fork_games[link] = finding
-
-    # Build a set of game links that have rook sacrifices
-    rook_sac_games = {}
-    for finding in rook_sac_findings:
-        link = finding.get("game_metadata", {}).get("link")
-        if link:
-            rook_sac_games[link] = finding
+    # Build maps of game links to findings for each analyzer
+    analyzer_findings = {}
+    for analyzer_class, ind_analyzer in individual_analyzers.items():
+        if hasattr(ind_analyzer, 'get_final_results'):
+            findings = ind_analyzer.get_final_results()
+            findings_map = {}
+            for finding in findings:
+                link = finding.get("game_metadata", {}).get("link")
+                if link:
+                    findings_map[link] = finding
+            analyzer_findings[analyzer_class] = findings_map
 
     # Build response with all games
     response_games = []
@@ -626,12 +679,12 @@ async def get_games(
 
         # Check if this game has tactical highlights
         tags = []
-        if game.metadata.link and game.metadata.link in queen_sac_games:
-            tags.append("Queen Sacrifice")
-        if game.metadata.link and game.metadata.link in knight_fork_games:
-            tags.append("Knight Fork")
-        if game.metadata.link and game.metadata.link in rook_sac_games:
-            tags.append("Rook Sacrifice")
+        if game.metadata.link:
+            for analyzer_class, findings_map in analyzer_findings.items():
+                if game.metadata.link in findings_map:
+                    tag = ANALYZER_TAGS.get(analyzer_class)
+                    if tag:
+                        tags.append(tag)
 
         response_games.append({
             "id": game.metadata.link or f"{game.metadata.white}_{game.metadata.black}_{game.metadata.date}",
@@ -669,22 +722,255 @@ async def get_games(
 
 @app.get("/api/games/stored")
 async def get_stored_games(
-    username: str = Query(..., description="Chess.com username")
+    username: str = Query(..., description="Chess.com username"),
+    limit: int = Query(50, le=200, description="Max games to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    tag: Optional[str] = Query(None, description="Filter by tag")
 ):
     """
-    Get previously synced games from the database (no Chess.com fetch).
+    Get previously synced games from the database with pagination and optional tag filter.
     """
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
 
     user_id = db.get_or_create_user(username)
-    games = db.get_user_games(user_id)
+    games = db.get_user_games_paginated(user_id, limit=limit, offset=offset, tag_filter=tag)
+    total = db.get_user_games_count_filtered(user_id, tag_filter=tag)
 
     return {
         "username": username,
         "games": games,
-        "total": len(games),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "tag": tag,
+        "hasMore": offset + len(games) < total,
     }
+
+
+@app.get("/api/games/tags")
+async def get_game_tags_endpoint(
+    username: str = Query(..., description="Chess.com username")
+):
+    """
+    Get tag counts for a user's games (lightweight endpoint for filtering UI).
+    """
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    user_id = db.get_or_create_user(username)
+    tag_counts = db.get_user_tag_counts(user_id)
+
+    return {
+        "username": username,
+        "tags": tag_counts,
+    }
+
+
+class SyncResponse(BaseModel):
+    username: str
+    synced: int
+    total: int
+    lastSyncedAt: Optional[str] = None
+    isFirstSync: bool = False
+
+
+@app.post("/api/games/sync")
+async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
+    """
+    Sync the last 1000 games from Chess.com.
+    Downloads and saves games WITHOUT analysis (use /api/games/analyze for that).
+    """
+    chess_com_username = user.get("chessComUsername", "")
+    if not chess_com_username:
+        raise HTTPException(status_code=400, detail="No Chess.com username linked to account")
+
+    # Get or create user record for game storage
+    user_id = db.get_or_create_user(chess_com_username)
+    last_synced = db.get_user_last_synced(user_id)
+    is_first_sync = last_synced is None
+
+    client = ChessComClient()
+    all_pgn_tcn_pairs = []
+    MAX_GAMES = 1000
+
+    print(f"Syncing last {MAX_GAMES} games for {chess_com_username}...")
+
+    # Fetch games from most recent months, going back until we have enough
+    now = datetime.now()
+    current_year, current_month = now.year, now.month
+
+    while len(all_pgn_tcn_pairs) < MAX_GAMES:
+        try:
+            pgn_tcn_pairs = client.fetch_user_games(
+                chess_com_username, year=current_year, month=current_month, include_tcn=True
+            )
+            if pgn_tcn_pairs:
+                all_pgn_tcn_pairs.extend(pgn_tcn_pairs)
+                print(f"  {current_year}/{current_month:02d}: {len(pgn_tcn_pairs)} games (total: {len(all_pgn_tcn_pairs)})")
+        except Exception as e:
+            print(f"  {current_year}/{current_month:02d}: Error or no games - {e}")
+
+        # Move to previous month
+        current_month -= 1
+        if current_month == 0:
+            current_month = 12
+            current_year -= 1
+
+        # Don't go too far back (stop at 2010 as safety limit)
+        if current_year < 2010:
+            break
+
+    # Limit to MAX_GAMES (keep the most recent)
+    all_pgn_tcn_pairs = all_pgn_tcn_pairs[:MAX_GAMES]
+    print(f"Processing {len(all_pgn_tcn_pairs)} games total")
+
+    synced_count = 0
+    if all_pgn_tcn_pairs:
+        # Parse PGNs
+        pgns = [pgn for pgn, tcn in all_pgn_tcn_pairs]
+        tcns = [tcn for pgn, tcn in all_pgn_tcn_pairs]
+        games = parse_pgns(pgns, tcn_list=tcns)
+
+        print(f"Parsed {len(games)} games")
+
+        # Build game records WITHOUT analysis (tags will be added by analyze endpoint)
+        response_games = []
+        for game in games:
+            user_is_white = game.metadata.white.lower() == chess_com_username.lower()
+            opponent = game.metadata.black if user_is_white else game.metadata.white
+
+            opponent_elo_header = "BlackElo" if user_is_white else "WhiteElo"
+            user_elo_header = "WhiteElo" if user_is_white else "BlackElo"
+
+            opponent_elo_match = re.search(rf'\[{opponent_elo_header}\s+"(\d+)"\]', game.pgn)
+            opponent_elo = int(opponent_elo_match.group(1)) if opponent_elo_match else None
+
+            user_elo_match = re.search(rf'\[{user_elo_header}\s+"(\d+)"\]', game.pgn)
+            user_elo = int(user_elo_match.group(1)) if user_elo_match else None
+
+            response_games.append({
+                "id": game.metadata.link or f"{game.metadata.white}_{game.metadata.black}_{game.metadata.date}",
+                "opponent": opponent,
+                "opponentRating": opponent_elo,
+                "userRating": user_elo,
+                "result": get_result_code(game.metadata.result, user_is_white),
+                "timeControl": game.metadata.time_control,
+                "date": format_date(game.metadata.date),
+                "userColor": "white" if user_is_white else "black",
+                "moves": game.moves,
+                "pgn": game.pgn,  # Include PGN for analysis
+                "tags": [],  # No tags until analyzed
+            })
+
+        # Save to database
+        synced_count = db.upsert_games(user_id, response_games)
+        print(f"Saved {synced_count} games to database for {chess_com_username}")
+
+    # Update last synced timestamp
+    db.update_user_last_synced(user_id)
+    new_last_synced = db.get_user_last_synced(user_id)
+
+    # Get total games count
+    total_games = db.get_user_games_count(user_id)
+
+    return SyncResponse(
+        username=chess_com_username,
+        synced=synced_count,
+        total=total_games,
+        lastSyncedAt=new_last_synced,
+        isFirstSync=is_first_sync,
+    )
+
+
+class AnalyzeResponse(BaseModel):
+    analyzed: int
+    remaining: int
+    total: int
+
+
+@app.post("/api/games/analyze")
+async def analyze_games(
+    limit: int = Query(50, le=200, description="Max games to analyze"),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Analyze unanalyzed games and add tags.
+    Only analyzes games that haven't been analyzed yet.
+    """
+    chess_com_username = user.get("chessComUsername", "")
+    if not chess_com_username:
+        raise HTTPException(status_code=400, detail="No Chess.com username linked to account")
+
+    user_id = db.get_or_create_user(chess_com_username)
+
+    # Get unanalyzed games
+    unanalyzed = db.get_unanalyzed_games(user_id, limit=limit)
+    if not unanalyzed:
+        return AnalyzeResponse(analyzed=0, remaining=0, total=db.get_user_games_count(user_id))
+
+    print(f"Analyzing {len(unanalyzed)} games for {chess_com_username}...")
+
+    # Convert to GameData format for analyzers
+    from src.game_data import GameData, GameMetadata
+    game_data_list = []
+    game_id_map = {}  # Map game link to database ID
+
+    skipped_no_pgn = 0
+    for g in unanalyzed:
+        # Skip games without PGN data (from old syncs before PGN was saved)
+        if not g.get("pgn"):
+            skipped_no_pgn += 1
+            continue
+
+        metadata = GameMetadata(
+            white=chess_com_username if g["userColor"] == "white" else g["opponent"],
+            black=g["opponent"] if g["userColor"] == "white" else chess_com_username,
+            result="1-0" if g["result"] == "W" else ("0-1" if g["result"] == "L" else "1/2-1/2"),
+            date=g["date"],
+            time_control=g["timeControl"],
+            link=g["chessComGameId"],
+        )
+        game_data = GameData(
+            pgn=g["pgn"],
+            moves=g["moves"],
+            metadata=metadata,
+        )
+        game_data_list.append(game_data)
+        game_id_map[g["chessComGameId"]] = g["id"]
+
+    if skipped_no_pgn:
+        print(f"Skipped {skipped_no_pgn} games without PGN data (need re-sync)")
+
+    # If no games have PGN data, return early
+    if not game_data_list:
+        remaining = db.get_unanalyzed_games_count(user_id)
+        total = db.get_user_games_count(user_id)
+        print(f"No games with PGN data to analyze. Re-sync to fetch PGN data.")
+        return AnalyzeResponse(analyzed=0, remaining=remaining, total=total)
+
+    # Run analyzers
+    analyzer, individual_analyzers = setup_unified_analyzer(chess_com_username)
+    analyzer.analyze_games(game_data_list)
+
+    # Build tags map
+    tags_map = {}
+    for game_data in game_data_list:
+        link = game_data.metadata.link
+        if link and link in game_id_map:
+            db_id = game_id_map[link]
+            tags = get_game_tags(link, individual_analyzers)
+            tags_map[db_id] = tags
+
+    # Update database
+    game_ids = list(tags_map.keys())
+    updated = db.mark_games_analyzed(game_ids, tags_map)
+    print(f"Analyzed and tagged {updated} games")
+
+    remaining = db.get_unanalyzed_games_count(user_id)
+    total = db.get_user_games_count(user_id)
+
+    return AnalyzeResponse(analyzed=updated, remaining=remaining, total=total)
 
 
 @app.get("/health")
