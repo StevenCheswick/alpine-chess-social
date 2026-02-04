@@ -80,21 +80,31 @@ def setup_unified_analyzer(username: str):
     return analyzer, individual_analyzers
 
 
-def get_game_tags(game_link: str, analyzers: dict) -> list:
-    """Get tags for a game based on analyzer findings."""
-    tags = []
+def build_game_tags_map(analyzers: dict) -> Dict[str, List[str]]:
+    """Build a map of game_link -> tags from all analyzer findings.
+
+    Call this ONCE after all games are analyzed, not per-game.
+    """
+    tags_map: Dict[str, List[str]] = {}
+
     for analyzer_class, analyzer in analyzers.items():
         if hasattr(analyzer, 'get_final_results'):
             findings = analyzer.get_final_results()
+            tag = ANALYZER_TAGS.get(analyzer_class)
+            if not tag:
+                continue
             for finding in findings:
                 link = finding.get("game_metadata", {}).get("link")
-                if link == game_link:
-                    tag = ANALYZER_TAGS.get(analyzer_class)
-                    if tag and tag not in tags:
-                        tags.append(tag)
-    return tags
+                if link:
+                    if link not in tags_map:
+                        tags_map[link] = []
+                    if tag not in tags_map[link]:
+                        tags_map[link].append(tag)
+
+    return tags_map
 from src import database as db
 from src import auth
+from src.opening_tree import build_opening_tree, convert_tree_for_response
 
 app = FastAPI(title="Chess Social Media API")
 
@@ -725,7 +735,7 @@ async def get_stored_games(
     username: str = Query(..., description="Chess.com username"),
     limit: int = Query(50, le=200, description="Max games to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    tag: Optional[str] = Query(None, description="Filter by tag")
+    tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by (games must have ALL tags)")
 ):
     """
     Get previously synced games from the database with pagination and optional tag filter.
@@ -734,8 +744,11 @@ async def get_stored_games(
         raise HTTPException(status_code=400, detail="Username is required")
 
     user_id = db.get_or_create_user(username)
-    games = db.get_user_games_paginated(user_id, limit=limit, offset=offset, tag_filter=tag)
-    total = db.get_user_games_count_filtered(user_id, tag_filter=tag)
+
+    tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+
+    games = db.get_user_games_paginated(user_id, limit=limit, offset=offset, tag_filters=tags_list)
+    total = db.get_user_games_count_filtered(user_id, tag_filters=tags_list)
 
     return {
         "username": username,
@@ -743,28 +756,117 @@ async def get_stored_games(
         "total": total,
         "limit": limit,
         "offset": offset,
-        "tag": tag,
+        "tags": tags_list,
         "hasMore": offset + len(games) < total,
     }
 
 
 @app.get("/api/games/tags")
 async def get_game_tags_endpoint(
-    username: str = Query(..., description="Chess.com username")
+    username: str = Query(..., description="Chess.com username"),
+    selected_tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by")
 ):
     """
-    Get tag counts for a user's games (lightweight endpoint for filtering UI).
+    Get tag counts for a user's games.
+    If selected_tags is provided, returns counts of games that have ALL selected tags AND each other tag.
     """
     if not username:
         raise HTTPException(status_code=400, detail="Username is required")
 
     user_id = db.get_or_create_user(username)
-    tag_counts = db.get_user_tag_counts(user_id)
+
+    if selected_tags:
+        tags_list = [t.strip() for t in selected_tags.split(",") if t.strip()]
+        if tags_list:
+            tag_counts = db.get_user_tag_counts_filtered(user_id, tags_list)
+        else:
+            tag_counts = db.get_user_tag_counts(user_id)
+    else:
+        tag_counts = db.get_user_tag_counts(user_id)
 
     return {
         "username": username,
         "tags": tag_counts,
+        "selectedTags": selected_tags.split(",") if selected_tags else [],
     }
+
+
+class OpeningTreeResponse(BaseModel):
+    """Response for opening tree endpoint."""
+    color: str
+    rootNode: Dict[str, Any]
+    totalGames: int
+    depth: int
+
+
+@app.get("/api/opening-tree", response_model=OpeningTreeResponse)
+async def get_opening_tree(
+    color: str = Query(..., description="Color to build tree for: 'white' or 'black'"),
+    rebuild: bool = Query(False, description="Force rebuild of cached tree"),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Get opening tree for the user's repertoire.
+    Returns cached tree if available, otherwise builds and caches it.
+    """
+    MAX_DEPTH = 15
+
+    # Validate color
+    color_lower = color.lower()
+    if color_lower not in ("white", "black"):
+        raise HTTPException(status_code=400, detail="Color must be 'white' or 'black'")
+
+    chess_com_username = user.get("chessComUsername", "")
+    if not chess_com_username:
+        raise HTTPException(status_code=400, detail="No Chess.com username linked to account")
+
+    user_id = db.get_or_create_user(chess_com_username)
+
+    # Check for cached tree (unless rebuild requested)
+    if not rebuild:
+        cached = db.get_cached_opening_tree(user_id, color_lower)
+        if cached:
+            return OpeningTreeResponse(
+                color=color_lower,
+                rootNode=cached["tree"],
+                totalGames=cached["totalGames"],
+                depth=MAX_DEPTH,
+            )
+
+    # No cache or rebuild requested - build the tree
+    games = db.get_user_games_by_color(user_id, color_lower)
+
+    if not games:
+        # Return empty tree (don't cache empty trees)
+        return OpeningTreeResponse(
+            color=color_lower,
+            rootNode={
+                "move": "start",
+                "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "games": 0,
+                "wins": 0,
+                "losses": 0,
+                "draws": 0,
+                "winRate": 0,
+                "children": [],
+            },
+            totalGames=0,
+            depth=MAX_DEPTH,
+        )
+
+    # Build the tree
+    tree = build_opening_tree(games, max_depth=MAX_DEPTH)
+    root_node = convert_tree_for_response(tree)
+
+    # Cache the result
+    db.save_opening_tree(user_id, color_lower, root_node, len(games))
+
+    return OpeningTreeResponse(
+        color=color_lower,
+        rootNode=root_node,
+        totalGames=len(games),
+        depth=MAX_DEPTH,
+    )
 
 
 class SyncResponse(BaseModel):
@@ -778,8 +880,9 @@ class SyncResponse(BaseModel):
 @app.post("/api/games/sync")
 async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
     """
-    Sync the last 1000 games from Chess.com.
-    Downloads and saves games WITHOUT analysis (use /api/games/analyze for that).
+    Sync games from Chess.com.
+    - First sync: Downloads ALL games (full history)
+    - Re-sync: Only downloads current month's games (incremental)
     """
     chess_com_username = user.get("chessComUsername", "")
     if not chess_com_username:
@@ -792,38 +895,49 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
 
     client = ChessComClient()
     all_pgn_tcn_pairs = []
-    MAX_GAMES = 1000
-
-    print(f"Syncing last {MAX_GAMES} games for {chess_com_username}...")
-
-    # Fetch games from most recent months, going back until we have enough
     now = datetime.now()
-    current_year, current_month = now.year, now.month
 
-    while len(all_pgn_tcn_pairs) < MAX_GAMES:
+    if is_first_sync:
+        # FIRST SYNC: Fetch ALL games (full history)
+        print(f"First sync for {chess_com_username} - fetching full history...")
+        current_year, current_month = now.year, now.month
+
+        while True:
+            try:
+                pgn_tcn_pairs = client.fetch_user_games(
+                    chess_com_username, year=current_year, month=current_month, include_tcn=True
+                )
+                if pgn_tcn_pairs:
+                    all_pgn_tcn_pairs.extend(pgn_tcn_pairs)
+                    print(f"  {current_year}/{current_month:02d}: {len(pgn_tcn_pairs)} games (total: {len(all_pgn_tcn_pairs)})")
+            except Exception as e:
+                print(f"  {current_year}/{current_month:02d}: Error or no games - {e}")
+
+            # Move to previous month
+            current_month -= 1
+            if current_month == 0:
+                current_month = 12
+                current_year -= 1
+
+            # Stop at 2010 as safety limit
+            if current_year < 2010:
+                break
+
+        print(f"Full history: {len(all_pgn_tcn_pairs)} games total")
+    else:
+        # RE-SYNC: Only fetch current month (incremental)
+        print(f"Re-sync for {chess_com_username} - fetching current month only...")
         try:
             pgn_tcn_pairs = client.fetch_user_games(
-                chess_com_username, year=current_year, month=current_month, include_tcn=True
+                chess_com_username, year=now.year, month=now.month, include_tcn=True
             )
             if pgn_tcn_pairs:
                 all_pgn_tcn_pairs.extend(pgn_tcn_pairs)
-                print(f"  {current_year}/{current_month:02d}: {len(pgn_tcn_pairs)} games (total: {len(all_pgn_tcn_pairs)})")
+                print(f"  {now.year}/{now.month:02d}: {len(pgn_tcn_pairs)} games")
         except Exception as e:
-            print(f"  {current_year}/{current_month:02d}: Error or no games - {e}")
+            print(f"  {now.year}/{now.month:02d}: Error - {e}")
 
-        # Move to previous month
-        current_month -= 1
-        if current_month == 0:
-            current_month = 12
-            current_year -= 1
-
-        # Don't go too far back (stop at 2010 as safety limit)
-        if current_year < 2010:
-            break
-
-    # Limit to MAX_GAMES (keep the most recent)
-    all_pgn_tcn_pairs = all_pgn_tcn_pairs[:MAX_GAMES]
-    print(f"Processing {len(all_pgn_tcn_pairs)} games total")
+        print(f"Incremental sync: {len(all_pgn_tcn_pairs)} games to check")
 
     synced_count = 0
     if all_pgn_tcn_pairs:
@@ -867,6 +981,9 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
         synced_count = db.upsert_games(user_id, response_games)
         print(f"Saved {synced_count} games to database for {chess_com_username}")
 
+        # Invalidate opening tree cache (will be rebuilt on next request)
+        db.invalidate_opening_trees(user_id)
+
     # Update last synced timestamp
     db.update_user_last_synced(user_id)
     new_last_synced = db.get_user_last_synced(user_id)
@@ -887,90 +1004,104 @@ class AnalyzeResponse(BaseModel):
     analyzed: int
     remaining: int
     total: int
+    skippedNoPgn: int = 0
+
+
+ANALYZE_BATCH_SIZE = 100
 
 
 @app.post("/api/games/analyze")
 async def analyze_games(
-    limit: int = Query(50, le=200, description="Max games to analyze"),
+    limit: int = Query(1000, le=5000, description="Max games to analyze"),
     user: Dict[str, Any] = Depends(require_auth)
 ):
     """
     Analyze unanalyzed games and add tags.
-    Only analyzes games that haven't been analyzed yet.
+    Processes in batches of 100, saving after each batch.
     """
     chess_com_username = user.get("chessComUsername", "")
     if not chess_com_username:
         raise HTTPException(status_code=400, detail="No Chess.com username linked to account")
 
     user_id = db.get_or_create_user(chess_com_username)
-
-    # Get unanalyzed games
-    unanalyzed = db.get_unanalyzed_games(user_id, limit=limit)
-    if not unanalyzed:
-        return AnalyzeResponse(analyzed=0, remaining=0, total=db.get_user_games_count(user_id))
-
-    print(f"Analyzing {len(unanalyzed)} games for {chess_com_username}...")
-
-    # Convert to GameData format for analyzers
     from src.game_data import GameData, GameMetadata
-    game_data_list = []
-    game_id_map = {}  # Map game link to database ID
 
-    skipped_no_pgn = 0
-    for g in unanalyzed:
-        # Skip games without PGN data (from old syncs before PGN was saved)
-        if not g.get("pgn"):
-            skipped_no_pgn += 1
+    total_analyzed = 0
+    total_skipped_no_pgn = 0
+
+    # Process in batches until we hit the limit or run out of games
+    while total_analyzed < limit:
+        batch_limit = min(ANALYZE_BATCH_SIZE, limit - total_analyzed)
+
+        # Get next batch of unanalyzed games
+        unanalyzed = db.get_unanalyzed_games(user_id, limit=batch_limit)
+        if not unanalyzed:
+            break
+
+        print(f"Analyzing batch of {len(unanalyzed)} games for {chess_com_username}...")
+
+        # Convert to GameData format
+        game_data_list = []
+        game_id_map = {}
+
+        for g in unanalyzed:
+            if not g.get("pgn"):
+                total_skipped_no_pgn += 1
+                continue
+
+            metadata = GameMetadata(
+                white=chess_com_username if g["userColor"] == "white" else g["opponent"],
+                black=g["opponent"] if g["userColor"] == "white" else chess_com_username,
+                result="1-0" if g["result"] == "W" else ("0-1" if g["result"] == "L" else "1/2-1/2"),
+                date=g["date"],
+                time_control=g["timeControl"],
+                link=g["chessComGameId"],
+            )
+            game_data = GameData(
+                pgn=g["pgn"],
+                moves=g["moves"],
+                metadata=metadata,
+            )
+            game_data_list.append(game_data)
+            game_id_map[g["chessComGameId"]] = g["id"]
+
+        if not game_data_list:
+            # All games in this batch had no PGN, try next batch
             continue
 
-        metadata = GameMetadata(
-            white=chess_com_username if g["userColor"] == "white" else g["opponent"],
-            black=g["opponent"] if g["userColor"] == "white" else chess_com_username,
-            result="1-0" if g["result"] == "W" else ("0-1" if g["result"] == "L" else "1/2-1/2"),
-            date=g["date"],
-            time_control=g["timeControl"],
-            link=g["chessComGameId"],
-        )
-        game_data = GameData(
-            pgn=g["pgn"],
-            moves=g["moves"],
-            metadata=metadata,
-        )
-        game_data_list.append(game_data)
-        game_id_map[g["chessComGameId"]] = g["id"]
+        # Run analyzers on this batch
+        analyzer, individual_analyzers = setup_unified_analyzer(chess_com_username)
+        analyzer.analyze_games(game_data_list)
 
-    if skipped_no_pgn:
-        print(f"Skipped {skipped_no_pgn} games without PGN data (need re-sync)")
+        # Build tags map ONCE from all analyzer findings (not per-game)
+        game_tags = build_game_tags_map(individual_analyzers)
 
-    # If no games have PGN data, return early
-    if not game_data_list:
-        remaining = db.get_unanalyzed_games_count(user_id)
-        total = db.get_user_games_count(user_id)
-        print(f"No games with PGN data to analyze. Re-sync to fetch PGN data.")
-        return AnalyzeResponse(analyzed=0, remaining=remaining, total=total)
+        # Map to database IDs
+        tags_map = {}
+        for game_data in game_data_list:
+            link = game_data.metadata.link
+            if link and link in game_id_map:
+                db_id = game_id_map[link]
+                tags_map[db_id] = game_tags.get(link, [])
 
-    # Run analyzers
-    analyzer, individual_analyzers = setup_unified_analyzer(chess_com_username)
-    analyzer.analyze_games(game_data_list)
+        # Save this batch to database
+        game_ids = list(tags_map.keys())
+        updated = db.mark_games_analyzed(game_ids, tags_map)
+        total_analyzed += updated
+        print(f"Batch complete: {updated} games tagged (total: {total_analyzed})")
 
-    # Build tags map
-    tags_map = {}
-    for game_data in game_data_list:
-        link = game_data.metadata.link
-        if link and link in game_id_map:
-            db_id = game_id_map[link]
-            tags = get_game_tags(link, individual_analyzers)
-            tags_map[db_id] = tags
-
-    # Update database
-    game_ids = list(tags_map.keys())
-    updated = db.mark_games_analyzed(game_ids, tags_map)
-    print(f"Analyzed and tagged {updated} games")
+    if total_skipped_no_pgn:
+        print(f"Skipped {total_skipped_no_pgn} games without PGN data (need re-sync)")
 
     remaining = db.get_unanalyzed_games_count(user_id)
     total = db.get_user_games_count(user_id)
 
-    return AnalyzeResponse(analyzed=updated, remaining=remaining, total=total)
+    return AnalyzeResponse(
+        analyzed=total_analyzed,
+        remaining=remaining,
+        total=total,
+        skippedNoPgn=total_skipped_no_pgn,
+    )
 
 
 @app.get("/health")

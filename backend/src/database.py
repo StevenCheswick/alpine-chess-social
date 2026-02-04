@@ -144,6 +144,20 @@ def init_db():
             ON posts(created_at DESC)
         """)
 
+        # Opening trees cache table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_opening_trees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                color TEXT NOT NULL,
+                tree_json TEXT NOT NULL,
+                total_games INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                UNIQUE(user_id, color)
+            )
+        """)
+
 
 def get_or_create_user(username: str) -> int:
     """Get user ID, creating if doesn't exist."""
@@ -326,35 +340,63 @@ def get_user_tag_counts(user_id: int) -> Dict[str, int]:
         return tag_counts
 
 
+def get_user_tag_counts_filtered(user_id: int, selected_tags: List[str]) -> Dict[str, int]:
+    """Get tag counts for games that have ALL selected tags.
+
+    Returns counts of games that have ALL selected_tags AND each other tag.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Build query to match ALL selected tags
+        # Each tag needs its own LIKE clause
+        conditions = ["user_id = ?"]
+        params: List[Any] = [user_id]
+
+        for tag in selected_tags:
+            conditions.append("tags LIKE ?")
+            params.append(f'%"{tag}"%')
+
+        query = f"SELECT tags FROM user_games WHERE {' AND '.join(conditions)}"
+        cursor.execute(query, params)
+
+        tag_counts: Dict[str, int] = {}
+        for row in cursor.fetchall():
+            tags = json.loads(row["tags"]) if row["tags"] else []
+            for tag in tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+        return tag_counts
+
+
 def get_user_games_paginated(
     user_id: int,
     limit: int = 50,
     offset: int = 0,
-    tag_filter: Optional[str] = None
+    tag_filters: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
-    """Get games for a user with pagination and optional tag filter."""
+    """Get games for a user with pagination and optional tag filters (must have ALL tags)."""
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        if tag_filter:
-            # Filter by tag (using LIKE for JSON array search)
-            cursor.execute("""
-                SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                       result, user_color, time_control, date, moves, tags
-                FROM user_games
-                WHERE user_id = ? AND tags LIKE ?
-                ORDER BY date DESC
-                LIMIT ? OFFSET ?
-            """, (user_id, f'%"{tag_filter}"%', limit, offset))
-        else:
-            cursor.execute("""
-                SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                       result, user_color, time_control, date, moves, tags
-                FROM user_games
-                WHERE user_id = ?
-                ORDER BY date DESC
-                LIMIT ? OFFSET ?
-            """, (user_id, limit, offset))
+        conditions = ["user_id = ?"]
+        params: List[Any] = [user_id]
+
+        if tag_filters:
+            for tag in tag_filters:
+                conditions.append("tags LIKE ?")
+                params.append(f'%"{tag}"%')
+
+        query = f"""
+            SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
+                   result, user_color, time_control, date, moves, tags
+            FROM user_games
+            WHERE {' AND '.join(conditions)}
+            ORDER BY date DESC
+            LIMIT ? OFFSET ?
+        """
+        params.extend([limit, offset])
+        cursor.execute(query, params)
 
         games = []
         for row in cursor.fetchall():
@@ -375,17 +417,21 @@ def get_user_games_paginated(
         return games
 
 
-def get_user_games_count_filtered(user_id: int, tag_filter: Optional[str] = None) -> int:
-    """Get count of games for a user, optionally filtered by tag."""
+def get_user_games_count_filtered(user_id: int, tag_filters: Optional[List[str]] = None) -> int:
+    """Get count of games for a user, optionally filtered by tags (must have ALL tags)."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        if tag_filter:
-            cursor.execute(
-                "SELECT COUNT(*) FROM user_games WHERE user_id = ? AND tags LIKE ?",
-                (user_id, f'%"{tag_filter}"%')
-            )
-        else:
-            cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (user_id,))
+
+        conditions = ["user_id = ?"]
+        params: List[Any] = [user_id]
+
+        if tag_filters:
+            for tag in tag_filters:
+                conditions.append("tags LIKE ?")
+                params.append(f'%"{tag}"%')
+
+        query = f"SELECT COUNT(*) FROM user_games WHERE {' AND '.join(conditions)}"
+        cursor.execute(query, params)
         return cursor.fetchone()[0]
 
 
@@ -633,6 +679,87 @@ def get_public_profile(username: str) -> Optional[Dict[str, Any]]:
             "avatarUrl": row["avatar_url"],
             "createdAt": row["created_at"],
         }
+
+
+def get_user_games_by_color(user_id: int, color: str) -> List[Dict[str, Any]]:
+    """Get all games where user played as specified color (for opening tree).
+
+    Args:
+        user_id: The user's database ID
+        color: 'white' or 'black'
+
+    Returns:
+        List of games with moves array and result
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT chess_com_game_id, result, moves
+            FROM user_games
+            WHERE user_id = ? AND LOWER(user_color) = LOWER(?)
+            ORDER BY date DESC
+        """, (user_id, color))
+
+        games = []
+        for row in cursor.fetchall():
+            moves = json.loads(row["moves"]) if row["moves"] else []
+            games.append({
+                "id": row["chess_com_game_id"],
+                "result": row["result"],
+                "moves": moves,
+            })
+
+        return games
+
+
+# ============================================
+# Opening Tree Cache functions
+# ============================================
+
+def get_cached_opening_tree(user_id: int, color: str) -> Optional[Dict[str, Any]]:
+    """Get cached opening tree for a user and color.
+
+    Returns:
+        Dict with 'tree_json', 'total_games', 'updated_at' or None if not cached
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT tree_json, total_games, updated_at
+            FROM user_opening_trees
+            WHERE user_id = ? AND color = ?
+        """, (user_id, color.lower()))
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        return {
+            "tree": json.loads(row["tree_json"]),
+            "totalGames": row["total_games"],
+            "updatedAt": row["updated_at"],
+        }
+
+
+def save_opening_tree(user_id: int, color: str, tree: Dict[str, Any], total_games: int) -> None:
+    """Save or update cached opening tree for a user and color."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO user_opening_trees (user_id, color, tree_json, total_games, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, color) DO UPDATE SET
+                tree_json = excluded.tree_json,
+                total_games = excluded.total_games,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, color.lower(), json.dumps(tree), total_games))
+
+
+def invalidate_opening_trees(user_id: int) -> None:
+    """Delete cached opening trees for a user (call after sync)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM user_opening_trees WHERE user_id = ?", (user_id,))
 
 
 def get_games_count_by_chess_com_username(chess_com_username: str) -> int:

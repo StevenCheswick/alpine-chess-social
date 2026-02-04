@@ -13,6 +13,7 @@ import ProfilePage from './pages/ProfilePage';
 import PostPage from './pages/PostPage';
 import AchievementsPage from './pages/AchievementsPage';
 import GamesPage from './pages/GamesPage';
+import OpeningTreePage from './pages/OpeningTreePage';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Protected route wrapper
@@ -74,6 +75,7 @@ function App() {
           <Route path="/post/:postId" element={<PostPage />} />
           <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/games" element={<GamesPage />} />
+          <Route path="/opening-tree" element={<OpeningTreePage />} />
         </Route>
 
         {/* 404 */}

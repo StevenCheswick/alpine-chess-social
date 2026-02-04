@@ -55,8 +55,9 @@ export const gameService = {
 
   /**
    * Analyze unanalyzed games and add tags.
+   * Processes in batches of 100, saving after each batch.
    */
-  async analyzeGames(limit: number = 50): Promise<AnalyzeResponse> {
+  async analyzeGames(limit: number = 1000): Promise<AnalyzeResponse> {
     return api.post<AnalyzeResponse>(`/api/games/analyze?limit=${limit}`, {});
   },
 };
