@@ -31,10 +31,10 @@ export default function LoginPage() {
     <div>
       {/* Mobile logo */}
       <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
+        <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.4)]">
           <span className="text-white text-xl">♞</span>
         </div>
-        <span className="text-xl font-bold text-white">ChessSocial</span>
+        <span className="text-xl font-bold text-white">Alpine Chess</span>
       </div>
 
       <h2 className="text-2xl font-bold text-white mb-2">Welcome back</h2>
@@ -79,10 +79,10 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2">
-            <input type="checkbox" className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-primary-600 focus:ring-primary-500" />
+            <input type="checkbox" className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500" />
             <span className="text-sm text-slate-400">Remember me</span>
           </label>
-          <a href="#" className="text-sm text-primary-400 hover:text-primary-300">
+          <a href="#" className="text-sm text-emerald-400 hover:text-emerald-300">
             Forgot password?
           </a>
         </div>
@@ -139,7 +139,7 @@ export default function LoginPage() {
 
       <p className="mt-8 text-center text-sm text-slate-400">
         Don't have an account?{' '}
-        <Link to="/register" className="text-primary-400 hover:text-primary-300 font-medium">
+        <Link to="/register" className="text-emerald-400 hover:text-emerald-300 font-medium">
           Sign up
         </Link>
       </p>

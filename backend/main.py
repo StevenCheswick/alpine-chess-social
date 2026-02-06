@@ -9,6 +9,7 @@ from datetime import datetime
 import re
 
 from src.chess_com_client import ChessComClient
+from src.lichess_client import LichessClient
 from src.pgn_parser import parse_pgns
 from src.unified_analyzer import UnifiedAnalyzer
 from src.analyzers import (
@@ -84,17 +85,20 @@ def build_game_tags_map(analyzers: dict) -> Dict[str, List[str]]:
     """Build a map of game_link -> tags from all analyzer findings.
 
     Call this ONCE after all games are analyzed, not per-game.
+    Uses fast path (get_matched_game_links) when available to avoid
+    expensive processing in get_final_results().
     """
     tags_map: Dict[str, List[str]] = {}
 
     for analyzer_class, analyzer in analyzers.items():
-        if hasattr(analyzer, 'get_final_results'):
-            findings = analyzer.get_final_results()
-            tag = ANALYZER_TAGS.get(analyzer_class)
-            if not tag:
-                continue
-            for finding in findings:
-                link = finding.get("game_metadata", {}).get("link")
+        tag = ANALYZER_TAGS.get(analyzer_class)
+        if not tag:
+            continue
+
+        # Fast path: use get_matched_game_links if available
+        if hasattr(analyzer, 'get_matched_game_links'):
+            links = analyzer.get_matched_game_links()
+            for link in links:
                 if link:
                     if link not in tags_map:
                         tags_map[link] = []
@@ -131,6 +135,7 @@ class UserResponse(BaseModel):
     displayName: str
     email: str
     chessComUsername: Optional[str] = None
+    lichessUsername: Optional[str] = None
     bio: Optional[str] = None
     avatarUrl: Optional[str] = None
     createdAt: str
@@ -192,6 +197,7 @@ def account_to_user_response(account: Dict[str, Any]) -> UserResponse:
         displayName=account.get("displayName") or account["username"],
         email=account["email"],
         chessComUsername=account.get("chessComUsername", ""),
+        lichessUsername=account.get("lichessUsername", ""),
         bio=account.get("bio"),
         avatarUrl=account.get("avatarUrl"),
         createdAt=account.get("createdAt", ""),
@@ -294,6 +300,7 @@ class ProfileResponse(BaseModel):
     username: str
     displayName: str
     chessComUsername: Optional[str] = None
+    lichessUsername: Optional[str] = None
     bio: Optional[str] = None
     avatarUrl: Optional[str] = None
     createdAt: str
@@ -305,6 +312,7 @@ class UpdateProfileRequest(BaseModel):
     displayName: Optional[str] = None
     bio: Optional[str] = None
     chessComUsername: Optional[str] = None
+    lichessUsername: Optional[str] = None
 
 
 @app.get("/api/users/{username}", response_model=ProfileResponse)
@@ -332,6 +340,7 @@ async def get_user_profile(
         username=profile["username"],
         displayName=profile.get("displayName") or profile["username"],
         chessComUsername=profile.get("chessComUsername", ""),
+        lichessUsername=profile.get("lichessUsername", ""),
         bio=profile.get("bio"),
         avatarUrl=profile.get("avatarUrl"),
         createdAt=profile.get("createdAt", ""),
@@ -363,12 +372,18 @@ async def update_user_profile(
         if len(request.chessComUsername) > 50:
             raise HTTPException(status_code=400, detail="Chess.com username must be at most 50 characters")
 
+    # Validate lichess username if provided
+    if request.lichessUsername is not None:
+        if len(request.lichessUsername) > 50:
+            raise HTTPException(status_code=400, detail="Lichess username must be at most 50 characters")
+
     # Update the account
     updated_account = db.update_account(
         account_id=user["id"],
         display_name=request.displayName,
         bio=request.bio,
         chess_com_username=request.chessComUsername,
+        lichess_username=request.lichessUsername,
     )
 
     if not updated_account:
@@ -706,6 +721,7 @@ async def get_games(
             "date": format_date(game.metadata.date),
             "userColor": "white" if user_is_white else "black",
             "moves": game.moves,
+            "tcn": game.tcn,
             "tags": tags,
         })
 
@@ -732,26 +748,39 @@ async def get_games(
 
 @app.get("/api/games/stored")
 async def get_stored_games(
-    username: str = Query(..., description="Chess.com username"),
     limit: int = Query(50, le=200, description="Max games to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by (games must have ALL tags)")
+    tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by (games must have ALL tags)"),
+    platform: Optional[str] = Query(None, description="Platform filter: 'chess_com', 'lichess', or None for all"),
+    user: Dict[str, Any] = Depends(require_auth)
 ):
     """
     Get previously synced games from the database with pagination and optional tag filter.
+    Returns games from all platforms by default.
     """
-    if not username:
-        raise HTTPException(status_code=400, detail="Username is required")
+    # Get user_id from both linked accounts
+    chess_com_username = user.get("chessComUsername", "")
+    lichess_username = user.get("lichessUsername", "")
 
-    user_id = db.get_or_create_user(username)
+    if not chess_com_username and not lichess_username:
+        return {"games": [], "total": 0, "limit": limit, "offset": offset, "tags": None}
+
+    # Use chess_com username as primary identifier, fallback to lichess
+    primary_username = chess_com_username or lichess_username
+    user_id = db.get_or_create_user(primary_username)
+
+    # Validate platform if provided
+    source = None
+    if platform and platform in ("chess_com", "lichess"):
+        source = platform
 
     tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
 
-    games = db.get_user_games_paginated(user_id, limit=limit, offset=offset, tag_filters=tags_list)
-    total = db.get_user_games_count_filtered(user_id, tag_filters=tags_list)
+    games = db.get_user_games_paginated(user_id, limit=limit, offset=offset, tag_filters=tags_list, source=source)
+    total = db.get_user_games_count_filtered(user_id, tag_filters=tags_list, source=source)
 
     return {
-        "username": username,
+        "platform": platform,
         "games": games,
         "total": total,
         "limit": limit,
@@ -763,17 +792,21 @@ async def get_stored_games(
 
 @app.get("/api/games/tags")
 async def get_game_tags_endpoint(
-    username: str = Query(..., description="Chess.com username"),
-    selected_tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by")
+    selected_tags: Optional[str] = Query(None, description="Comma-separated list of tags to filter by"),
+    user: Dict[str, Any] = Depends(require_auth)
 ):
     """
-    Get tag counts for a user's games.
+    Get tag counts for a user's games (from all platforms).
     If selected_tags is provided, returns counts of games that have ALL selected tags AND each other tag.
     """
-    if not username:
-        raise HTTPException(status_code=400, detail="Username is required")
+    chess_com_username = user.get("chessComUsername", "")
+    lichess_username = user.get("lichessUsername", "")
 
-    user_id = db.get_or_create_user(username)
+    if not chess_com_username and not lichess_username:
+        return {"tags": {}, "selectedTags": []}
+
+    primary_username = chess_com_username or lichess_username
+    user_id = db.get_or_create_user(primary_username)
 
     if selected_tags:
         tags_list = [t.strip() for t in selected_tags.split(",") if t.strip()]
@@ -785,10 +818,89 @@ async def get_game_tags_endpoint(
         tag_counts = db.get_user_tag_counts(user_id)
 
     return {
-        "username": username,
         "tags": tag_counts,
         "selectedTags": selected_tags.split(",") if selected_tags else [],
     }
+
+
+@app.get("/api/games/{game_id}")
+async def get_game_by_id(
+    game_id: int,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Get a single game by its ID.
+    """
+    chess_com_username = user.get("chessComUsername", "")
+    lichess_username = user.get("lichessUsername", "")
+
+    if not chess_com_username and not lichess_username:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    primary_username = chess_com_username or lichess_username
+    user_id = db.get_or_create_user(primary_username)
+
+    game = db.get_game_by_id(user_id, game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    return game
+
+
+@app.get("/api/games/{game_id}/analysis")
+async def get_game_analysis(
+    game_id: int,
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Get analysis results for a game.
+    """
+    chess_com_username = user.get("chessComUsername", "")
+    lichess_username = user.get("lichessUsername", "")
+
+    if not chess_com_username and not lichess_username:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    primary_username = chess_com_username or lichess_username
+    user_id = db.get_or_create_user(primary_username)
+
+    # Verify the game belongs to this user
+    game = db.get_game_by_id(user_id, game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    analysis = db.get_game_analysis(game_id)
+    if not analysis:
+        return None
+
+    return analysis
+
+
+@app.post("/api/games/{game_id}/analysis")
+async def save_game_analysis(
+    game_id: int,
+    analysis: Dict[str, Any],
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Save analysis results for a game.
+    """
+    chess_com_username = user.get("chessComUsername", "")
+    lichess_username = user.get("lichessUsername", "")
+
+    if not chess_com_username and not lichess_username:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    primary_username = chess_com_username or lichess_username
+    user_id = db.get_or_create_user(primary_username)
+
+    # Verify the game belongs to this user
+    game = db.get_game_by_id(user_id, game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    db.save_game_analysis(game_id, analysis)
+    return {"success": True}
 
 
 class OpeningTreeResponse(BaseModel):
@@ -897,9 +1009,12 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
     all_pgn_tcn_pairs = []
     now = datetime.now()
 
+    # Cap at 1000 games for initial sync
+    MAX_GAMES = 1000
+
     if is_first_sync:
-        # FIRST SYNC: Fetch ALL games (full history)
-        print(f"First sync for {chess_com_username} - fetching full history...")
+        # FIRST SYNC: Fetch games (capped at MAX_GAMES)
+        print(f"First sync for {chess_com_username} - fetching up to {MAX_GAMES} games...")
         current_year, current_month = now.year, now.month
 
         while True:
@@ -910,6 +1025,12 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
                 if pgn_tcn_pairs:
                     all_pgn_tcn_pairs.extend(pgn_tcn_pairs)
                     print(f"  {current_year}/{current_month:02d}: {len(pgn_tcn_pairs)} games (total: {len(all_pgn_tcn_pairs)})")
+
+                    # Stop if we've hit the cap
+                    if len(all_pgn_tcn_pairs) >= MAX_GAMES:
+                        all_pgn_tcn_pairs = all_pgn_tcn_pairs[:MAX_GAMES]
+                        print(f"  Reached {MAX_GAMES} game cap")
+                        break
             except Exception as e:
                 print(f"  {current_year}/{current_month:02d}: Error or no games - {e}")
 
@@ -923,7 +1044,7 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
             if current_year < 2010:
                 break
 
-        print(f"Full history: {len(all_pgn_tcn_pairs)} games total")
+        print(f"First sync: {len(all_pgn_tcn_pairs)} games total")
     else:
         # RE-SYNC: Only fetch current month (incremental)
         print(f"Re-sync for {chess_com_username} - fetching current month only...")
@@ -973,6 +1094,7 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
                 "date": format_date(game.metadata.date),
                 "userColor": "white" if user_is_white else "black",
                 "moves": game.moves,
+                "tcn": game.tcn,
                 "pgn": game.pgn,  # Include PGN for analysis
                 "tags": [],  # No tags until analyzed
             })
@@ -983,6 +1105,10 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
 
         # Invalidate opening tree cache (will be rebuilt on next request)
         db.invalidate_opening_trees(user_id)
+
+        # Analyze the newly synced games
+        analyzed_count, _ = analyze_user_games(user_id, chess_com_username, "chess_com", limit=synced_count)
+        print(f"Analyzed {analyzed_count} games for {chess_com_username}")
 
     # Update last synced timestamp
     db.update_user_last_synced(user_id)
@@ -1000,6 +1126,105 @@ async def sync_games(user: Dict[str, Any] = Depends(require_auth)):
     )
 
 
+@app.post("/api/games/sync/lichess")
+async def sync_lichess_games(user: Dict[str, Any] = Depends(require_auth)):
+    """
+    Sync games from Lichess.
+    - First sync: Downloads ALL games (full history)
+    - Re-sync: Downloads all games (Lichess API handles this efficiently)
+    """
+    lichess_username = user.get("lichessUsername", "")
+    if not lichess_username:
+        raise HTTPException(status_code=400, detail="No Lichess username linked to account")
+
+    # Get or create user record for game storage (use lichess username)
+    user_id = db.get_or_create_user(lichess_username)
+    last_synced = db.get_user_last_synced(user_id)
+    is_first_sync = last_synced is None
+
+    client = LichessClient()
+    all_pgn_pairs = []
+
+    # First sync: cap at 1000 games. Re-sync: fetch all
+    max_games = 1000 if is_first_sync else None
+    print(f"{'First sync' if is_first_sync else 'Re-sync'} for {lichess_username}...")
+    try:
+        # Fetch games (returns list of (pgn, game_id) tuples)
+        pgn_pairs = client.fetch_user_games(lichess_username, max_games=max_games)
+        if pgn_pairs:
+            all_pgn_pairs.extend(pgn_pairs)
+            print(f"Fetched {len(pgn_pairs)} games from Lichess")
+    except Exception as e:
+        print(f"Error fetching Lichess games: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch games from Lichess: {str(e)}")
+
+    synced_count = 0
+    if all_pgn_pairs:
+        # Parse PGNs
+        pgns = [pgn for pgn, game_id in all_pgn_pairs]
+        game_ids = [game_id for pgn, game_id in all_pgn_pairs]
+        games = parse_pgns(pgns)
+
+        print(f"Parsed {len(games)} Lichess games")
+
+        # Build game records
+        response_games = []
+        for i, game in enumerate(games):
+            user_is_white = game.metadata.white.lower() == lichess_username.lower()
+            opponent = game.metadata.black if user_is_white else game.metadata.white
+
+            opponent_elo_header = "BlackElo" if user_is_white else "WhiteElo"
+            user_elo_header = "WhiteElo" if user_is_white else "BlackElo"
+
+            opponent_elo_match = re.search(rf'\[{opponent_elo_header}\s+"(\d+)"\]', game.pgn)
+            opponent_elo = int(opponent_elo_match.group(1)) if opponent_elo_match else None
+
+            user_elo_match = re.search(rf'\[{user_elo_header}\s+"(\d+)"\]', game.pgn)
+            user_elo = int(user_elo_match.group(1)) if user_elo_match else None
+
+            # Use Lichess game ID or generate one
+            lichess_game_id = game_ids[i] if i < len(game_ids) else None
+            game_id = lichess_game_id or game.metadata.link or f"{game.metadata.white}_{game.metadata.black}_{game.metadata.date}"
+
+            response_games.append({
+                "id": game_id,
+                "opponent": opponent,
+                "opponentRating": opponent_elo,
+                "userRating": user_elo,
+                "result": get_result_code(game.metadata.result, user_is_white),
+                "timeControl": game.metadata.time_control,
+                "date": format_date(game.metadata.date),
+                "userColor": "white" if user_is_white else "black",
+                "moves": game.moves,
+                "tcn": game.tcn,  # Generated from moves
+                "pgn": game.pgn,
+                "tags": [],  # No analysis for Lichess games
+            })
+
+        # Save to database with source='lichess'
+        synced_count = db.upsert_games(user_id, response_games, source="lichess")
+        print(f"Saved {synced_count} Lichess games to database for {lichess_username}")
+
+        # Analyze the newly synced games
+        analyzed_count, _ = analyze_user_games(user_id, lichess_username, "lichess", limit=synced_count)
+        print(f"Analyzed {analyzed_count} Lichess games for {lichess_username}")
+
+    # Update last synced timestamp
+    db.update_user_last_synced(user_id)
+    new_last_synced = db.get_user_last_synced(user_id)
+
+    # Get total Lichess games count
+    total_games = db.get_user_games_count(user_id, source="lichess")
+
+    return SyncResponse(
+        username=lichess_username,
+        synced=synced_count,
+        total=total_games,
+        lastSyncedAt=new_last_synced,
+        isFirstSync=is_first_sync,
+    )
+
+
 class AnalyzeResponse(BaseModel):
     analyzed: int
     remaining: int
@@ -1010,55 +1235,55 @@ class AnalyzeResponse(BaseModel):
 ANALYZE_BATCH_SIZE = 100
 
 
-@app.post("/api/games/analyze")
-async def analyze_games(
-    limit: int = Query(1000, le=5000, description="Max games to analyze"),
-    user: Dict[str, Any] = Depends(require_auth)
-):
+def analyze_user_games(user_id: int, platform_username: str, source: str, limit: int = 1000) -> tuple[int, int]:
     """
-    Analyze unanalyzed games and add tags.
-    Processes in batches of 100, saving after each batch.
+    Analyze unanalyzed games for a user. Called automatically after sync.
+    Returns (total_analyzed, total_skipped).
     """
-    chess_com_username = user.get("chessComUsername", "")
-    if not chess_com_username:
-        raise HTTPException(status_code=400, detail="No Chess.com username linked to account")
-
-    user_id = db.get_or_create_user(chess_com_username)
     from src.game_data import GameData, GameMetadata
 
     total_analyzed = 0
-    total_skipped_no_pgn = 0
+    total_skipped = 0
 
-    # Process in batches until we hit the limit or run out of games
     while total_analyzed < limit:
         batch_limit = min(ANALYZE_BATCH_SIZE, limit - total_analyzed)
 
-        # Get next batch of unanalyzed games
-        unanalyzed = db.get_unanalyzed_games(user_id, limit=batch_limit)
+        # Get next batch of unanalyzed games for this platform
+        unanalyzed = db.get_unanalyzed_games(user_id, limit=batch_limit, source=source)
         if not unanalyzed:
             break
 
-        print(f"Analyzing batch of {len(unanalyzed)} games for {chess_com_username}...")
+        print(f"Analyzing batch of {len(unanalyzed)} {source} games for {platform_username}...")
 
         # Convert to GameData format
         game_data_list = []
         game_id_map = {}
 
         for g in unanalyzed:
-            if not g.get("pgn"):
-                total_skipped_no_pgn += 1
+            # Check for moves (decoded from TCN)
+            if not g.get("tcn") and not g.get("moves"):
+                total_skipped += 1
                 continue
 
+            # Convert W/L/D to standard chess result
+            user_color = g["userColor"]
+            if g["result"] == "W":
+                chess_result = "1-0" if user_color == "white" else "0-1"
+            elif g["result"] == "L":
+                chess_result = "0-1" if user_color == "white" else "1-0"
+            else:
+                chess_result = "1/2-1/2"
+
             metadata = GameMetadata(
-                white=chess_com_username if g["userColor"] == "white" else g["opponent"],
-                black=g["opponent"] if g["userColor"] == "white" else chess_com_username,
-                result="1-0" if g["result"] == "W" else ("0-1" if g["result"] == "L" else "1/2-1/2"),
+                white=platform_username if user_color == "white" else g["opponent"],
+                black=g["opponent"] if user_color == "white" else platform_username,
+                result=chess_result,
                 date=g["date"],
                 time_control=g["timeControl"],
                 link=g["chessComGameId"],
             )
             game_data = GameData(
-                pgn=g["pgn"],
+                pgn="",
                 moves=g["moves"],
                 metadata=metadata,
             )
@@ -1066,14 +1291,17 @@ async def analyze_games(
             game_id_map[g["chessComGameId"]] = g["id"]
 
         if not game_data_list:
-            # All games in this batch had no PGN, try next batch
+            # Mark games with no moves as analyzed to prevent infinite loop
+            no_moves_ids = [g["id"] for g in unanalyzed if not g.get("tcn") and not g.get("moves")]
+            if no_moves_ids:
+                db.mark_games_analyzed(no_moves_ids, {gid: [] for gid in no_moves_ids})
             continue
 
         # Run analyzers on this batch
-        analyzer, individual_analyzers = setup_unified_analyzer(chess_com_username)
+        analyzer, individual_analyzers = setup_unified_analyzer(platform_username)
         analyzer.analyze_games(game_data_list)
 
-        # Build tags map ONCE from all analyzer findings (not per-game)
+        # Build tags map from analyzer findings
         game_tags = build_game_tags_map(individual_analyzers)
 
         # Map to database IDs
@@ -1090,17 +1318,43 @@ async def analyze_games(
         total_analyzed += updated
         print(f"Batch complete: {updated} games tagged (total: {total_analyzed})")
 
-    if total_skipped_no_pgn:
-        print(f"Skipped {total_skipped_no_pgn} games without PGN data (need re-sync)")
+    return total_analyzed, total_skipped
+
+
+@app.post("/api/games/analyze")
+async def analyze_games(
+    limit: int = Query(1000, le=5000, description="Max games to analyze"),
+    platform: str = Query("chess_com", description="Platform: chess_com or lichess"),
+    user: Dict[str, Any] = Depends(require_auth)
+):
+    """
+    Analyze unanalyzed games and add tags.
+    Note: Analysis now happens automatically during sync, but this endpoint
+    can be used to re-analyze or catch up on any missed games.
+    """
+    if platform == "lichess":
+        platform_username = user.get("lichessUsername", "")
+        source = "lichess"
+        if not platform_username:
+            raise HTTPException(status_code=400, detail="No Lichess username linked to account")
+    else:
+        platform_username = user.get("chessComUsername", "")
+        source = "chess_com"
+        if not platform_username:
+            raise HTTPException(status_code=400, detail="No Chess.com username linked to account")
+
+    user_id = db.get_or_create_user(platform_username)
+
+    total_analyzed, total_skipped = analyze_user_games(user_id, platform_username, source, limit)
 
     remaining = db.get_unanalyzed_games_count(user_id)
-    total = db.get_user_games_count(user_id)
+    total = db.get_user_games_count(user_id, source=source)
 
     return AnalyzeResponse(
         analyzed=total_analyzed,
         remaining=remaining,
         total=total,
-        skippedNoPgn=total_skipped_no_pgn,
+        skippedNoPgn=total_skipped,
     )
 
 

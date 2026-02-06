@@ -13,6 +13,7 @@ import ProfilePage from './pages/ProfilePage';
 import PostPage from './pages/PostPage';
 import AchievementsPage from './pages/AchievementsPage';
 import GamesPage from './pages/GamesPage';
+import GamePage from './pages/GamePage';
 import OpeningTreePage from './pages/OpeningTreePage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -75,6 +76,7 @@ function App() {
           <Route path="/post/:postId" element={<PostPage />} />
           <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/games" element={<GamesPage />} />
+          <Route path="/games/:gameId" element={<GamePage />} />
           <Route path="/opening-tree" element={<OpeningTreePage />} />
         </Route>
 

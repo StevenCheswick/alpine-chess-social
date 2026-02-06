@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { Chess } from 'chess.js';
 import type { EngineLine } from '../../hooks/useStockfish';
 
@@ -10,7 +10,7 @@ interface EngineLinesProps {
   targetDepth: number;
 }
 
-export function EngineLines({ lines, currentFen, isAnalyzing, depth, targetDepth }: EngineLinesProps) {
+export const EngineLines = memo(function EngineLines({ lines, currentFen, isAnalyzing, depth, targetDepth }: EngineLinesProps) {
   // Convert UCI moves to SAN notation
   const linesWithSan = useMemo(() => {
     return lines.map(line => ({
@@ -84,7 +84,7 @@ export function EngineLines({ lines, currentFen, isAnalyzing, depth, targetDepth
       </div>
     </div>
   );
-}
+});
 
 function uciToSan(fen: string, uciMoves: string[]): string[] {
   try {

@@ -61,6 +61,14 @@ class UnifiedAnalyzerBase:
         """Calculate points for the current game based on existing findings."""
         return 0
 
+    def get_matched_game_links(self) -> List[str]:
+        """Fast path: return just the game links that matched this pattern.
+
+        Override this in subclasses for efficient tagging without expensive
+        processing done in get_final_results().
+        """
+        return []
+
 
 class UnifiedAnalyzer:
     """Main unified analyzer that processes games move-by-move."""

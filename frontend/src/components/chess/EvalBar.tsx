@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, memo } from 'react';
 
 interface EvalBarProps {
   evaluation: number | null;
@@ -10,7 +10,7 @@ interface EvalBarProps {
 // Threshold: don't visually update for changes smaller than this (in win%)
 const MIN_VISUAL_CHANGE = 0.5;
 
-export function EvalBar({ evaluation, isMate, mateIn, orientation = 'white' }: EvalBarProps) {
+export const EvalBar = memo(function EvalBar({ evaluation, isMate, mateIn, orientation = 'white' }: EvalBarProps) {
   const lastPercentRef = useRef<number>(50);
 
   const getWhitePercentage = (): number => {
@@ -82,4 +82,4 @@ export function EvalBar({ evaluation, isMate, mateIn, orientation = 'white' }: E
       </div>
     </div>
   );
-}
+});

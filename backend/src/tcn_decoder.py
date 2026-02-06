@@ -1,15 +1,110 @@
 """
-TCN (Terse Chess Notation) decoder for Chess.com games.
+TCN (Terse Chess Notation) encoder/decoder for Chess.com games.
 TCN is a compact 2-char-per-move encoding that's faster to decode than SAN.
 """
 import chess
 from typing import List, Tuple, Optional
 
-# Chess.com TCN character set
+# Chess.com TCN character set (64 squares + promotion codes)
 TCN_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?{~}(^)[_]@#$,./&-*++="
 
-# Promotion piece mapping
+# Promotion piece mapping for decoding
 PROMO_PIECES = [chess.QUEEN, chess.KNIGHT, chess.ROOK, chess.BISHOP]
+
+# Promotion piece to index for encoding
+PROMO_PIECE_TO_IDX = {
+    chess.QUEEN: 0,
+    chess.KNIGHT: 1,
+    chess.ROOK: 2,
+    chess.BISHOP: 3,
+}
+
+
+def encode_tcn(moves: List[chess.Move], board: Optional[chess.Board] = None) -> str:
+    """
+    Encode a list of chess.Move objects to TCN string.
+
+    Args:
+        moves: List of chess.Move objects
+        board: Optional starting board position (defaults to standard start)
+
+    Returns:
+        TCN encoded string
+    """
+    if board is None:
+        board = chess.Board()
+    else:
+        board = board.copy()
+
+    tcn = []
+    for move in moves:
+        from_sq = move.from_square
+        to_sq = move.to_square
+
+        # Encode from square (0-63 -> TCN char)
+        from_char = TCN_CHARS[from_sq]
+
+        if move.promotion:
+            # Promotion move - encode specially
+            from_file = chess.square_file(from_sq)
+            to_file = chess.square_file(to_sq)
+
+            # offset: -1=left capture, 0=straight, 1=right capture
+            offset = to_file - from_file + 1  # 0, 1, or 2
+
+            piece_idx = PROMO_PIECE_TO_IDX.get(move.promotion, 0)
+            promo_value = 64 + (piece_idx * 3) + offset
+            to_char = TCN_CHARS[promo_value]
+        else:
+            # Regular move
+            to_char = TCN_CHARS[to_sq]
+
+        tcn.append(from_char + to_char)
+
+        # Push move to track board state
+        if move in board.legal_moves:
+            board.push(move)
+
+    return ''.join(tcn)
+
+
+def encode_san_to_tcn(san_moves: List[str], starting_fen: Optional[str] = None) -> str:
+    """
+    Convert SAN moves to TCN string.
+
+    Args:
+        san_moves: List of SAN move strings (e.g., ["e4", "e5", "Nf3"])
+        starting_fen: Optional FEN for non-standard starting position
+
+    Returns:
+        TCN encoded string
+    """
+    if starting_fen:
+        board = chess.Board(starting_fen)
+    else:
+        board = chess.Board()
+
+    moves = []
+    for san in san_moves:
+        try:
+            # Clean the SAN move
+            clean_san = san.strip()
+            if not clean_san or clean_san in ('1-0', '0-1', '1/2-1/2'):
+                continue
+            move = board.parse_san(clean_san)
+            moves.append(move)
+            board.push(move)
+        except (chess.InvalidMoveError, chess.AmbiguousMoveError):
+            # Skip invalid moves
+            continue
+
+    # Reset board and encode
+    if starting_fen:
+        board = chess.Board(starting_fen)
+    else:
+        board = chess.Board()
+
+    return encode_tcn(moves, board)
 
 
 def decode_tcn(tcn: str) -> List[chess.Move]:

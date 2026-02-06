@@ -10,7 +10,7 @@ export default function MainLayout() {
 
       {/* Main content area */}
       <main className="pt-16 lg:pl-64">
-        <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className="max-w-6xl mx-auto px-4 py-3">
           <Outlet />
         </div>
       </main>
@@ -27,7 +27,7 @@ export default function MainLayout() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </a>
-        <button className="p-3 bg-primary-600 rounded-full text-white -mt-4">
+        <button className="p-3 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full text-white -mt-4 shadow-[0_0_15px_rgba(16,185,129,0.4)]">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>

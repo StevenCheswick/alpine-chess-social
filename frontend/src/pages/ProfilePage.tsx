@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { profileService, type Profile } from '../services/profileService';
@@ -50,12 +50,20 @@ function transformPost(apiPost: ApiPost): Post {
 
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, updateUser } = useAuthStore();
   const [isFollowing, setIsFollowing] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Open edit modal when ?settings=true is in URL
+  useEffect(() => {
+    if (searchParams.get('settings') === 'true') {
+      setShowEditModal(true);
+    }
+  }, [searchParams]);
 
   // Posts state
   const [posts, setPosts] = useState<Post[]>([]);
@@ -125,6 +133,7 @@ export default function ProfilePage() {
         displayName: updatedProfile.displayName,
         bio: updatedProfile.bio,
         chessComUsername: updatedProfile.chessComUsername,
+        lichessUsername: updatedProfile.lichessUsername,
       });
     }
   };
@@ -211,7 +220,8 @@ export default function ProfilePage() {
         {/* Linked Accounts Section */}
         <div className="mt-6 pt-6 border-t border-slate-800">
           <h3 className="text-sm font-medium text-slate-400 mb-3">Linked Accounts</h3>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
+            {/* Chess.com */}
             {profile.chessComUsername ? (
               <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg">
                 <div className="w-6 h-6 bg-green-600 rounded flex items-center justify-center">
@@ -246,13 +256,49 @@ export default function ProfilePage() {
                 </div>
               </div>
             )}
+
+            {/* Lichess */}
+            {profile.lichessUsername ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg">
+                <div className="w-6 h-6 bg-white rounded flex items-center justify-center">
+                  <span className="text-black text-xs font-bold">L</span>
+                </div>
+                <div>
+                  <p className="text-sm text-white">{profile.lichessUsername}</p>
+                  <p className="text-xs text-slate-400">Lichess</p>
+                </div>
+              </div>
+            ) : profile.isOwnProfile ? (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <div className="w-6 h-6 bg-slate-600 rounded flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">L</span>
+                </div>
+                <div className="text-left">
+                  <p className="text-sm text-white">Link Lichess</p>
+                  <p className="text-xs text-slate-400">Not linked</p>
+                </div>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg opacity-50">
+                <div className="w-6 h-6 bg-slate-600 rounded flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">L</span>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-400">Lichess</p>
+                  <p className="text-xs text-slate-500">Not linked</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-slate-800">
-        <button className="px-6 py-3 text-white border-b-2 border-primary-500 font-medium">
+        <button className="px-6 py-3 text-white border-b-2 border-emerald-500 font-medium">
           Posts
         </button>
         <button className="px-6 py-3 text-slate-400 hover:text-white transition-colors">
@@ -298,7 +344,13 @@ export default function ProfilePage() {
       {showEditModal && (
         <EditProfileModal
           profile={profile}
-          onClose={() => setShowEditModal(false)}
+          onClose={() => {
+            setShowEditModal(false);
+            if (searchParams.get('settings')) {
+              searchParams.delete('settings');
+              setSearchParams(searchParams);
+            }
+          }}
           onSave={handleProfileUpdate}
         />
       )}

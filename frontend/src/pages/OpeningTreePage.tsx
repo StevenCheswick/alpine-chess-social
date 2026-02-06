@@ -12,36 +12,12 @@ function formatMoveNumber(index: number): string {
   return isWhite ? `${fullMove}.` : `${fullMove}...`;
 }
 
-function formatCurrentLine(path: string[]): string {
-  if (path.length === 0) return 'Starting position';
-
-  let result = '';
-  for (let i = 0; i < path.length; i++) {
-    const fullMove = Math.floor(i / 2) + 1;
-    const isWhite = i % 2 === 0;
-    if (isWhite) {
-      result += `${fullMove}. ${path[i]} `;
-    } else {
-      result += `${path[i]} `;
-    }
-  }
-  return result.trim();
-}
-
 function getWinRateColor(winRate: number): string {
   if (winRate >= 60) return 'text-green-400';
   if (winRate >= 50) return 'text-green-300';
   if (winRate >= 40) return 'text-yellow-400';
   if (winRate >= 30) return 'text-orange-400';
   return 'text-red-400';
-}
-
-function getWinRateBg(winRate: number): string {
-  if (winRate >= 60) return 'bg-green-500/20';
-  if (winRate >= 50) return 'bg-green-500/10';
-  if (winRate >= 40) return 'bg-yellow-500/10';
-  if (winRate >= 30) return 'bg-orange-500/10';
-  return 'bg-red-500/10';
 }
 
 export default function OpeningTreePage() {
@@ -146,7 +122,7 @@ export default function OpeningTreePage() {
           </p>
           <Link
             to={user ? `/${user.username}` : '/'}
-            className="inline-block px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+            className="inline-block px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-medium transition-all duration-200 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
           >
             Go to Profile Settings
           </Link>
@@ -194,7 +170,7 @@ export default function OpeningTreePage() {
       {/* Loading State */}
       {loading && (
         <div className="text-center py-12">
-          <div className="inline-block w-8 h-8 border-4 border-slate-700 border-t-primary-500 rounded-full animate-spin"></div>
+          <div className="inline-block w-8 h-8 border-4 border-slate-700 border-t-emerald-500 rounded-full animate-spin"></div>
           <p className="text-slate-400 mt-4">Loading opening tree...</p>
         </div>
       )}
@@ -215,7 +191,7 @@ export default function OpeningTreePage() {
               onClick={goToRoot}
               className={`px-2 py-1 rounded ${
                 currentPath.length === 0
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-emerald-600 text-white'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -251,10 +227,10 @@ export default function OpeningTreePage() {
               <div className="card overflow-hidden">
                 <div className="aspect-square">
                   <Chessboard
+                    key={`opening-${color}`}
                     options={{
                       position: currentFen,
                       boardOrientation: color,
-                      allowDragging: false,
                     }}
                   />
                 </div>
@@ -324,7 +300,7 @@ export default function OpeningTreePage() {
           </p>
           <Link
             to="/games"
-            className="inline-block px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+            className="inline-block px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-medium transition-all duration-200 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
           >
             Go to Games Page
           </Link>

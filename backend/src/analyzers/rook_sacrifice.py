@@ -227,6 +227,11 @@ class UnifiedRookSacrificeAnalyzer(UnifiedAnalyzerBase):
         self.recapture_move_number = None
         return []
 
+    def get_matched_game_links(self) -> List[str]:
+        """Fast path: return just the game links that matched."""
+        return [ref["game_data"].metadata.link for ref in self.all_sacrifice_refs 
+                if ref.get("game_data") and ref["game_data"].metadata.link]
+
     def get_final_results(self) -> List[Dict[str, Any]]:
         """Get final results after processing all games."""
         if not self.all_sacrifice_refs:

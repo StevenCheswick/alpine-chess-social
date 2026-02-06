@@ -4,15 +4,22 @@ PGN parsing utilities - lightweight version.
 import re
 from typing import List, Optional
 from .game_data import GameData, GameMetadata
+from .tcn_decoder import encode_san_to_tcn
 
 
 STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 
-def parse_pgn(pgn_string: str, filter_non_standard: bool = True, tcn: Optional[str] = None) -> Optional[GameData]:
+def parse_pgn(pgn_string: str, filter_non_standard: bool = True, tcn: Optional[str] = None, generate_tcn: bool = True) -> Optional[GameData]:
     """
     Parse a PGN string into a GameData object.
     Uses regex for fast header extraction and move parsing.
+
+    Args:
+        pgn_string: The PGN string to parse
+        filter_non_standard: Skip games with non-standard starting positions
+        tcn: Pre-existing TCN from Chess.com API
+        generate_tcn: If True and tcn is None, generate TCN from moves
     """
     try:
         # Extract headers with regex
@@ -49,11 +56,19 @@ def parse_pgn(pgn_string: str, filter_non_standard: bool = True, tcn: Optional[s
         if not moves and not tcn:
             return None
 
+        # Generate TCN if not provided (for Lichess games)
+        final_tcn = tcn
+        if not final_tcn and generate_tcn and moves:
+            try:
+                final_tcn = encode_san_to_tcn(moves)
+            except Exception:
+                pass  # Keep tcn as None if encoding fails
+
         return GameData(
             metadata=metadata,
             moves=moves,
             pgn=pgn_string,
-            tcn=tcn
+            tcn=final_tcn
         )
     except Exception as e:
         print(f"Error parsing PGN: {e}")

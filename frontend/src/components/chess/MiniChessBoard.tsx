@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 
 interface MiniChessBoardProps {
@@ -7,70 +8,67 @@ interface MiniChessBoardProps {
   size?: number;
 }
 
-const pieceUnicode: Record<string, string> = {
-  'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
-  'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟',
-};
-
 export function MiniChessBoard({ moves, orientation = 'white', size = 120 }: MiniChessBoardProps) {
-  const board = useMemo(() => {
+  const [currentPosition, setCurrentPosition] = useState<string>(
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+  );
+  const [boardWidth, setBoardWidth] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize position - replay all moves to get final position
+  useEffect(() => {
     const chess = new Chess();
 
-    // Play through all moves to get final position
-    for (const move of moves) {
-      try {
-        // Clean the move (remove move numbers, annotations)
-        const cleanMove = move.replace(/^\d+\.+\s*/, '').replace(/[!?]+$/, '').trim();
-        if (cleanMove && cleanMove !== '1-0' && cleanMove !== '0-1' && cleanMove !== '1/2-1/2') {
-          chess.move(cleanMove);
+    if (moves && moves.length > 0) {
+      for (let i = 0; i < moves.length; i++) {
+        try {
+          const cleanMove = moves[i].replace(/^\d+\.+\s*/, '').replace(/[!?]+$/, '').trim();
+          if (cleanMove && cleanMove !== '1-0' && cleanMove !== '0-1' && cleanMove !== '1/2-1/2') {
+            chess.move(cleanMove);
+          }
+        } catch {
+          break;
         }
-      } catch {
-        // Invalid move, stop here
-        break;
       }
     }
 
-    return chess.board();
+    setCurrentPosition(chess.fen());
   }, [moves]);
 
-  const squareSize = size / 8;
+  // Measure container width
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        const width = containerRef.current.offsetWidth;
+        if (width > 0) {
+          setBoardWidth(width);
+        }
+      }
+    };
 
-  // Get rows in correct order based on orientation
-  const rows = orientation === 'white'
-    ? board
-    : [...board].reverse().map(row => [...row].reverse());
+    updateWidth();
+    const resizeObserver = new ResizeObserver(updateWidth);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   return (
     <div
-      className="grid grid-cols-8 border border-slate-700 rounded overflow-hidden flex-shrink-0"
+      ref={containerRef}
+      className="flex-shrink-0 bg-slate-900 rounded overflow-hidden"
       style={{ width: size, height: size }}
     >
-      {rows.map((row, rowIndex) =>
-        row.map((square, colIndex) => {
-          const isLight = (rowIndex + colIndex) % 2 === 0;
-          const piece = square ? pieceUnicode[square.color === 'w' ? square.type.toUpperCase() : square.type.toLowerCase()] : null;
-
-          return (
-            <div
-              key={`${rowIndex}-${colIndex}`}
-              className={`flex items-center justify-center ${
-                isLight ? 'bg-amber-100' : 'bg-amber-700'
-              }`}
-              style={{
-                width: squareSize,
-                height: squareSize,
-                fontSize: squareSize * 0.75,
-                lineHeight: 1,
-              }}
-            >
-              {piece && (
-                <span className={square?.color === 'w' ? 'text-slate-800' : 'text-slate-900'}>
-                  {piece}
-                </span>
-              )}
-            </div>
-          );
-        })
+      {boardWidth > 0 && (
+        <Chessboard
+          key={`mini-${orientation}`}
+          position={currentPosition}
+          boardOrientation={orientation}
+          arePiecesDraggable={false}
+          boardWidth={boardWidth}
+        />
       )}
     </div>
   );

@@ -49,10 +49,10 @@ export default function RegisterPage() {
     <div>
       {/* Mobile logo */}
       <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
+        <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.4)]">
           <span className="text-white text-xl">♞</span>
         </div>
-        <span className="text-xl font-bold text-white">ChessSocial</span>
+        <span className="text-xl font-bold text-white">Alpine Chess</span>
       </div>
 
       <h2 className="text-2xl font-bold text-white mb-2">Create an account</h2>
@@ -165,7 +165,7 @@ export default function RegisterPage() {
 
       <p className="mt-8 text-center text-sm text-slate-400">
         Already have an account?{' '}
-        <Link to="/login" className="text-primary-400 hover:text-primary-300 font-medium">
+        <Link to="/login" className="text-emerald-400 hover:text-emerald-300 font-medium">
           Sign in
         </Link>
       </p>

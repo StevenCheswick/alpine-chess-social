@@ -12,6 +12,7 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio || '');
   const [chessComUsername, setChessComUsername] = useState(profile.chessComUsername || '');
+  const [lichessUsername, setLichessUsername] = useState(profile.lichessUsername || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +46,12 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
       return;
     }
 
+    if (lichessUsername.length > 50) {
+      setError('Lichess username must be at most 50 characters');
+      setLoading(false);
+      return;
+    }
+
     try {
       const data: UpdateProfileData = {};
 
@@ -57,6 +64,9 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
       }
       if (chessComUsername !== (profile.chessComUsername || '')) {
         data.chessComUsername = chessComUsername.trim();
+      }
+      if (lichessUsername !== (profile.lichessUsername || '')) {
+        data.lichessUsername = lichessUsername.trim();
       }
 
       // If nothing changed, just close
@@ -163,6 +173,28 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
                 />
               </div>
               <p className="mt-1 text-xs text-slate-500">Enter your Chess.com username to sync your games</p>
+            </div>
+
+            <div className="mt-4">
+              <label htmlFor="lichessUsername" className="block text-sm font-medium text-slate-300 mb-2">
+                Lichess Username
+              </label>
+              <div className="flex gap-2">
+                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-black text-sm font-bold">L</span>
+                </div>
+                <input
+                  type="text"
+                  id="lichessUsername"
+                  value={lichessUsername}
+                  onChange={(e) => setLichessUsername(e.target.value)}
+                  className="input flex-1"
+                  placeholder="your_lichess_username"
+                  maxLength={50}
+                  disabled={loading}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Enter your Lichess username to sync your games</p>
             </div>
           </div>
 

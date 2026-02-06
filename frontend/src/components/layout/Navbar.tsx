@@ -17,10 +17,10 @@ export default function Navbar() {
       <div className="h-full max-w-7xl mx-auto px-4 flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-lg flex items-center justify-center shadow-[0_0_12px_rgba(16,185,129,0.4)]">
             <span className="text-white font-bold text-lg">♞</span>
           </div>
-          <span className="text-xl font-bold text-white hidden sm:block">ChessSocial</span>
+          <span className="text-xl font-bold text-white hidden sm:block">Alpine Chess</span>
         </Link>
 
         {/* Search */}
@@ -50,7 +50,7 @@ export default function Navbar() {
         {/* Right side */}
         <div className="flex items-center gap-4">
           {/* Create Post Button */}
-          <button className="btn btn-primary hidden sm:flex items-center gap-2">
+          <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-medium rounded-lg transition-all duration-200 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>

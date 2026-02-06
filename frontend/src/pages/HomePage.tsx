@@ -102,7 +102,7 @@ export default function HomePage() {
           {error}
           <button
             onClick={fetchPosts}
-            className="block mx-auto mt-2 text-primary-400 hover:underline"
+            className="block mx-auto mt-2 text-emerald-400 hover:underline"
           >
             Try again
           </button>

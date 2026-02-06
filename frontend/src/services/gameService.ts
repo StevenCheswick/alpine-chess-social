@@ -37,6 +37,8 @@ export interface AnalyzeResponse {
   total: number;
 }
 
+export type ChessPlatform = 'chess_com' | 'lichess';
+
 export const gameService = {
   /**
    * Get current user's synced games.
@@ -54,11 +56,18 @@ export const gameService = {
   },
 
   /**
+   * Sync games from Lichess.
+   */
+  async syncLichessGames(): Promise<SyncResponse> {
+    return api.post<SyncResponse>('/api/games/sync/lichess', {});
+  },
+
+  /**
    * Analyze unanalyzed games and add tags.
    * Processes in batches of 100, saving after each batch.
    */
-  async analyzeGames(limit: number = 1000): Promise<AnalyzeResponse> {
-    return api.post<AnalyzeResponse>(`/api/games/analyze?limit=${limit}`, {});
+  async analyzeGames(limit: number = 1000, platform: ChessPlatform = 'chess_com'): Promise<AnalyzeResponse> {
+    return api.post<AnalyzeResponse>(`/api/games/analyze?limit=${limit}&platform=${platform}`, {});
   },
 };
 

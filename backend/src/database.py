@@ -4,10 +4,39 @@ SQLite database setup and operations.
 import sqlite3
 import json
 import os
+import chess
 from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
+from .tcn_decoder import decode_tcn
 
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "chess.db")
+
+
+def tcn_to_san(tcn: Optional[str]) -> List[str]:
+    """Decode TCN to SAN moves for frontend display.
+
+    Args:
+        tcn: TCN encoded string or None
+
+    Returns:
+        List of SAN move strings
+    """
+    if not tcn:
+        return []
+
+    try:
+        moves = decode_tcn(tcn)
+        board = chess.Board()
+        san_moves = []
+        for move in moves:
+            if move in board.legal_moves:
+                san_moves.append(board.san(move))
+                board.push(move)
+            else:
+                break
+        return san_moves
+    except Exception:
+        return []
 
 
 def get_db_path() -> str:
@@ -108,6 +137,24 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Add source column for multi-platform support (migration)
+        try:
+            cursor.execute("ALTER TABLE user_games ADD COLUMN source TEXT DEFAULT 'chess_com'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Add tcn column for compact move storage (migration)
+        try:
+            cursor.execute("ALTER TABLE user_games ADD COLUMN tcn TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Add lichess_username to accounts (migration)
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN lichess_username TEXT COLLATE NOCASE")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # Index for faster lookups
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_user_games_user_id
@@ -116,6 +163,15 @@ def init_db():
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_user_games_date
             ON user_games(date DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_games_source
+            ON user_games(source)
+        """)
+        # Unique constraint for source + game_id combo
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_user_games_source_game
+            ON user_games(user_id, source, chess_com_game_id)
         """)
 
         # Posts table
@@ -157,6 +213,93 @@ def init_db():
                 UNIQUE(user_id, color)
             )
         """)
+
+        # Normalized game tags table (replaces JSON tags column)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS game_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                FOREIGN KEY (game_id) REFERENCES user_games(id) ON DELETE CASCADE,
+                UNIQUE(game_id, tag)
+            )
+        """)
+
+        # Indexes for fast tag queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_game_tags_game_id
+            ON game_tags(game_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_game_tags_tag
+            ON game_tags(tag)
+        """)
+
+        # Game analysis table - stores Stockfish analysis results
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS game_analysis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL UNIQUE,
+                white_accuracy REAL NOT NULL,
+                black_accuracy REAL NOT NULL,
+                white_avg_cp_loss REAL NOT NULL,
+                black_avg_cp_loss REAL NOT NULL,
+                white_classifications TEXT NOT NULL,
+                black_classifications TEXT NOT NULL,
+                moves TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (game_id) REFERENCES user_games(id) ON DELETE CASCADE
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_game_analysis_game_id
+            ON game_analysis(game_id)
+        """)
+
+
+def migrate_json_tags_to_table():
+    """One-time migration: populate game_tags table from JSON tags column."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Check if migration already done (game_tags has data)
+        cursor.execute("SELECT COUNT(*) FROM game_tags")
+        if cursor.fetchone()[0] > 0:
+            return  # Already migrated
+
+        # Check if there are any games with tags to migrate
+        cursor.execute("SELECT COUNT(*) FROM user_games WHERE tags IS NOT NULL AND tags != '[]'")
+        games_with_tags = cursor.fetchone()[0]
+        if games_with_tags == 0:
+            return  # Nothing to migrate
+
+        print(f"Migrating tags for {games_with_tags} games to normalized table...")
+
+        # Fetch all games with tags
+        cursor.execute("""
+            SELECT id, tags FROM user_games
+            WHERE tags IS NOT NULL AND tags != '[]'
+        """)
+
+        batch = []
+        for row in cursor.fetchall():
+            game_id = row[0]
+            try:
+                tags = json.loads(row[1]) if row[1] else []
+                for tag in tags:
+                    if tag and tag not in RESULT_TAGS:  # Skip Win/Loss/Draw virtual tags
+                        batch.append((game_id, tag))
+            except json.JSONDecodeError:
+                continue
+
+        # Batch insert
+        if batch:
+            cursor.executemany(
+                "INSERT OR IGNORE INTO game_tags (game_id, tag) VALUES (?, ?)",
+                batch
+            )
+            print(f"Migrated {len(batch)} tag entries to game_tags table.")
 
 
 def get_or_create_user(username: str) -> int:
@@ -204,46 +347,16 @@ def update_user_last_synced(user_id: int) -> None:
         )
 
 
-def upsert_game(user_id: int, game: Dict[str, Any]) -> None:
-    """Insert or update a game for a user."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
+def upsert_games(user_id: int, games: List[Dict[str, Any]], source: str = "chess_com") -> int:
+    """Insert or update multiple games for a user (batched for performance).
 
-        cursor.execute("""
-            INSERT INTO user_games (
-                user_id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                result, user_color, time_control, date, pgn, moves, tags
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, chess_com_game_id) DO UPDATE SET
-                opponent = excluded.opponent,
-                opponent_rating = excluded.opponent_rating,
-                user_rating = excluded.user_rating,
-                result = excluded.result,
-                user_color = excluded.user_color,
-                time_control = excluded.time_control,
-                date = excluded.date,
-                pgn = excluded.pgn,
-                moves = excluded.moves,
-                tags = excluded.tags,
-                updated_at = CURRENT_TIMESTAMP
-        """, (
-            user_id,
-            game["id"],
-            game["opponent"],
-            game.get("opponentRating"),
-            game.get("userRating"),
-            game["result"],
-            game["userColor"],
-            game.get("timeControl"),
-            game.get("date"),
-            game.get("pgn"),
-            json.dumps(game.get("moves", [])),
-            json.dumps(game.get("tags", []))
-        ))
+    Args:
+        user_id: The user's database ID
+        games: List of game dictionaries
+        source: Platform source - 'chess_com' or 'lichess'
 
-
-def upsert_games(user_id: int, games: List[Dict[str, Any]]) -> int:
-    """Insert or update multiple games for a user (batched for performance)."""
+    Note: Only stores TCN for moves (compact). PGN and moves columns are deprecated.
+    """
     if not games:
         return 0
 
@@ -253,9 +366,9 @@ def upsert_games(user_id: int, games: List[Dict[str, Any]]) -> int:
             cursor.execute("""
                 INSERT INTO user_games (
                     user_id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                    result, user_color, time_control, date, pgn, moves, tags
+                    result, user_color, time_control, date, tags, source, tcn
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, chess_com_game_id) DO UPDATE SET
+                ON CONFLICT(user_id, source, chess_com_game_id) DO UPDATE SET
                     opponent = excluded.opponent,
                     opponent_rating = excluded.opponent_rating,
                     user_rating = excluded.user_rating,
@@ -263,9 +376,8 @@ def upsert_games(user_id: int, games: List[Dict[str, Any]]) -> int:
                     user_color = excluded.user_color,
                     time_control = excluded.time_control,
                     date = excluded.date,
-                    pgn = excluded.pgn,
-                    moves = excluded.moves,
                     tags = excluded.tags,
+                    tcn = excluded.tcn,
                     updated_at = CURRENT_TIMESTAMP
             """, (
                 user_id,
@@ -277,9 +389,9 @@ def upsert_games(user_id: int, games: List[Dict[str, Any]]) -> int:
                 game["userColor"],
                 game.get("timeControl"),
                 game.get("date"),
-                game.get("pgn"),
-                json.dumps(game.get("moves", [])),
-                json.dumps(game.get("tags", []))
+                json.dumps(game.get("tags", [])),
+                source,
+                game.get("tcn")
             ))
         # Single commit for all games
         return len(games)
@@ -307,35 +419,195 @@ def get_user_games(user_id: int) -> List[Dict[str, Any]]:
                 "userColor": row["user_color"],
                 "timeControl": row["time_control"],
                 "date": row["date"],
-                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "moves": tcn_to_san(row["tcn"]),
                 "tags": json.loads(row["tags"]) if row["tags"] else [],
             })
 
         return games
 
 
-def get_user_games_count(user_id: int) -> int:
-    """Get count of games for a user."""
+def get_game_by_id(user_id: int, game_id: int) -> Optional[Dict[str, Any]]:
+    """Get a single game by its ID for a user.
+
+    Args:
+        user_id: The user's database ID
+        game_id: The game's internal database ID
+
+    Returns:
+        Game dict or None if not found
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (user_id,))
+        cursor.execute("""
+            SELECT ug.*, GROUP_CONCAT(gt.tag) as tags_str
+            FROM user_games ug
+            LEFT JOIN game_tags gt ON ug.id = gt.game_id
+            WHERE ug.user_id = ? AND ug.id = ?
+            GROUP BY ug.id
+        """, (user_id, game_id))
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        tags = row["tags_str"].split(',') if row["tags_str"] else []
+        return {
+            "id": row["id"],
+            "chessComGameId": row["chess_com_game_id"],
+            "opponent": row["opponent"],
+            "opponentRating": row["opponent_rating"],
+            "userRating": row["user_rating"],
+            "result": row["result"],
+            "userColor": row["user_color"],
+            "timeControl": row["time_control"],
+            "date": row["date"],
+            "moves": tcn_to_san(row["tcn"]),
+            "tags": tags,
+            "source": row["source"] if "source" in row.keys() else "chess_com",
+        }
+
+
+def save_game_analysis(game_id: int, analysis: Dict[str, Any]) -> bool:
+    """Save analysis results for a game.
+
+    Args:
+        game_id: The game's internal database ID
+        analysis: Analysis data matching the Lambda API format
+
+    Returns:
+        True if saved successfully
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO game_analysis (
+                game_id,
+                white_accuracy,
+                black_accuracy,
+                white_avg_cp_loss,
+                black_avg_cp_loss,
+                white_classifications,
+                black_classifications,
+                moves
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            game_id,
+            analysis["white_accuracy"],
+            analysis["black_accuracy"],
+            analysis.get("white_avg_cp_loss", 0),
+            analysis.get("black_avg_cp_loss", 0),
+            json.dumps(analysis["white_classifications"]),
+            json.dumps(analysis["black_classifications"]),
+            json.dumps(analysis["moves"]),
+        ))
+
+        # Update the game's analyzed_at timestamp
+        cursor.execute("""
+            UPDATE user_games SET analyzed_at = CURRENT_TIMESTAMP WHERE id = ?
+        """, (game_id,))
+
+        return True
+
+
+def get_game_analysis(game_id: int) -> Optional[Dict[str, Any]]:
+    """Get analysis results for a game.
+
+    Args:
+        game_id: The game's internal database ID
+
+    Returns:
+        Analysis data or None if not analyzed
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM game_analysis WHERE game_id = ?
+        """, (game_id,))
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        return {
+            "white_accuracy": row["white_accuracy"],
+            "black_accuracy": row["black_accuracy"],
+            "white_avg_cp_loss": row["white_avg_cp_loss"],
+            "black_avg_cp_loss": row["black_avg_cp_loss"],
+            "white_classifications": json.loads(row["white_classifications"]),
+            "black_classifications": json.loads(row["black_classifications"]),
+            "moves": json.loads(row["moves"]),
+            "isComplete": True,
+        }
+
+
+def get_user_games_count(user_id: int, source: Optional[str] = None) -> int:
+    """Get count of games for a user.
+
+    Args:
+        user_id: The user's database ID
+        source: Optional platform filter - 'chess_com' or 'lichess'
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if source:
+            cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ? AND source = ?", (user_id, source))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM user_games WHERE user_id = ?", (user_id,))
         return cursor.fetchone()[0]
 
 
-def get_user_tag_counts(user_id: int) -> Dict[str, int]:
-    """Get tag counts for a user's games."""
+# Result tags are virtual tags derived from the result column
+RESULT_TAGS = {"Win": "W", "Loss": "L", "Draw": "D"}
+RESULT_TO_TAG = {"W": "Win", "L": "Loss", "D": "Draw"}
+
+# Platform tags are virtual tags derived from the source column
+PLATFORM_TAGS = {"Chess.com": "chess_com", "Lichess": "lichess"}
+SOURCE_TO_TAG = {"chess_com": "Chess.com", "lichess": "Lichess"}
+
+
+def get_user_tag_counts(user_id: int, source: Optional[str] = None) -> Dict[str, int]:
+    """Get tag counts for a user's games, including Win/Loss/Draw and platform tags.
+
+    Args:
+        user_id: The user's database ID
+        source: Optional platform filter - 'chess_com' or 'lichess'
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT tags FROM user_games WHERE user_id = ? AND tags IS NOT NULL AND tags != '[]'",
-            (user_id,)
-        )
+
+        source_condition = " AND source = ?" if source else ""
+        source_params = (user_id, source) if source else (user_id,)
 
         tag_counts: Dict[str, int] = {}
+
+        # Get platform counts (Chess.com/Lichess)
+        cursor.execute(
+            "SELECT source, COUNT(*) as count FROM user_games WHERE user_id = ? GROUP BY source",
+            (user_id,)
+        )
         for row in cursor.fetchall():
-            tags = json.loads(row["tags"])
-            for tag in tags:
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            if row["source"] in SOURCE_TO_TAG:
+                tag_counts[SOURCE_TO_TAG[row["source"]]] = row["count"]
+
+        # Get result counts (Win/Loss/Draw)
+        cursor.execute(
+            f"SELECT result, COUNT(*) as count FROM user_games WHERE user_id = ?{source_condition} GROUP BY result",
+            source_params
+        )
+        for row in cursor.fetchall():
+            if row["result"] in RESULT_TO_TAG:
+                tag_counts[RESULT_TO_TAG[row["result"]]] = row["count"]
+
+        # Get regular tag counts using normalized game_tags table
+        cursor.execute(f"""
+            SELECT gt.tag, COUNT(*) as count
+            FROM game_tags gt
+            JOIN user_games ug ON gt.game_id = ug.id
+            WHERE ug.user_id = ?{source_condition}
+            GROUP BY gt.tag
+        """, source_params)
+        for row in cursor.fetchall():
+            tag_counts[row["tag"]] = row["count"]
 
         return tag_counts
 
@@ -344,27 +616,76 @@ def get_user_tag_counts_filtered(user_id: int, selected_tags: List[str]) -> Dict
     """Get tag counts for games that have ALL selected tags.
 
     Returns counts of games that have ALL selected_tags AND each other tag.
+    Handles Win/Loss/Draw and Chess.com/Lichess as virtual tags.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        # Build query to match ALL selected tags
-        # Each tag needs its own LIKE clause
-        conditions = ["user_id = ?"]
+        # Separate virtual tags from regular tags
+        result_filters = [RESULT_TAGS[t] for t in selected_tags if t in RESULT_TAGS]
+        platform_filters = [PLATFORM_TAGS[t] for t in selected_tags if t in PLATFORM_TAGS]
+        regular_tags = [t for t in selected_tags if t not in RESULT_TAGS and t not in PLATFORM_TAGS]
+
+        # Build base conditions for user_games
+        conditions = ["ug.user_id = ?"]
         params: List[Any] = [user_id]
 
-        for tag in selected_tags:
-            conditions.append("tags LIKE ?")
-            params.append(f'%"{tag}"%')
+        # Add platform filter (can only be one since Chess.com/Lichess are mutually exclusive)
+        if platform_filters:
+            conditions.append("ug.source = ?")
+            params.append(platform_filters[0])
 
-        query = f"SELECT tags FROM user_games WHERE {' AND '.join(conditions)}"
-        cursor.execute(query, params)
+        # Add result filter (can only be one since Win/Loss/Draw are mutually exclusive)
+        if result_filters:
+            conditions.append("ug.result = ?")
+            params.append(result_filters[0])
+
+        # For regular tags, use subquery to find games with ALL selected tags
+        if regular_tags:
+            tag_placeholders = ','.join(['?' for _ in regular_tags])
+            conditions.append(f"""
+                ug.id IN (
+                    SELECT game_id FROM game_tags
+                    WHERE tag IN ({tag_placeholders})
+                    GROUP BY game_id
+                    HAVING COUNT(DISTINCT tag) = ?
+                )
+            """)
+            params.extend(regular_tags)
+            params.append(len(regular_tags))
+
+        where_clause = ' AND '.join(conditions)
 
         tag_counts: Dict[str, int] = {}
+
+        # Get platform counts for filtered games
+        cursor.execute(
+            f"SELECT ug.source, COUNT(*) as count FROM user_games ug WHERE {where_clause} GROUP BY ug.source",
+            params
+        )
         for row in cursor.fetchall():
-            tags = json.loads(row["tags"]) if row["tags"] else []
-            for tag in tags:
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            if row["source"] in SOURCE_TO_TAG:
+                tag_counts[SOURCE_TO_TAG[row["source"]]] = row["count"]
+
+        # Get result counts for filtered games
+        cursor.execute(
+            f"SELECT ug.result, COUNT(*) as count FROM user_games ug WHERE {where_clause} GROUP BY ug.result",
+            params
+        )
+        for row in cursor.fetchall():
+            if row["result"] in RESULT_TO_TAG:
+                tag_counts[RESULT_TO_TAG[row["result"]]] = row["count"]
+
+        # Get regular tag counts for filtered games using game_tags table
+        cursor.execute(f"""
+            SELECT gt.tag, COUNT(*) as count
+            FROM game_tags gt
+            JOIN user_games ug ON gt.game_id = ug.id
+            WHERE {where_clause}
+            GROUP BY gt.tag
+        """, params)
+        for row in cursor.fetchall():
+            tag_counts[row["tag"]] = row["count"]
 
         return tag_counts
 
@@ -373,26 +694,72 @@ def get_user_games_paginated(
     user_id: int,
     limit: int = 50,
     offset: int = 0,
-    tag_filters: Optional[List[str]] = None
+    tag_filters: Optional[List[str]] = None,
+    source: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Get games for a user with pagination and optional tag filters (must have ALL tags)."""
+    """Get games for a user with pagination and optional tag filters (must have ALL tags).
+
+    Args:
+        user_id: The user's database ID
+        limit: Max games to return
+        offset: Pagination offset
+        tag_filters: Optional list of tags to filter by (must have ALL)
+        source: Optional platform filter - 'chess_com' or 'lichess'
+
+    Handles Win/Loss/Draw and Chess.com/Lichess as virtual tags.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        conditions = ["user_id = ?"]
+        conditions = ["ug.user_id = ?"]
         params: List[Any] = [user_id]
 
+        if source:
+            conditions.append("ug.source = ?")
+            params.append(source)
+
         if tag_filters:
-            for tag in tag_filters:
-                conditions.append("tags LIKE ?")
-                params.append(f'%"{tag}"%')
+            # Separate virtual tags from regular tags
+            result_filters = [RESULT_TAGS[t] for t in tag_filters if t in RESULT_TAGS]
+            platform_filters = [PLATFORM_TAGS[t] for t in tag_filters if t in PLATFORM_TAGS]
+            regular_tags = [t for t in tag_filters if t not in RESULT_TAGS and t not in PLATFORM_TAGS]
+
+            # Add platform filter
+            if platform_filters:
+                conditions.append("ug.source = ?")
+                params.append(platform_filters[0])
+
+            # Add result filter
+            if result_filters:
+                conditions.append("ug.result = ?")
+                params.append(result_filters[0])
+
+            # Add regular tag filters using game_tags table
+            if regular_tags:
+                tag_placeholders = ','.join(['?' for _ in regular_tags])
+                conditions.append(f"""
+                    ug.id IN (
+                        SELECT game_id FROM game_tags
+                        WHERE tag IN ({tag_placeholders})
+                        GROUP BY game_id
+                        HAVING COUNT(DISTINCT tag) = ?
+                    )
+                """)
+                params.extend(regular_tags)
+                params.append(len(regular_tags))
 
         query = f"""
-            SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                   result, user_color, time_control, date, moves, tags
-            FROM user_games
+            SELECT ug.id, ug.chess_com_game_id, ug.opponent, ug.opponent_rating, ug.user_rating,
+                   ug.result, ug.user_color, ug.time_control, ug.date, ug.tcn, ug.source,
+                   GROUP_CONCAT(DISTINCT gt.tag) as tags_str,
+                   CASE WHEN ga.id IS NOT NULL THEN 1 ELSE 0 END as has_analysis,
+                   ga.white_accuracy, ga.black_accuracy
+            FROM user_games ug
+            LEFT JOIN game_tags gt ON ug.id = gt.game_id
+            LEFT JOIN game_analysis ga ON ug.id = ga.game_id
             WHERE {' AND '.join(conditions)}
-            ORDER BY date DESC
+            GROUP BY ug.id
+            ORDER BY ug.date DESC
             LIMIT ? OFFSET ?
         """
         params.extend([limit, offset])
@@ -400,7 +767,8 @@ def get_user_games_paginated(
 
         games = []
         for row in cursor.fetchall():
-            games.append({
+            tags = row["tags_str"].split(',') if row["tags_str"] else []
+            game_data = {
                 "id": row["id"],
                 "chessComGameId": row["chess_com_game_id"],
                 "opponent": row["opponent"],
@@ -410,44 +778,108 @@ def get_user_games_paginated(
                 "userColor": row["user_color"],
                 "timeControl": row["time_control"],
                 "date": row["date"],
-                "moves": json.loads(row["moves"]) if row["moves"] else [],
-                "tags": json.loads(row["tags"]) if row["tags"] else [],
-            })
+                "moves": tcn_to_san(row["tcn"]),
+                "tags": tags,
+                "source": row["source"],
+                "hasAnalysis": bool(row["has_analysis"]),
+            }
+            # Include accuracy if analysis exists
+            if row["has_analysis"]:
+                game_data["whiteAccuracy"] = row["white_accuracy"]
+                game_data["blackAccuracy"] = row["black_accuracy"]
+            games.append(game_data)
 
         return games
 
 
-def get_user_games_count_filtered(user_id: int, tag_filters: Optional[List[str]] = None) -> int:
-    """Get count of games for a user, optionally filtered by tags (must have ALL tags)."""
+def get_user_games_count_filtered(
+    user_id: int,
+    tag_filters: Optional[List[str]] = None,
+    source: Optional[str] = None
+) -> int:
+    """Get count of games for a user, optionally filtered by tags (must have ALL tags).
+
+    Args:
+        user_id: The user's database ID
+        tag_filters: Optional list of tags to filter by
+        source: Optional platform filter - 'chess_com' or 'lichess'
+
+    Handles Win/Loss/Draw and Chess.com/Lichess as virtual tags.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
 
         conditions = ["user_id = ?"]
         params: List[Any] = [user_id]
 
+        if source:
+            conditions.append("source = ?")
+            params.append(source)
+
         if tag_filters:
-            for tag in tag_filters:
-                conditions.append("tags LIKE ?")
-                params.append(f'%"{tag}"%')
+            # Separate virtual tags from regular tags
+            result_filters = [RESULT_TAGS[t] for t in tag_filters if t in RESULT_TAGS]
+            platform_filters = [PLATFORM_TAGS[t] for t in tag_filters if t in PLATFORM_TAGS]
+            regular_tags = [t for t in tag_filters if t not in RESULT_TAGS and t not in PLATFORM_TAGS]
+
+            # Add platform filter
+            if platform_filters:
+                conditions.append("source = ?")
+                params.append(platform_filters[0])
+
+            # Add result filter
+            if result_filters:
+                conditions.append("result = ?")
+                params.append(result_filters[0])
+
+            # Add regular tag filters using game_tags table
+            if regular_tags:
+                tag_placeholders = ','.join(['?' for _ in regular_tags])
+                conditions.append(f"""
+                    id IN (
+                        SELECT game_id FROM game_tags
+                        WHERE tag IN ({tag_placeholders})
+                        GROUP BY game_id
+                        HAVING COUNT(DISTINCT tag) = ?
+                    )
+                """)
+                params.extend(regular_tags)
+                params.append(len(regular_tags))
 
         query = f"SELECT COUNT(*) FROM user_games WHERE {' AND '.join(conditions)}"
         cursor.execute(query, params)
         return cursor.fetchone()[0]
 
 
-def get_unanalyzed_games(user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+def get_unanalyzed_games(user_id: int, limit: int = 100, source: str = None) -> List[Dict[str, Any]]:
     """Get games that haven't been analyzed yet."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM user_games
-            WHERE user_id = ? AND analyzed_at IS NULL
-            ORDER BY date DESC
-            LIMIT ?
-        """, (user_id, limit))
+        if source:
+            cursor.execute("""
+                SELECT * FROM user_games
+                WHERE user_id = ? AND analyzed_at IS NULL AND source = ?
+                ORDER BY date DESC
+                LIMIT ?
+            """, (user_id, source, limit))
+        else:
+            cursor.execute("""
+                SELECT * FROM user_games
+                WHERE user_id = ? AND analyzed_at IS NULL
+                ORDER BY date DESC
+                LIMIT ?
+            """, (user_id, limit))
 
         games = []
         for row in cursor.fetchall():
+            # Get moves from TCN if available, otherwise fall back to moves column
+            if row["tcn"]:
+                moves = tcn_to_san(row["tcn"])
+            elif row["moves"]:
+                moves = json.loads(row["moves"]) if isinstance(row["moves"], str) else row["moves"]
+            else:
+                moves = []
+
             games.append({
                 "id": row["id"],
                 "chessComGameId": row["chess_com_game_id"],
@@ -458,8 +890,8 @@ def get_unanalyzed_games(user_id: int, limit: int = 100) -> List[Dict[str, Any]]
                 "userColor": row["user_color"],
                 "timeControl": row["time_control"],
                 "date": row["date"],
-                "pgn": row["pgn"],
-                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "tcn": row["tcn"],
+                "moves": moves,
                 "tags": json.loads(row["tags"]) if row["tags"] else [],
             })
         return games
@@ -484,14 +916,35 @@ def mark_games_analyzed(game_ids: List[int], tags_map: Dict[int, List[str]]) -> 
     with get_connection() as conn:
         cursor = conn.cursor()
         updated = 0
+        tag_inserts = []
+
         for game_id in game_ids:
             tags = tags_map.get(game_id, [])
+
+            # Update user_games table (keep JSON for backward compatibility)
             cursor.execute("""
                 UPDATE user_games
                 SET analyzed_at = CURRENT_TIMESTAMP, tags = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             """, (json.dumps(tags), game_id))
             updated += cursor.rowcount
+
+            # Collect tags for batch insert into game_tags
+            for tag in tags:
+                if tag not in RESULT_TAGS:  # Skip virtual tags
+                    tag_inserts.append((game_id, tag))
+
+        # Delete existing tags for these games and insert new ones
+        if game_ids:
+            placeholders = ','.join(['?' for _ in game_ids])
+            cursor.execute(f"DELETE FROM game_tags WHERE game_id IN ({placeholders})", game_ids)
+
+        if tag_inserts:
+            cursor.executemany(
+                "INSERT OR IGNORE INTO game_tags (game_id, tag) VALUES (?, ?)",
+                tag_inserts
+            )
+
         return updated
 
 
@@ -522,7 +975,7 @@ def get_account_by_email(email: str) -> Optional[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, username, email, password_hash, display_name,
-                   chess_com_username, bio, avatar_url, created_at
+                   chess_com_username, lichess_username, bio, avatar_url, created_at
             FROM accounts
             WHERE email = ? COLLATE NOCASE
         """, (email,))
@@ -538,6 +991,7 @@ def get_account_by_email(email: str) -> Optional[Dict[str, Any]]:
             "password_hash": row["password_hash"],
             "displayName": row["display_name"],
             "chessComUsername": row["chess_com_username"],
+            "lichessUsername": row["lichess_username"],
             "bio": row["bio"],
             "avatarUrl": row["avatar_url"],
             "createdAt": row["created_at"],
@@ -550,7 +1004,7 @@ def get_account_by_username(username: str) -> Optional[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, username, email, password_hash, display_name,
-                   chess_com_username, bio, avatar_url, created_at
+                   chess_com_username, lichess_username, bio, avatar_url, created_at
             FROM accounts
             WHERE username = ? COLLATE NOCASE
         """, (username,))
@@ -566,6 +1020,7 @@ def get_account_by_username(username: str) -> Optional[Dict[str, Any]]:
             "password_hash": row["password_hash"],
             "displayName": row["display_name"],
             "chessComUsername": row["chess_com_username"],
+            "lichessUsername": row["lichess_username"],
             "bio": row["bio"],
             "avatarUrl": row["avatar_url"],
             "createdAt": row["created_at"],
@@ -578,7 +1033,7 @@ def get_account_by_id(account_id: int) -> Optional[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, username, email, display_name,
-                   chess_com_username, bio, avatar_url, created_at
+                   chess_com_username, lichess_username, bio, avatar_url, created_at
             FROM accounts
             WHERE id = ?
         """, (account_id,))
@@ -593,6 +1048,7 @@ def get_account_by_id(account_id: int) -> Optional[Dict[str, Any]]:
             "email": row["email"],
             "displayName": row["display_name"],
             "chessComUsername": row["chess_com_username"],
+            "lichessUsername": row["lichess_username"],
             "bio": row["bio"],
             "avatarUrl": row["avatar_url"],
             "createdAt": row["created_at"],
@@ -619,7 +1075,8 @@ def update_account(
     account_id: int,
     display_name: Optional[str] = None,
     bio: Optional[str] = None,
-    chess_com_username: Optional[str] = None
+    chess_com_username: Optional[str] = None,
+    lichess_username: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Update an account's profile fields. Returns updated account."""
     with get_connection() as conn:
@@ -641,6 +1098,10 @@ def update_account(
             updates.append("chess_com_username = ?")
             params.append(chess_com_username)
 
+        if lichess_username is not None:
+            updates.append("lichess_username = ?")
+            params.append(lichess_username)
+
         if not updates:
             return get_account_by_id(account_id)
 
@@ -661,7 +1122,7 @@ def get_public_profile(username: str) -> Optional[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, username, display_name, chess_com_username,
-                   bio, avatar_url, created_at
+                   lichess_username, bio, avatar_url, created_at
             FROM accounts
             WHERE username = ? COLLATE NOCASE
         """, (username,))
@@ -675,6 +1136,7 @@ def get_public_profile(username: str) -> Optional[Dict[str, Any]]:
             "username": row["username"],
             "displayName": row["display_name"],
             "chessComUsername": row["chess_com_username"],
+            "lichessUsername": row["lichess_username"],
             "bio": row["bio"],
             "avatarUrl": row["avatar_url"],
             "createdAt": row["created_at"],
@@ -694,7 +1156,7 @@ def get_user_games_by_color(user_id: int, color: str) -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT chess_com_game_id, result, moves
+            SELECT chess_com_game_id, result, tcn
             FROM user_games
             WHERE user_id = ? AND LOWER(user_color) = LOWER(?)
             ORDER BY date DESC
@@ -702,11 +1164,10 @@ def get_user_games_by_color(user_id: int, color: str) -> List[Dict[str, Any]]:
 
         games = []
         for row in cursor.fetchall():
-            moves = json.loads(row["moves"]) if row["moves"] else []
             games.append({
                 "id": row["chess_com_game_id"],
                 "result": row["result"],
-                "moves": moves,
+                "moves": tcn_to_san(row["tcn"]),
             })
 
         return games
@@ -795,7 +1256,7 @@ def get_games_by_chess_com_username(chess_com_username: str, limit: int = 50) ->
         user_id = row["id"]
         cursor.execute("""
             SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                   result, user_color, time_control, date, moves, tags
+                   result, user_color, time_control, date, tcn, tags
             FROM user_games
             WHERE user_id = ?
             ORDER BY date DESC
@@ -814,7 +1275,7 @@ def get_games_by_chess_com_username(chess_com_username: str, limit: int = 50) ->
                 "userColor": row["user_color"],
                 "timeControl": row["time_control"],
                 "date": row["date"],
-                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "moves": tcn_to_san(row["tcn"]),
                 "tags": json.loads(row["tags"]) if row["tags"] else [],
             })
 
@@ -868,7 +1329,7 @@ def get_posts(limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
                 g.user_color,
                 g.time_control,
                 g.date as game_date,
-                g.moves,
+                g.tcn,
                 g.tags
             FROM posts p
             JOIN accounts a ON p.account_id = a.id
@@ -905,13 +1366,13 @@ def get_posts(limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
                     "userColor": row["user_color"],
                     "timeControl": row["time_control"],
                     "date": row["game_date"],
-                    "moves": json.loads(row["moves"]) if row["moves"] else [],
+                    "moves": tcn_to_san(row["tcn"]),
                     "tags": json.loads(row["tags"]) if row["tags"] else [],
                     "keyPositionIndex": row["key_position_index"] or 0,
                 }
-            
+
             posts.append(post)
-        
+
         return posts
 
 
@@ -949,7 +1410,7 @@ def get_posts_by_username(username: str, limit: int = 20, offset: int = 0) -> Li
                 g.user_color,
                 g.time_control,
                 g.date as game_date,
-                g.moves,
+                g.tcn,
                 g.tags
             FROM posts p
             JOIN accounts a ON p.account_id = a.id
@@ -986,7 +1447,7 @@ def get_posts_by_username(username: str, limit: int = 20, offset: int = 0) -> Li
                     "userColor": row["user_color"],
                     "timeControl": row["time_control"],
                     "date": row["game_date"],
-                    "moves": json.loads(row["moves"]) if row["moves"] else [],
+                    "moves": tcn_to_san(row["tcn"]),
                     "tags": json.loads(row["tags"]) if row["tags"] else [],
                     "keyPositionIndex": row["key_position_index"] or 0,
                 }
@@ -1034,7 +1495,7 @@ def get_post_by_id(post_id: int) -> Optional[Dict[str, Any]]:
                 g.user_color,
                 g.time_control,
                 g.date as game_date,
-                g.moves,
+                g.tcn,
                 g.tags
             FROM posts p
             JOIN accounts a ON p.account_id = a.id
@@ -1071,7 +1532,7 @@ def get_post_by_id(post_id: int) -> Optional[Dict[str, Any]]:
                 "userColor": row["user_color"],
                 "timeControl": row["time_control"],
                 "date": row["game_date"],
-                "moves": json.loads(row["moves"]) if row["moves"] else [],
+                "moves": tcn_to_san(row["tcn"]),
                 "tags": json.loads(row["tags"]) if row["tags"] else [],
                 "keyPositionIndex": row["key_position_index"] or 0,
             }
@@ -1081,3 +1542,4 @@ def get_post_by_id(post_id: int) -> Optional[Dict[str, Any]]:
 
 # Initialize database on module import
 init_db()
+migrate_json_tags_to_table()

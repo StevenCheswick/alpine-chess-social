@@ -518,6 +518,40 @@ src/
 
 ---
 
+## Local Development Setup
+
+### Standard Ports (DO NOT CHANGE)
+| Service  | Port | URL                     |
+|----------|------|-------------------------|
+| Backend  | 8000 | http://localhost:8000   |
+| Frontend | 5173 | http://localhost:5173   |
+
+### Starting the Servers
+
+**Backend:**
+```bash
+cd backend
+python -m uvicorn main:app --port 8000 --host 127.0.0.1
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+### Configuration Files
+- **Frontend API URL:** `frontend/.env` → `VITE_API_URL=http://localhost:8000`
+- **Frontend Port:** `frontend/vite.config.ts` → `server.port: 5173` (strictPort enabled)
+- **Backend CORS:** `backend/main.py` → Allows all origins for development
+
+### Troubleshooting
+- If port 8000 is in use: `netstat -ano | findstr :8000` then `taskkill /F /PID <pid>`
+- If port 5173 is in use: The frontend will fail (strictPort enabled) - kill the old process first
+- CORS errors usually mean the backend isn't running or is on a different port
+
+---
+
 ## Development Phases
 
 ### Phase 1: Foundation

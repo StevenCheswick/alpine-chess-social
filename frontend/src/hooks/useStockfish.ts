@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
+import {
+  STOCKFISH_PATH,
+  getEngineCapabilities,
+  getRecommendedThreads,
+  getRecommendedHashMb,
+} from '../services/stockfishEngine';
 
 // Simple LRU-ish cache for evaluations
 const evalCache = new Map<string, { evaluation: number | null; isMate: boolean; mateIn: number | null }>();
@@ -38,15 +44,19 @@ export interface StockfishState {
   targetDepth: number;
   lines: EngineLine[];
   error: string | null;
+  // Threading info
+  threads: number;
+  supportsThreading: boolean;
 }
 
 export interface StockfishOptions {
   multiPv?: number;
   depth?: number;
   debounceMs?: number;
+  threads?: number;
+  hashMb?: number;
 }
 
-const STOCKFISH_PATH = '/stockfish/stockfish.js';
 
 const DEFAULT_OPTIONS: StockfishOptions = {
   multiPv: 3,
@@ -85,7 +95,17 @@ export function useStockfish(
   fen: string | null,
   options: StockfishOptions = {}
 ): StockfishState {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  // Get engine capabilities for default thread count
+  const capabilities = getEngineCapabilities();
+  const defaultThreads = capabilities.supportsThreads ? getRecommendedThreads() : 1;
+  const defaultHash = getRecommendedHashMb();
+
+  const opts = {
+    ...DEFAULT_OPTIONS,
+    threads: defaultThreads,
+    hashMb: defaultHash,
+    ...options,
+  };
 
   const [state, setState] = useState<StockfishState>({
     isReady: false,
@@ -97,6 +117,8 @@ export function useStockfish(
     targetDepth: opts.depth!,
     lines: [],
     error: null,
+    threads: opts.threads!,
+    supportsThreading: capabilities.supportsThreads,
   });
 
   const workerRef = useRef<Worker | null>(null);

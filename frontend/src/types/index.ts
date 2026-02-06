@@ -5,6 +5,7 @@ export interface User {
   displayName: string;
   email: string;
   chessComUsername?: string;
+  lichessUsername?: string;
   bio: string | null;
   avatarUrl: string | null;
   createdAt: string;
@@ -12,6 +13,8 @@ export interface User {
   followerCount: number;
   followingCount: number;
 }
+
+export type ChessPlatform = 'chess_com' | 'lichess';
 
 export interface LinkedAccount {
   id: string;

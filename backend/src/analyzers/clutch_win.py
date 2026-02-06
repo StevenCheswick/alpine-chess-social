@@ -199,6 +199,13 @@ class UnifiedClutchWinAnalyzer(UnifiedAnalyzerBase):
         except Exception as e:
             return None
     
+    def get_matched_game_links(self) -> List[str]:
+        """Fast path: return just the game links that matched."""
+        if self.clutch_game_ref and self.clutch_game_ref.get("game_data"):
+            link = self.clutch_game_ref["game_data"].metadata.link
+            return [link] if link else []
+        return []
+
     def get_final_results(self) -> List[Dict[str, Any]]:
         """
         Get final results after processing all games.

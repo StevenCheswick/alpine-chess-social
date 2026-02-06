@@ -147,7 +147,7 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
                   <select
                     value={selectedGameId || ''}
                     onChange={(e) => setSelectedGameId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-primary-400"
+                    className="w-full bg-slate-800 text-white border border-slate-600 rounded px-3 py-2 focus:outline-none focus:border-emerald-400"
                   >
                     <option value="">Choose a game...</option>
                     {games.map((game) => (
@@ -174,7 +174,7 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
                       {selectedGame.tags.length > 0 && (
                         <div className="flex gap-1 flex-wrap">
                           {selectedGame.tags.map((tag) => (
-                            <span key={tag} className="px-2 py-0.5 bg-primary-400/20 text-primary-400 rounded text-xs">
+                            <span key={tag} className="px-2 py-0.5 bg-emerald-400/20 text-emerald-400 rounded text-xs">
                               {tag}
                             </span>
                           ))}
@@ -212,8 +212,8 @@ export default function PostComposer({ onPostCreated }: PostComposerProps) {
                     onClick={toggleGameShare}
                     className={`flex items-center gap-1 text-sm transition-colors ${
                       postType === 'game_share'
-                        ? 'text-primary-400'
-                        : 'text-slate-400 hover:text-primary-400'
+                        ? 'text-emerald-400'
+                        : 'text-slate-400 hover:text-emerald-400'
                     }`}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

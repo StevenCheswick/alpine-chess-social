@@ -4,13 +4,13 @@ export default function AuthLayout() {
   return (
     <div className="min-h-screen bg-slate-950 flex">
       {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-900 via-slate-900 to-slate-950 p-12 flex-col justify-between">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-950 p-12 flex-col justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-primary-600 rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.4)]">
               <span className="text-white text-2xl">♞</span>
             </div>
-            <span className="text-2xl font-bold text-white">ChessSocial</span>
+            <span className="text-2xl font-bold text-white">Alpine Chess</span>
           </div>
         </div>
 
@@ -39,7 +39,7 @@ export default function AuthLayout() {
         </div>
 
         <div className="text-slate-600 text-sm">
-          © 2025 ChessSocial. All rights reserved.
+          © 2025 Alpine Chess. All rights reserved.
         </div>
       </div>
 
