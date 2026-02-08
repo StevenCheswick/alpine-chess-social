@@ -100,7 +100,7 @@ function ClassificationBreakdown({
       </h4>
       <div className="space-y-0.5">
         {classifications.book > 0 && (
-          <ClassificationRow label="Book" count={classifications.book} colorClass="text-slate-400" />
+          <ClassificationRow label="Book" count={classifications.book} colorClass="text-yellow-800" />
         )}
         <ClassificationRow label="Best" count={classifications.best} colorClass="text-emerald-400" />
         <ClassificationRow label="Excellent" count={classifications.excellent} colorClass="text-green-400" />
@@ -168,8 +168,7 @@ function ColorCodedPGN({
     if (!isUserMove || !classification) {
       return 'text-slate-300';
     }
-    const isNegative = classification === 'inaccuracy' || classification === 'mistake' || classification === 'blunder';
-    return `${CLASSIFICATION_COLORS[classification]} ${isNegative ? CLASSIFICATION_BG_COLORS[classification] : ''}`;
+    return CLASSIFICATION_COLORS[classification];
   };
 
   return (

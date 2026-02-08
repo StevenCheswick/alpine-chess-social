@@ -78,7 +78,7 @@ export const CLASSIFICATION_THRESHOLDS = {
  * Colors for each classification type
  */
 export const CLASSIFICATION_COLORS: Record<MoveClassification, string> = {
-  book: 'text-slate-400',
+  book: 'text-yellow-800',
   best: 'text-emerald-400',
   excellent: 'text-green-400',
   good: 'text-green-300',
@@ -89,7 +89,7 @@ export const CLASSIFICATION_COLORS: Record<MoveClassification, string> = {
 };
 
 export const CLASSIFICATION_BG_COLORS: Record<MoveClassification, string> = {
-  book: 'bg-slate-500/20',
+  book: 'bg-yellow-800/20',
   best: 'bg-emerald-500/20',
   excellent: 'bg-green-500/20',
   good: 'bg-green-500/10',
@@ -98,3 +98,26 @@ export const CLASSIFICATION_BG_COLORS: Record<MoveClassification, string> = {
   blunder: 'bg-red-500/20',
   forced: 'bg-slate-500/20',
 };
+
+/** Progress state for batch game analysis */
+export interface BatchProgress {
+  gamesCompleted: number;
+  gamesTotal: number;
+  gamesSucceeded: number;
+  gamesFailed: number;
+  activeWorkers: number;
+}
+
+/** Result of analyzing a single game in a batch */
+export interface BatchGameResult {
+  gameId: string;
+  analysis: GameAnalysis | null;
+  error: string | null;
+}
+
+/** Input for a single game in a batch */
+export interface BatchGameInput {
+  id: string;
+  moves: string[];
+  userColor: 'white' | 'black';
+}

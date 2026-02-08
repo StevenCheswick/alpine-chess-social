@@ -18,8 +18,12 @@ import type {
   MoveAnalysis,
   MoveClassification,
   MoveClassifications,
+  BatchProgress,
+  BatchGameResult,
+  BatchGameInput,
 } from '../types/analysis';
 import { Chess } from 'chess.js';
+import { loadBook, isBookMove } from './polyglotBook';
 
 const STOCKFISH_PATH = '/stockfish/stockfish.js';
 
@@ -28,6 +32,11 @@ interface AnalysisResult {
   evaluation: number; // centipawns from white's perspective
   isMate: boolean;
   mateIn: number | null;
+}
+
+interface StockfishConfig {
+  threads?: number;
+  hashMb?: number;
 }
 
 /**
@@ -39,6 +48,14 @@ class StockfishAnalyzer {
   private resolveAnalysis: ((result: AnalysisResult) => void) | null = null;
   private currentAnalysis: Partial<AnalysisResult> = {};
   private targetDepth: number = 18;
+  private config: Required<StockfishConfig>;
+
+  constructor(config: StockfishConfig = {}) {
+    this.config = {
+      threads: config.threads ?? 4,
+      hashMb: config.hashMb ?? 64,
+    };
+  }
 
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -63,7 +80,8 @@ class StockfishAnalyzer {
 
   private handleMessage(line: string): void {
     if (line === 'uciok') {
-      this.worker?.postMessage('setoption name MultiPV value 1');
+      this.worker?.postMessage(`setoption name Threads value ${this.config.threads}`);
+      this.worker?.postMessage(`setoption name Hash value ${this.config.hashMb}`);
       this.worker?.postMessage('isready');
     }
 
@@ -151,7 +169,144 @@ export interface AnalysisOptions {
 }
 
 /**
- * Analyze a complete game
+ * Core analysis loop — analyzes all moves in a game using the provided analyzer.
+ * Shared by single-game and batch analysis.
+ */
+async function analyzeGameCore(
+  analyzer: StockfishAnalyzer,
+  moves: string[],
+  options: { nodes?: number; onProgress?: (progress: number) => void; signal?: AbortSignal } = {}
+): Promise<GameAnalysis> {
+  const { nodes = 100000, onProgress, signal } = options;
+
+  const chess = new Chess();
+  const moveAnalyses: MoveAnalysis[] = [];
+
+  const whiteClassifications: MoveClassifications = {
+    best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0, forced: 0
+  };
+  const blackClassifications: MoveClassifications = {
+    best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0, forced: 0
+  };
+
+  let whiteTotalCpLoss = 0;
+  let blackTotalCpLoss = 0;
+  let whiteMoveCount = 0;
+  let blackMoveCount = 0;
+
+  // Analyze starting position first
+  let prevAnalysis = await analyzer.analyze(chess.fen(), nodes);
+  // Convert to white's perspective (white to move at start)
+  let prevEvalWhitePerspective = prevAnalysis.evaluation;
+
+  for (let i = 0; i < moves.length; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const isWhiteMove = i % 2 === 0;
+    const sanMove = moves[i];
+
+    // Get best move and eval from previous analysis (position before this move)
+    const bestMove = prevAnalysis.bestMove;
+    const bestEval = prevEvalWhitePerspective;
+
+    // Check for forced move (only one legal move)
+    const legalMoves = chess.moves({ verbose: true });
+    const isForced = legalMoves.length === 1;
+
+    // Make the move to get UCI notation
+    const moveResult = chess.move(sanMove);
+    if (!moveResult) {
+      throw new Error(`Invalid move: ${sanMove} at position ${i}`);
+    }
+    const uciMove = moveResult.from + moveResult.to + (moveResult.promotion || '');
+
+    // Analyze position after the move
+    const analysisAfter = await analyzer.analyze(chess.fen(), nodes);
+
+    // Convert to white's perspective
+    // After white moves, it's black to move, so flip. After black moves, it's white to move, no flip.
+    const moveEval = isWhiteMove ? -analysisAfter.evaluation : analysisAfter.evaluation;
+
+    // Calculate CP loss (always positive)
+    // White wants higher eval, black wants lower eval
+    let cpLoss: number;
+    if (isWhiteMove) {
+      cpLoss = Math.max(0, bestEval - moveEval);
+    } else {
+      cpLoss = Math.max(0, moveEval - bestEval);
+    }
+
+    // Check if player found the best move
+    if (uciMove === bestMove) {
+      cpLoss = 0;
+    }
+
+    // Classify the move
+    let classification: MoveClassification;
+
+    if (isForced) {
+      classification = 'forced';
+    } else if (isBookMove(moveResult.before, uciMove)) {
+      classification = 'book';
+    } else {
+      classification = classifyMove(cpLoss);
+    }
+
+    moveAnalyses.push({
+      move: uciMove,
+      move_eval: Math.round(moveEval),
+      best_move: bestMove,
+      best_eval: Math.round(bestEval),
+      cp_loss: Math.round(cpLoss),
+      classification,
+    });
+
+    // Update counts (skip book/forced for accuracy calc)
+    if (classification !== 'book' && classification !== 'forced') {
+      if (isWhiteMove) {
+        whiteClassifications[classification]++;
+        whiteTotalCpLoss += cpLoss;
+        whiteMoveCount++;
+      } else {
+        blackClassifications[classification]++;
+        blackTotalCpLoss += cpLoss;
+        blackMoveCount++;
+      }
+    } else {
+      if (isWhiteMove) {
+        whiteClassifications[classification]++;
+      } else {
+        blackClassifications[classification]++;
+      }
+    }
+
+    // Store this analysis for the next iteration
+    prevAnalysis = analysisAfter;
+    prevEvalWhitePerspective = moveEval;
+
+    // Report progress
+    if (onProgress) {
+      onProgress(Math.round(((i + 1) / moves.length) * 100));
+    }
+  }
+
+  const whiteAvgCpLoss = whiteMoveCount > 0 ? whiteTotalCpLoss / whiteMoveCount : 0;
+  const blackAvgCpLoss = blackMoveCount > 0 ? blackTotalCpLoss / blackMoveCount : 0;
+
+  return {
+    white_accuracy: calculateAccuracy(whiteAvgCpLoss),
+    black_accuracy: calculateAccuracy(blackAvgCpLoss),
+    white_avg_cp_loss: whiteAvgCpLoss,
+    black_avg_cp_loss: blackAvgCpLoss,
+    white_classifications: whiteClassifications,
+    black_classifications: blackClassifications,
+    moves: moveAnalyses,
+    isComplete: true,
+  };
+}
+
+/**
+ * Analyze a complete game (single-game mode with default high-quality settings)
  *
  * @param moves - Array of moves in SAN notation (e.g., ["e4", "e5", "Nf3"])
  * @param userColor - The user's color ('white' | 'black')
@@ -160,153 +315,167 @@ export interface AnalysisOptions {
  */
 export async function analyzeGame(
   moves: string[],
-  userColor: 'white' | 'black',
+  _userColor: 'white' | 'black',
   options: AnalysisOptions = {}
 ): Promise<GameAnalysis> {
-  const { nodes = 100000, onProgress } = options;
-
-  const analyzer = new StockfishAnalyzer();
-  await analyzer.init();
+  const analyzer = new StockfishAnalyzer({ threads: 4, hashMb: 64 });
+  await Promise.all([analyzer.init(), loadBook()]);
 
   try {
-    const chess = new Chess();
-    const moveAnalyses: MoveAnalysis[] = [];
-
-    const whiteClassifications: MoveClassifications = {
-      best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0, forced: 0
-    };
-    const blackClassifications: MoveClassifications = {
-      best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0, forced: 0
-    };
-
-    let whiteTotalCpLoss = 0;
-    let blackTotalCpLoss = 0;
-    let whiteMoveCount = 0;
-    let blackMoveCount = 0;
-
-    // Track book moves - consecutive moves from start with minimal cp loss
-    const BOOK_CP_THRESHOLD = 20; // Max cp loss to still be considered book
-    let whiteStillInBook = true;
-    let blackStillInBook = true;
-
-    // Analyze starting position first
-    let prevAnalysis = await analyzer.analyze(chess.fen(), nodes);
-    // Convert to white's perspective (white to move at start)
-    let prevEvalWhitePerspective = prevAnalysis.evaluation;
-
-    for (let i = 0; i < moves.length; i++) {
-      const isWhiteMove = i % 2 === 0;
-      const sanMove = moves[i];
-
-      // Get best move and eval from previous analysis (position before this move)
-      const bestMove = prevAnalysis.bestMove;
-      const bestEval = prevEvalWhitePerspective;
-
-      // Check for forced move (only one legal move)
-      const legalMoves = chess.moves({ verbose: true });
-      const isForced = legalMoves.length === 1;
-
-      // Make the move to get UCI notation
-      const moveResult = chess.move(sanMove);
-      if (!moveResult) {
-        throw new Error(`Invalid move: ${sanMove} at position ${i}`);
-      }
-      const uciMove = moveResult.from + moveResult.to + (moveResult.promotion || '');
-
-      // Analyze position after the move
-      const analysisAfter = await analyzer.analyze(chess.fen(), nodes);
-
-      // Convert to white's perspective
-      // After white moves, it's black to move, so flip. After black moves, it's white to move, no flip.
-      const moveEval = isWhiteMove ? -analysisAfter.evaluation : analysisAfter.evaluation;
-
-      // Calculate CP loss (always positive)
-      // White wants higher eval, black wants lower eval
-      let cpLoss: number;
-      if (isWhiteMove) {
-        cpLoss = Math.max(0, bestEval - moveEval);
-      } else {
-        cpLoss = Math.max(0, moveEval - bestEval);
-      }
-
-      // Check if player found the best move
-      if (uciMove === bestMove) {
-        cpLoss = 0;
-      }
-
-      // Classify the move
-      let classification: MoveClassification;
-
-      if (isForced) {
-        classification = 'forced';
-      } else if (isWhiteMove && whiteStillInBook && cpLoss <= BOOK_CP_THRESHOLD) {
-        classification = 'book';
-      } else if (!isWhiteMove && blackStillInBook && cpLoss <= BOOK_CP_THRESHOLD) {
-        classification = 'book';
-      } else {
-        classification = classifyMove(cpLoss);
-        // Once out of book, stay out of book
-        if (isWhiteMove) {
-          whiteStillInBook = false;
-        } else {
-          blackStillInBook = false;
-        }
-      }
-
-      moveAnalyses.push({
-        move: uciMove,
-        move_eval: Math.round(moveEval),
-        best_move: bestMove,
-        best_eval: Math.round(bestEval),
-        cp_loss: Math.round(cpLoss),
-        classification,
-      });
-
-      // Update counts (skip book/forced for accuracy calc)
-      if (classification !== 'book' && classification !== 'forced') {
-        if (isWhiteMove) {
-          whiteClassifications[classification]++;
-          whiteTotalCpLoss += cpLoss;
-          whiteMoveCount++;
-        } else {
-          blackClassifications[classification]++;
-          blackTotalCpLoss += cpLoss;
-          blackMoveCount++;
-        }
-      } else {
-        if (isWhiteMove) {
-          whiteClassifications[classification]++;
-        } else {
-          blackClassifications[classification]++;
-        }
-      }
-
-      // Store this analysis for the next iteration
-      prevAnalysis = analysisAfter;
-      prevEvalWhitePerspective = moveEval;
-
-      // Report progress
-      if (onProgress) {
-        onProgress(Math.round(((i + 1) / moves.length) * 100));
-      }
-    }
-
-    const whiteAvgCpLoss = whiteMoveCount > 0 ? whiteTotalCpLoss / whiteMoveCount : 0;
-    const blackAvgCpLoss = blackMoveCount > 0 ? blackTotalCpLoss / blackMoveCount : 0;
-
-    return {
-      white_accuracy: calculateAccuracy(whiteAvgCpLoss),
-      black_accuracy: calculateAccuracy(blackAvgCpLoss),
-      white_avg_cp_loss: whiteAvgCpLoss,
-      black_avg_cp_loss: blackAvgCpLoss,
-      white_classifications: whiteClassifications,
-      black_classifications: blackClassifications,
-      moves: moveAnalyses,
-      isComplete: true,
-    };
+    return await analyzeGameCore(analyzer, moves, {
+      nodes: options.nodes,
+      onProgress: options.onProgress,
+    });
   } finally {
     analyzer.destroy();
   }
+}
+
+/**
+ * Get optimal worker count for batch analysis
+ */
+export function getOptimalWorkerCount(gameCount: number): number {
+  const hwConcurrency = navigator.hardwareConcurrency || 4;
+  return Math.max(2, Math.min(8, Math.floor(hwConcurrency * 0.75), gameCount));
+}
+
+export interface BatchAnalysisOptions {
+  /** Nodes per position (default: 100000) */
+  nodes?: number;
+  /** Aggregate progress callback, throttled */
+  onProgress?: (progress: BatchProgress) => void;
+  /** Fires when a single game completes (success or failure) */
+  onGameComplete?: (result: BatchGameResult) => void;
+  /** AbortSignal for cancellation */
+  signal?: AbortSignal;
+}
+
+/**
+ * Analyze multiple games in parallel using a pool of Stockfish workers.
+ * Each worker is single-threaded (1 thread, 16MB hash) to maximize parallelism.
+ */
+export async function analyzeGamesBatch(
+  games: BatchGameInput[],
+  options: BatchAnalysisOptions = {}
+): Promise<BatchGameResult[]> {
+  const { nodes = 100000, onProgress, onGameComplete, signal } = options;
+
+  if (games.length === 0) return [];
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  const workerCount = getOptimalWorkerCount(games.length);
+
+  // Shared progress state
+  let gamesCompleted = 0;
+  let gamesSucceeded = 0;
+  let gamesFailed = 0;
+  let activeWorkers = 0;
+  const results: BatchGameResult[] = [];
+
+  // Throttled progress reporting
+  let lastProgressTime = 0;
+  const PROGRESS_THROTTLE_MS = 100;
+
+  function reportProgress(force = false) {
+    const now = Date.now();
+    if (!force && now - lastProgressTime < PROGRESS_THROTTLE_MS) return;
+    lastProgressTime = now;
+    onProgress?.({
+      gamesCompleted,
+      gamesTotal: games.length,
+      gamesSucceeded,
+      gamesFailed,
+      activeWorkers,
+    });
+  }
+
+  // Work queue: atomic index counter
+  let nextGameIndex = 0;
+
+  function claimNextGame(): BatchGameInput | null {
+    if (nextGameIndex >= games.length) return null;
+    return games[nextGameIndex++];
+  }
+
+  // Load the opening book once (shared across all workers)
+  await loadBook();
+
+  // Initialize all workers in parallel
+  const analyzers: StockfishAnalyzer[] = [];
+  try {
+    const initPromises: Promise<StockfishAnalyzer>[] = [];
+    for (let i = 0; i < workerCount; i++) {
+      const promise = (async () => {
+        const analyzer = new StockfishAnalyzer({ threads: 1, hashMb: 16 });
+        await analyzer.init();
+        return analyzer;
+      })();
+      initPromises.push(promise);
+    }
+    const initializedAnalyzers = await Promise.all(initPromises);
+    analyzers.push(...initializedAnalyzers);
+  } catch (err) {
+    // Cleanup any that initialized before the failure
+    for (const a of analyzers) a.destroy();
+    throw err;
+  }
+
+  if (signal?.aborted) {
+    for (const a of analyzers) a.destroy();
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
+  activeWorkers = analyzers.length;
+  reportProgress(true);
+
+  // Worker loop: each worker pulls games from the queue until empty or aborted
+  async function workerLoop(analyzer: StockfishAnalyzer): Promise<void> {
+    while (true) {
+      if (signal?.aborted) break;
+
+      const game = claimNextGame();
+      if (!game) break;
+
+      let result: BatchGameResult;
+      try {
+        const analysis = await analyzeGameCore(analyzer, game.moves, { nodes, signal });
+        result = { gameId: game.id, analysis, error: null };
+        gamesSucceeded++;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          // Cancellation — don't count as failure, just stop
+          break;
+        }
+        result = {
+          gameId: game.id,
+          analysis: null,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        };
+        gamesFailed++;
+      }
+
+      gamesCompleted++;
+      results.push(result);
+      onGameComplete?.(result);
+      reportProgress();
+    }
+
+    activeWorkers--;
+    reportProgress();
+  }
+
+  try {
+    // Run all workers concurrently
+    await Promise.all(analyzers.map(a => workerLoop(a)));
+
+    // Final progress report
+    reportProgress(true);
+  } finally {
+    // Always destroy all analyzers
+    for (const a of analyzers) a.destroy();
+  }
+
+  return results;
 }
 
 /**
@@ -329,4 +498,3 @@ export function classifyMove(cpLoss: number, isForced: boolean = false): MoveCla
   if (cpLoss < 200) return 'mistake';
   return 'blunder';
 }
-

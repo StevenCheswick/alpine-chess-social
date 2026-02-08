@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { gameService, type SyncResponse } from '../services/gameService';
-import { analyzeGame } from '../services/analysisService';
+import { analyzeGamesBatch } from '../services/analysisService';
+import type { BatchProgress } from '../types/analysis';
 
 const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 10;
@@ -26,23 +27,11 @@ interface Game {
   blackAccuracy?: number;
 }
 
-const resultColors = {
-  W: 'text-green-500',
-  L: 'text-red-500',
-  D: 'text-slate-400',
-};
-
 const resultLabels = {
   W: 'Won',
   L: 'Lost',
   D: 'Draw',
 };
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 type GameType = 'bullet' | 'blitz' | 'rapid' | 'classical' | 'daily';
 
@@ -139,19 +128,28 @@ export default function GamesPage() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [currentPage, setCurrentPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+  const setCurrentPage = (page: number) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (page <= 1) next.delete('page');
+      else next.set('page', String(page));
+      return next;
+    }, { replace: true });
+  };
   const [allTags, setAllTags] = useState<Map<string, number>>(new Map());
 
   // Bulk analysis state
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [bulkProgress, setBulkProgress] = useState<BatchProgress | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const hasAnyLinkedAccount = chessComUsername || lichessUsername;
 
-  // Load stored games on mount
+  // Load tags on mount
   useEffect(() => {
     if (hasAnyLinkedAccount) {
-      loadStoredGames(1, []);
       loadAllTags([]);
     }
   }, [hasAnyLinkedAccount]);
@@ -279,42 +277,80 @@ export default function GamesPage() {
     loadAllTags([]);
   };
 
-  // Bulk analyze all games on current page
+  // Bulk analyze all games on current page using parallel workers
   const analyzePageGames = async () => {
     const unanalyzedGames = games.filter(g => !g.hasAnalysis);
     if (unanalyzedGames.length === 0) return;
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setBulkAnalyzing(true);
-    setBulkProgress({ current: 0, total: unanalyzedGames.length });
+    setBulkProgress({
+      gamesCompleted: 0,
+      gamesTotal: unanalyzedGames.length,
+      gamesSucceeded: 0,
+      gamesFailed: 0,
+      activeWorkers: 0,
+    });
 
-    for (let i = 0; i < unanalyzedGames.length; i++) {
-      const game = unanalyzedGames[i];
-      setBulkProgress({ current: i + 1, total: unanalyzedGames.length });
-
-      try {
-        const result = await analyzeGame(game.moves, game.userColor, {
+    try {
+      await analyzeGamesBatch(
+        unanalyzedGames.map(g => ({ id: g.id, moves: g.moves, userColor: g.userColor })),
+        {
           nodes: 100000,
-        });
-
-        // Save analysis to backend
-        await fetch(`${API_BASE}/api/games/${game.id}/analysis`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+          signal: abortController.signal,
+          onProgress: (progress) => {
+            setBulkProgress(progress);
           },
-          body: JSON.stringify(result),
-        });
-      } catch (err) {
-        console.error(`Failed to analyze game ${game.id}:`, err);
+          onGameComplete: async (result) => {
+            if (result.analysis) {
+              // Save to backend immediately
+              try {
+                await fetch(`${API_BASE}/api/games/${result.gameId}/analysis`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify(result.analysis),
+                });
+
+                // Update local game state so accuracy badge appears immediately
+                setGames(prev => prev.map(g =>
+                  g.id === result.gameId
+                    ? {
+                        ...g,
+                        hasAnalysis: true,
+                        whiteAccuracy: result.analysis!.white_accuracy,
+                        blackAccuracy: result.analysis!.black_accuracy,
+                      }
+                    : g
+                ));
+              } catch (err) {
+                console.error(`Failed to save analysis for game ${result.gameId}:`, err);
+              }
+            } else {
+              console.error(`Analysis failed for game ${result.gameId}:`, result.error);
+            }
+          },
+        }
+      );
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // User cancelled — completed games are already saved
+      } else {
+        console.error('Batch analysis error:', err);
       }
+    } finally {
+      setBulkAnalyzing(false);
+      setBulkProgress(null);
+      abortControllerRef.current = null;
     }
+  };
 
-    setBulkAnalyzing(false);
-    setBulkProgress({ current: 0, total: 0 });
-
-    // Reload games to show updated analysis status
-    await loadStoredGames(currentPage, selectedTagsArray);
+  const cancelBulkAnalysis = () => {
+    abortControllerRef.current?.abort();
   };
 
   const unanalyzedCount = games.filter(g => !g.hasAnalysis).length;
@@ -421,25 +457,38 @@ export default function GamesPage() {
               )}
             </p>
             {unanalyzedCount > 0 && (
-              <button
-                onClick={analyzePageGames}
-                disabled={bulkAnalyzing || syncing || loading}
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-              >
-                {bulkAnalyzing ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    Analyzing {bulkProgress.current}/{bulkProgress.total}...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    Analyze Page ({unanalyzedCount})
-                  </>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={analyzePageGames}
+                  disabled={bulkAnalyzing || syncing || loading}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                >
+                  {bulkAnalyzing && bulkProgress ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      {bulkProgress.gamesCompleted}/{bulkProgress.gamesTotal} games
+                      {bulkProgress.activeWorkers > 0 && (
+                        <span className="text-purple-200 text-xs">({bulkProgress.activeWorkers} workers)</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                      Analyze Page ({unanalyzedCount})
+                    </>
+                  )}
+                </button>
+                {bulkAnalyzing && (
+                  <button
+                    onClick={cancelBulkAnalysis}
+                    className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg font-medium transition-colors text-sm"
+                  >
+                    Cancel
+                  </button>
                 )}
-              </button>
+              </div>
             )}
           </div>
 

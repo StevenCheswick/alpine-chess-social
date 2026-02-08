@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/server",
+    "crates/chess-core",
+    "crates/chess-analyzers",
+    "crates/migration-tool",
+]
+
+[workspace.dependencies]
+# Web framework
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "compression-gzip"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+bcrypt = "0.16"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Chess
+shakmaty = "0.27"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Validation
+validator = { version = "0.19", features = ["derive"] }
+
+# Misc
+dotenvy = "0.15"
+regex = "1"

@@ -64,10 +64,11 @@ export function MiniChessBoard({ moves, orientation = 'white', size = 120 }: Min
       {boardWidth > 0 && (
         <Chessboard
           key={`mini-${orientation}`}
-          position={currentPosition}
-          boardOrientation={orientation}
-          arePiecesDraggable={false}
-          boardWidth={boardWidth}
+          options={{
+            position: currentPosition,
+            boardOrientation: orientation,
+            allowDragging: false,
+          }}
         />
       )}
     </div>

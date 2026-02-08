@@ -15,6 +15,7 @@ import AchievementsPage from './pages/AchievementsPage';
 import GamesPage from './pages/GamesPage';
 import GamePage from './pages/GamePage';
 import OpeningTreePage from './pages/OpeningTreePage';
+import DashboardPage from './pages/DashboardPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Protected route wrapper
@@ -78,6 +79,7 @@ function App() {
           <Route path="/games" element={<GamesPage />} />
           <Route path="/games/:gameId" element={<GamePage />} />
           <Route path="/opening-tree" element={<OpeningTreePage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
         </Route>
 
         {/* 404 */}

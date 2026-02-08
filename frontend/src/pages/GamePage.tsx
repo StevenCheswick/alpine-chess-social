@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AnalyzableChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
@@ -24,6 +24,7 @@ interface Game {
 
 export default function GamePage() {
   const { gameId } = useParams<{ gameId: string }>();
+  const navigate = useNavigate();
   const { user, token } = useAuthStore();
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,15 +147,15 @@ export default function GamePage() {
   if (error || !game) {
     return (
       <div className="space-y-6">
-        <Link
-          to="/games"
+        <button
+          onClick={() => navigate(-1)}
           className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           Back to Games
-        </Link>
+        </button>
 
         <div className="card p-8 text-center">
           <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -175,15 +176,15 @@ export default function GamePage() {
     <div className="h-[calc(100vh-5.5rem)] flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <Link
-          to="/games"
+        <button
+          onClick={() => navigate(-1)}
           className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           Back to Games
-        </Link>
+        </button>
 
         <AnalyzeButton
           onClick={handleAnalyze}
