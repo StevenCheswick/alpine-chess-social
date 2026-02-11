@@ -58,7 +58,6 @@ export default function GamePage() {
     }
   }, [gameId]);
 
-
   const loadGame = async () => {
     setLoading(true);
     setError(null);
@@ -253,9 +252,9 @@ export default function GamePage() {
         {/* Analysis Panel - Side (offset to align with board, below engine lines) */}
         {analysis && (
           <div className="flex-1 min-w-0">
-            <GameAnalysisPanel 
-              analysis={analysis} 
-              userColor={game.userColor} 
+            <GameAnalysisPanel
+              analysis={analysis}
+              userColor={game.userColor}
               moves={game.moves}
               onMoveClick={handleMoveClick}
               currentMoveIndex={currentMoveIndex}

@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from 'recharts';
 import { useAuthStore } from '../stores/authStore';
-import { getStats, type DashboardStats, type AccuracyDataPoint, type PhaseAccuracyDataPoint, type FirstInaccuracyDataPoint, type GameSummary, type OpeningBlunder } from '../services/dashboardService';
+import { getStats, type DashboardStats, type AccuracyDataPoint, type PhaseAccuracyDataPoint, type FirstInaccuracyDataPoint, type GameSummary, type OpeningBlunder, type CleanLine } from '../services/dashboardService';
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   best: '#22c55e',
@@ -347,10 +347,15 @@ export default function DashboardPage() {
           <GameAccuracyList title="Least Accurate Games" games={stats.leastAccurateGames} accent="red" />
         </div>
 
-        {/* Opening Blunders */}
-        {stats.openingBlunders && stats.openingBlunders.length > 0 && (
-          <OpeningBlundersList blunders={stats.openingBlunders} />
-        )}
+        {/* Opening Blunders + Cleanest Lines */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {stats.openingBlunders && stats.openingBlunders.length > 0 && (
+            <OpeningBlundersList blunders={stats.openingBlunders} />
+          )}
+          {stats.cleanestLines && stats.cleanestLines.length > 0 && (
+            <CleanestLinesList lines={stats.cleanestLines} />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -402,16 +407,17 @@ function GameAccuracyList({ title, games, accent }: { title: string; games: Game
 function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
   const navigate = useNavigate();
 
-  const openLine = (b: OpeningBlunder) => {
-    const params = new URLSearchParams({
-      moves: b.moves.join(','),
+  const openGame = (b: OpeningBlunder) => {
+    navigate('/opening-line', { state: {
+      type: 'blunder',
+      moves: b.moves,
       color: b.color,
       line: b.line,
-      count: String(b.mistakeCount),
-      cp: String(b.avgCpLoss),
-    });
-    if (b.bestMove) params.set('best', b.bestMove);
-    navigate(`/opening-line?${params.toString()}`);
+      ply: b.ply,
+      avgCpLoss: b.avgCpLoss,
+      bestMove: b.bestMove,
+      mistakeCount: b.mistakeCount,
+    }});
   };
 
   return (
@@ -427,7 +433,7 @@ function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
           return (
             <button
               key={`${b.ply}-${b.line}`}
-              onClick={() => openLine(b)}
+              onClick={() => openGame(b)}
               className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-700/50 transition-colors text-left cursor-pointer"
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -448,6 +454,53 @@ function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function CleanestLinesList({ lines }: { lines: CleanLine[] }) {
+  const navigate = useNavigate();
+
+  const openGame = (c: CleanLine) => {
+    navigate('/opening-line', { state: {
+      type: 'clean',
+      moves: c.moves,
+      color: c.color,
+      line: c.line,
+      avgCpLoss: c.avgCpLoss,
+      cleanDepth: c.cleanDepth,
+      gameCount: c.gameCount,
+    }});
+  };
+
+  return (
+    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+      <h2 className="text-lg font-semibold text-white mb-1">Deepest Opening Prep</h2>
+      <p className="text-sm text-slate-500 mb-4">Your longest lines with no inaccuracies</p>
+      <div className="space-y-2">
+        {lines.map((c, i) => (
+          <button
+            key={`${c.cleanDepth}-${c.line}`}
+            onClick={() => openGame(c)}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-700/50 transition-colors text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-sm text-slate-500 w-5 text-right shrink-0">{i + 1}.</span>
+              <div className="min-w-0">
+                <div className="text-sm leading-relaxed text-emerald-400 font-medium truncate">
+                  {c.line}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {c.cleanDepth} moves deep as {c.color} &middot; {c.gameCount} {c.gameCount === 1 ? 'game' : 'games'}
+                </div>
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-emerald-400 whitespace-nowrap ml-3">
+              ~{c.avgCpLoss} cp
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

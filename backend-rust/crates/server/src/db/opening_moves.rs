@@ -380,6 +380,16 @@ pub struct OpeningBlunderRow {
     pub sample_game_id: i64,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct CleanLineRow {
+    pub line: String,
+    pub color: String,
+    pub clean_depth: i32,
+    pub game_count: i64,
+    pub avg_cp_loss: f64,
+    pub sample_game_id: i64,
+}
+
 /// Get the user's most repeated opening mistakes by querying raw analysis data.
 /// Groups by the full move sequence (line) so the same move in different openings
 /// is counted separately. Returns the most frequently repeated line-specific mistakes.
@@ -428,6 +438,99 @@ pub async fn get_opening_blunders(
     )
     .bind(user_id)
     .bind(min_cp_loss)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    Ok(rows)
+}
+
+/// Find the user's deepest, most consistently clean opening lines.
+/// For each game, finds the deepest user-move ply where ALL user moves up to
+/// that point have cp_loss below the threshold. Groups by that line, counts
+/// frequency, and orders by depth then frequency.
+pub async fn get_cleanest_lines(
+    pool: &PgPool,
+    user_id: i64,
+    max_cp_loss: f64,
+    min_depth: i32,
+    limit: i32,
+) -> Result<Vec<CleanLineRow>, AppError> {
+    let rows: Vec<CleanLineRow> = sqlx::query_as(
+        r#"WITH game_first_mistake AS (
+             -- For each game, find the first user-move ply where cp_loss >= threshold
+             SELECT
+               ug.id AS game_id,
+               LOWER(ug.user_color) AS color,
+               MIN(CASE
+                 WHEN (m->>'cp_loss')::float8 >= $2
+                      AND (
+                        (LOWER(ug.user_color) = 'white' AND (ord - 1) % 2 = 0)
+                        OR (LOWER(ug.user_color) = 'black' AND (ord - 1) % 2 = 1)
+                      )
+                 THEN (ord - 1)::int
+                 ELSE NULL
+               END) AS first_mistake_ply
+             FROM user_games ug
+             INNER JOIN game_analysis ga ON ug.id = ga.game_id,
+             LATERAL jsonb_array_elements(ga.moves) WITH ORDINALITY AS x(m, ord)
+             WHERE ug.user_id = $1 AND (ord - 1) < 30
+             GROUP BY ug.id, ug.user_color
+           ),
+           clean_lines AS (
+             SELECT
+               gfm.game_id,
+               gfm.color,
+               -- End line on user's last clean move:
+               -- With a mistake: mistake ply is always a user ply, so -1 ends on prior user move
+               -- No mistake: default cap is 29 for white (odd→last ply even), 30 for black (even→last ply odd)
+               CASE
+                 WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
+                 WHEN gfm.color = 'white' THEN 29
+                 ELSE 30
+               END AS clean_up_to,
+               (SELECT string_agg(elem->>'move', ' ' ORDER BY o)
+                FROM jsonb_array_elements(ga.moves) WITH ORDINALITY AS y(elem, o)
+                WHERE (o - 1) < CASE
+                  WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
+                  WHEN gfm.color = 'white' THEN 29
+                  ELSE 30
+                END
+               ) AS line,
+               (SELECT COALESCE(AVG((elem->>'cp_loss')::float8), 0)
+                FROM jsonb_array_elements(ga.moves) WITH ORDINALITY AS y(elem, o)
+                WHERE (o - 1) < CASE
+                  WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
+                  WHEN gfm.color = 'white' THEN 29
+                  ELSE 30
+                END
+                  AND (
+                    (gfm.color = 'white' AND (o - 1) % 2 = 0)
+                    OR (gfm.color = 'black' AND (o - 1) % 2 = 1)
+                  )
+               ) AS avg_cp_loss
+             FROM game_first_mistake gfm
+             INNER JOIN game_analysis ga ON gfm.game_id = ga.game_id
+           )
+           SELECT
+             line,
+             color,
+             (clean_up_to / 2 + clean_up_to % 2)::int AS clean_depth,
+             COUNT(*) AS game_count,
+             ROUND(AVG(avg_cp_loss)::numeric, 1)::float8 AS avg_cp_loss,
+             MIN(game_id) AS sample_game_id
+           FROM clean_lines
+           WHERE line IS NOT NULL
+             AND (clean_up_to / 2 + clean_up_to % 2) >= $3
+           GROUP BY line, color, clean_up_to
+           HAVING COUNT(*) >= 2
+           ORDER BY clean_depth DESC, game_count DESC
+           LIMIT $4"#,
+    )
+    .bind(user_id)
+    .bind(max_cp_loss)
+    .bind(min_depth)
     .bind(limit)
     .fetch_all(pool)
     .await

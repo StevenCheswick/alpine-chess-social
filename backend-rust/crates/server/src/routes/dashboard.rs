@@ -168,11 +168,30 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
                 "color": b.color,
                 "mistakeCount": b.mistake_count,
                 "avgCpLoss": b.avg_cp_loss,
+                "sampleGameId": b.sample_game_id,
             });
             if let Some(best) = best_move_san {
                 obj["bestMove"] = serde_json::json!(best);
             }
             obj
+        })
+        .collect();
+
+    // Cleanest opening lines: deepest lines played with no inaccuracies (cp_loss < 50)
+    let clean_rows = opening_moves::get_cleanest_lines(pool, user_id, 50.0, 5, 5).await?;
+    let cleanest_lines: Vec<JsonValue> = clean_rows
+        .iter()
+        .map(|c| {
+            let san = uci_line_to_san(&c.line);
+            serde_json::json!({
+                "line": san.formatted,
+                "moves": san.moves,
+                "color": c.color,
+                "cleanDepth": c.clean_depth,
+                "gameCount": c.game_count,
+                "avgCpLoss": c.avg_cp_loss,
+                "sampleGameId": c.sample_game_id,
+            })
         })
         .collect();
 
@@ -186,6 +205,7 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         "mostAccurateGames": most_accurate,
         "leastAccurateGames": least_accurate,
         "openingBlunders": opening_blunders,
+        "cleanestLines": cleanest_lines,
     }))
 }
 

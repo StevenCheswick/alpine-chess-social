@@ -53,6 +53,17 @@ export interface OpeningBlunder {
   mistakeCount: number;
   avgCpLoss: number;
   bestMove?: string;
+  sampleGameId: number;
+}
+
+export interface CleanLine {
+  line: string;
+  moves: string[];
+  color: string;
+  cleanDepth: number;
+  gameCount: number;
+  avgCpLoss: number;
+  sampleGameId: number;
 }
 
 export interface DashboardStats {
@@ -65,6 +76,7 @@ export interface DashboardStats {
   mostAccurateGames: GameSummary[];
   leastAccurateGames: GameSummary[];
   openingBlunders: OpeningBlunder[];
+  cleanestLines: CleanLine[];
 }
 
 export async function getStats(): Promise<DashboardStats> {
