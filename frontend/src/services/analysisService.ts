@@ -152,6 +152,58 @@ class StockfishAnalyzer {
     });
   }
 
+  async analyzeMultiPv(
+    fen: string,
+    nodes: number,
+    numPvs: number,
+  ): Promise<{ lines: { pv: string[]; cp: number | null; mate: number | null }[] }> {
+    if (!this.worker) throw new Error('Worker not initialized');
+
+    return new Promise((resolve) => {
+      const lines: Map<number, { pv: string[]; cp: number | null; mate: number | null }> = new Map();
+
+      const originalHandler = this.worker!.onmessage;
+      this.worker!.onmessage = (e: MessageEvent<string>) => {
+        const line = e.data;
+
+        if (line.startsWith('info') && line.includes(' pv ')) {
+          const parts = line.split(' ');
+          const multipvIdx = parts.indexOf('multipv');
+          const multipv = multipvIdx !== -1 ? parseInt(parts[multipvIdx + 1]) : 1;
+
+          let cp: number | null = null;
+          let mate: number | null = null;
+          const scoreIdx = parts.indexOf('score');
+          if (scoreIdx !== -1 && scoreIdx + 2 < parts.length) {
+            if (parts[scoreIdx + 1] === 'cp') cp = parseInt(parts[scoreIdx + 2]);
+            if (parts[scoreIdx + 1] === 'mate') mate = parseInt(parts[scoreIdx + 2]);
+          }
+
+          const pvIdx = parts.indexOf('pv');
+          const pv = pvIdx !== -1 ? parts.slice(pvIdx + 1) : [];
+
+          if (pv.length > 0) {
+            lines.set(multipv, { pv, cp, mate });
+          }
+        }
+
+        if (line.startsWith('bestmove')) {
+          this.worker!.onmessage = originalHandler;
+          this.worker!.postMessage('setoption name MultiPV value 1');
+
+          const sorted = Array.from(lines.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([, v]) => v);
+          resolve({ lines: sorted });
+        }
+      };
+
+      this.worker!.postMessage(`setoption name MultiPV value ${numPvs}`);
+      this.worker!.postMessage(`position fen ${fen}`);
+      this.worker!.postMessage(`go nodes ${nodes}`);
+    });
+  }
+
   destroy(): void {
     if (this.worker) {
       this.worker.postMessage('quit');

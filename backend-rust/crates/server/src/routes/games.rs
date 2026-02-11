@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::auth::middleware::AuthUser;
 use crate::clients;
-use crate::db::{analysis, games, opening_tree as ot_db, users};
+use crate::db::{analysis, games, opening_moves, titled_players, users};
 use crate::error::AppError;
 
 #[derive(Deserialize)]
@@ -15,6 +15,7 @@ pub struct StoredGamesQuery {
     pub offset: Option<i64>,
     pub tags: Option<String>,
     pub platform: Option<String>,
+    pub analyzed: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +55,7 @@ pub async fn get_stored_games(
         offset,
         tags_list.as_deref(),
         source,
+        q.analyzed,
     )
     .await?;
 
@@ -62,6 +64,7 @@ pub async fn get_stored_games(
         account_id,
         tags_list.as_deref(),
         source,
+        q.analyzed,
     )
     .await?;
 
@@ -143,11 +146,13 @@ pub async fn sync_games(
     let pgn_tcn_pairs = if is_first_sync {
         tracing::info!("First sync for {} — fetching up to {} games", chess_com_username, max_games);
         let mut all_pairs = Vec::new();
-        let mut year = now.year();
-        let mut month = now.month();
 
-        loop {
-            match client.fetch_user_games(&chess_com_username, Some(year), Some(month), true).await {
+        // Use the archives endpoint to only fetch months that have games
+        let archive_months = client.fetch_archives(&chess_com_username).await.unwrap_or_default();
+        tracing::info!("  Found {} monthly archives", archive_months.len());
+
+        for (year, month) in &archive_months {
+            match client.fetch_user_games(&chess_com_username, Some(*year), Some(*month), true).await {
                 Ok(pairs) => {
                     if !pairs.is_empty() {
                         tracing::info!("  {}/{:02}: {} games", year, month, pairs.len());
@@ -161,17 +166,6 @@ pub async fn sync_games(
                 Err(e) => {
                     tracing::warn!("  {}/{:02}: Error - {}", year, month, e);
                 }
-            }
-
-            if month == 1 {
-                month = 12;
-                year -= 1;
-            } else {
-                month -= 1;
-            }
-
-            if year < 2010 {
-                break;
             }
         }
         all_pairs
@@ -187,11 +181,25 @@ pub async fn sync_games(
         let game_records = build_game_records(&pgn_tcn_pairs, &chess_com_username);
         let count = games::upsert_games(&pool, account_id, &game_records, "chess_com").await?;
 
-        // Invalidate opening tree cache
-        ot_db::invalidate_opening_trees(&pool, account_id).await?;
+        // Incrementally populate opening stats for newly synced games
+        opening_moves::populate_opening_stats(&pool, account_id).await?;
 
-        // Analyze newly synced games
-        analyze_user_games_internal(&pool, account_id, &chess_com_username, "chess_com", count as usize).await?;
+        // Tag titled opponents (Chess.com: lookup in-memory cache)
+        let source_ids: Vec<String> = game_records
+            .iter()
+            .filter_map(|g| g["id"].as_str().map(|s| s.to_string()))
+            .collect();
+        let db_games = games::get_game_ids_and_opponents(&pool, account_id, "chess_com", &source_ids).await?;
+        let title_pairs: Vec<(i64, String)> = db_games
+            .iter()
+            .filter_map(|(db_id, _source_id, opponent)| {
+                titled_players::lookup(opponent).map(|title| (*db_id, title))
+            })
+            .collect();
+        if !title_pairs.is_empty() {
+            let tagged = titled_players::insert_title_tags(&pool, &title_pairs).await?;
+            tracing::info!("Tagged {} Chess.com games with titled opponent tags", tagged);
+        }
 
         count
     } else {
@@ -231,8 +239,11 @@ pub async fn sync_lichess_games(
     let client = clients::lichess::LichessClient::new();
     let max_games = if is_first_sync { Some(1000) } else { None };
 
+    // On re-sync, only fetch games since last sync (epoch milliseconds)
+    let since = last_synced.map(|ts| ts.timestamp_millis());
+
     let pgn_pairs = client
-        .fetch_user_games(&lichess_username, max_games)
+        .fetch_user_games(&lichess_username, max_games, since)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to fetch Lichess games: {e}")))?;
 
@@ -240,7 +251,43 @@ pub async fn sync_lichess_games(
         let game_records = build_lichess_game_records(&pgn_pairs, &lichess_username);
         let count = games::upsert_games(&pool, account_id, &game_records, "lichess").await?;
 
-        analyze_user_games_internal(&pool, account_id, &lichess_username, "lichess", count as usize).await?;
+        // Incrementally populate opening stats for newly synced games
+        opening_moves::populate_opening_stats(&pool, account_id).await?;
+
+        // Tag titled opponents (Lichess: extract from PGN WhiteTitle/BlackTitle headers)
+        let source_ids: Vec<String> = game_records
+            .iter()
+            .filter_map(|g| g["id"].as_str().map(|s| s.to_string()))
+            .collect();
+        let db_games = games::get_game_ids_and_opponents(&pool, account_id, "lichess", &source_ids).await?;
+
+        // Build a map from source game ID → PGN for title extraction
+        let pgn_map: HashMap<String, &str> = pgn_pairs
+            .iter()
+            .map(|(pgn, game_id)| (game_id.clone(), pgn.as_str()))
+            .collect();
+
+        let title_pairs: Vec<(i64, String)> = db_games
+            .iter()
+            .filter_map(|(db_id, source_id, _opponent)| {
+                let pgn = pgn_map.get(source_id)?;
+                // Determine if user is white to know which title to check
+                let game = chess_core::pgn::parse_pgn(pgn, None)?;
+                let user_is_white = game.metadata.white.eq_ignore_ascii_case(&lichess_username);
+                let title_header = if user_is_white { "BlackTitle" } else { "WhiteTitle" };
+                let title = chess_core::pgn::extract_header(pgn, title_header)?;
+                if titled_players::is_valid_title(&title) {
+                    Some((*db_id, title))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !title_pairs.is_empty() {
+            let tagged = titled_players::insert_title_tags(&pool, &title_pairs).await?;
+            tracing::info!("Tagged {} Lichess games with titled opponent tags", tagged);
+        }
 
         count
     } else {
@@ -343,6 +390,7 @@ pub async fn get_my_games(
         user.id,
         limit,
         0,
+        None,
         None,
         None,
     )

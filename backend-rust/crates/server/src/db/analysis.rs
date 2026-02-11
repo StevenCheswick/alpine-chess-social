@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 
+use crate::db::opening_moves;
 use crate::error::AppError;
 
 pub async fn save_game_analysis(
@@ -20,13 +23,17 @@ pub async fn save_game_analysis(
         "black": first_inaccuracy_move(moves, false),
     });
 
+    let puzzles = analysis.get("puzzles").cloned().unwrap_or(JsonValue::Null);
+    let endgame_segments = analysis.get("endgame_segments").cloned().unwrap_or(JsonValue::Null);
+
     sqlx::query(
         r#"INSERT INTO game_analysis (
             game_id, white_accuracy, black_accuracy,
             white_avg_cp_loss, black_avg_cp_loss,
             white_classifications, black_classifications,
-            moves, phase_accuracy, first_inaccuracy_move
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            moves, phase_accuracy, first_inaccuracy_move,
+            puzzles, endgame_segments
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (game_id) DO UPDATE SET
             white_accuracy = EXCLUDED.white_accuracy,
             black_accuracy = EXCLUDED.black_accuracy,
@@ -36,7 +43,9 @@ pub async fn save_game_analysis(
             black_classifications = EXCLUDED.black_classifications,
             moves = EXCLUDED.moves,
             phase_accuracy = EXCLUDED.phase_accuracy,
-            first_inaccuracy_move = EXCLUDED.first_inaccuracy_move"#,
+            first_inaccuracy_move = EXCLUDED.first_inaccuracy_move,
+            puzzles = EXCLUDED.puzzles,
+            endgame_segments = EXCLUDED.endgame_segments"#,
     )
     .bind(game_id)
     .bind(analysis["white_accuracy"].as_f64().unwrap_or(0.0))
@@ -48,6 +57,8 @@ pub async fn save_game_analysis(
     .bind(moves)
     .bind(&phase_acc)
     .bind(&first_inacc)
+    .bind(&puzzles)
+    .bind(&endgame_segments)
     .execute(pool)
     .await
     .map_err(AppError::Sqlx)?;
@@ -58,6 +69,41 @@ pub async fn save_game_analysis(
         .execute(pool)
         .await
         .map_err(AppError::Sqlx)?;
+
+    // Save tags from cook() themes + endgame types (if present in payload)
+    if let Some(tags) = analysis.get("tags").and_then(|t| t.as_array()) {
+        // Delete old tags
+        sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
+            .bind(game_id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Sqlx)?;
+
+        // Insert new tags
+        for tag in tags {
+            if let Some(tag_str) = tag.as_str() {
+                sqlx::query(
+                    "INSERT INTO game_tags (game_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                )
+                .bind(game_id)
+                .bind(tag_str)
+                .execute(pool)
+                .await
+                .map_err(AppError::Sqlx)?;
+            }
+        }
+
+        // Update denormalized tags JSON in user_games
+        sqlx::query("UPDATE user_games SET tags = $2 WHERE id = $1")
+            .bind(game_id)
+            .bind(serde_json::to_value(tags).unwrap_or_default())
+            .execute(pool)
+            .await
+            .map_err(AppError::Sqlx)?;
+    }
+
+    // Enrich opening stats with eval data from this analysis
+    opening_moves::enrich_opening_evals(pool, game_id).await?;
 
     Ok(())
 }
@@ -70,7 +116,8 @@ pub async fn get_game_analysis(
 
     let row = sqlx::query(
         r#"SELECT white_accuracy, black_accuracy, white_avg_cp_loss, black_avg_cp_loss,
-                  white_classifications, black_classifications, moves
+                  white_classifications, black_classifications, moves,
+                  puzzles, endgame_segments
            FROM game_analysis WHERE game_id = $1"#,
     )
     .bind(game_id)
@@ -79,7 +126,7 @@ pub async fn get_game_analysis(
     .map_err(AppError::Sqlx)?;
 
     Ok(row.map(|r| {
-        serde_json::json!({
+        let mut result = serde_json::json!({
             "white_accuracy": r.try_get::<f64, _>("white_accuracy").unwrap_or(0.0),
             "black_accuracy": r.try_get::<f64, _>("black_accuracy").unwrap_or(0.0),
             "white_avg_cp_loss": r.try_get::<f64, _>("white_avg_cp_loss").unwrap_or(0.0),
@@ -88,7 +135,16 @@ pub async fn get_game_analysis(
             "black_classifications": r.try_get::<JsonValue, _>("black_classifications").unwrap_or(JsonValue::Object(serde_json::Map::new())),
             "moves": r.try_get::<JsonValue, _>("moves").unwrap_or(JsonValue::Array(vec![])),
             "isComplete": true,
-        })
+        });
+
+        if let Ok(Some(puzzles)) = r.try_get::<Option<JsonValue>, _>("puzzles") {
+            result["puzzles"] = puzzles;
+        }
+        if let Ok(Some(segments)) = r.try_get::<Option<JsonValue>, _>("endgame_segments") {
+            result["endgame_segments"] = segments;
+        }
+
+        result
     }))
 }
 
@@ -210,6 +266,205 @@ fn phase_accuracy(moves: &JsonValue, is_white: bool) -> JsonValue {
     }
 
     JsonValue::Object(result)
+}
+
+/// Get all puzzles for a user, enriched with game metadata.
+/// Optionally filters by theme (case-insensitive substring match).
+pub async fn get_user_puzzles(
+    pool: &PgPool,
+    user_id: i64,
+    theme_filter: Option<&str>,
+) -> Result<Vec<JsonValue>, AppError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"SELECT ug.id AS game_id, ug.opponent, ug.date, ug.user_color, ug.source,
+                  ga.puzzles
+           FROM user_games ug
+           INNER JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE ug.user_id = $1 AND ga.puzzles IS NOT NULL
+           ORDER BY ug.date DESC"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let mut result = Vec::new();
+    let mut puzzle_idx: u64 = 0;
+
+    for row in &rows {
+        let game_id: i64 = row.try_get("game_id").unwrap_or(0);
+        let opponent: String = row.try_get("opponent").unwrap_or_default();
+        let date: Option<String> = row.try_get("date").unwrap_or(None);
+        let user_color: String = row.try_get("user_color").unwrap_or_default();
+        let source: String = row.try_get("source").unwrap_or_default();
+        let puzzles_json: Option<JsonValue> = row.try_get("puzzles").unwrap_or(None);
+
+        let puzzles = match puzzles_json.and_then(|v| v.as_array().cloned()) {
+            Some(arr) => arr,
+            None => continue,
+        };
+
+        for puzzle in puzzles {
+            // Apply theme filter if provided
+            if let Some(filter) = theme_filter {
+                let themes = puzzle
+                    .get("themes")
+                    .and_then(|t| t.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+
+                if !themes.iter().any(|t| t.eq_ignore_ascii_case(filter)) {
+                    continue;
+                }
+            }
+
+            let mut enriched = puzzle.clone();
+            if let Some(obj) = enriched.as_object_mut() {
+                obj.insert("id".to_string(), serde_json::json!(format!("p{puzzle_idx}")));
+                obj.insert("gameId".to_string(), serde_json::json!(game_id));
+                obj.insert("opponent".to_string(), serde_json::json!(opponent));
+                obj.insert("date".to_string(), serde_json::json!(date));
+                obj.insert("userColor".to_string(), serde_json::json!(user_color));
+                obj.insert("source".to_string(), serde_json::json!(source));
+            }
+
+            result.push(enriched);
+            puzzle_idx += 1;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Get theme counts across all user puzzles.
+pub async fn get_user_puzzle_themes(
+    pool: &PgPool,
+    user_id: i64,
+) -> Result<HashMap<String, i64>, AppError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"SELECT ga.puzzles
+           FROM user_games ug
+           INNER JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE ug.user_id = $1 AND ga.puzzles IS NOT NULL"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let mut counts: HashMap<String, i64> = HashMap::new();
+
+    for row in &rows {
+        let puzzles_json: Option<JsonValue> = row.try_get("puzzles").unwrap_or(None);
+        let puzzles = match puzzles_json.and_then(|v| v.as_array().cloned()) {
+            Some(arr) => arr,
+            None => continue,
+        };
+
+        for puzzle in puzzles {
+            if let Some(themes) = puzzle.get("themes").and_then(|t| t.as_array()) {
+                for theme in themes {
+                    if let Some(t) = theme.as_str() {
+                        *counts.entry(t.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(counts)
+}
+
+/// Per-endgame-type stats aggregated across all analyzed games for a user.
+pub async fn get_user_endgame_stats(
+    pool: &PgPool,
+    user_id: i64,
+) -> Result<JsonValue, AppError> {
+    use sqlx::Row;
+
+    // Unnest endgame_segments JSONB arrays, join with user_games for color info,
+    // then aggregate per endgame_type.
+    let rows = sqlx::query(
+        r#"
+        WITH segments AS (
+            SELECT
+                ug.id AS game_id,
+                LOWER(ug.user_color) AS user_color,
+                seg->>'endgame_type' AS endgame_type,
+                (seg->>'white_cp_loss')::double precision AS white_cp_loss,
+                (seg->>'white_moves')::int AS white_moves,
+                (seg->>'black_cp_loss')::double precision AS black_cp_loss,
+                (seg->>'black_moves')::int AS black_moves
+            FROM user_games ug
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
+            jsonb_array_elements(ga.endgame_segments) AS seg
+            WHERE ug.user_id = $1
+              AND ga.endgame_segments IS NOT NULL
+              AND jsonb_array_length(ga.endgame_segments) > 0
+        )
+        SELECT
+            endgame_type,
+            COUNT(DISTINCT game_id)::bigint AS games,
+            SUM(CASE WHEN user_color = 'white' THEN white_cp_loss ELSE black_cp_loss END) AS user_total_cp_loss,
+            SUM(CASE WHEN user_color = 'white' THEN white_moves ELSE black_moves END)::bigint AS user_total_moves,
+            SUM(CASE WHEN user_color = 'white' THEN black_cp_loss ELSE white_cp_loss END) AS opp_total_cp_loss,
+            SUM(CASE WHEN user_color = 'white' THEN black_moves ELSE white_moves END)::bigint AS opp_total_moves
+        FROM segments
+        WHERE endgame_type IS NOT NULL
+        GROUP BY endgame_type
+        ORDER BY games DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let mut total_games_with_endgame: i64 = 0;
+    let type_stats: Vec<JsonValue> = rows
+        .iter()
+        .map(|r| {
+            let endgame_type: String = r.try_get("endgame_type").unwrap_or_default();
+            let games: i64 = r.try_get("games").unwrap_or(0);
+            let user_total_cp: f64 = r.try_get("user_total_cp_loss").unwrap_or(0.0);
+            let user_total_moves: i64 = r.try_get("user_total_moves").unwrap_or(0);
+            let opp_total_cp: f64 = r.try_get("opp_total_cp_loss").unwrap_or(0.0);
+            let opp_total_moves: i64 = r.try_get("opp_total_moves").unwrap_or(0);
+
+            total_games_with_endgame += games;
+
+            let user_avg = if user_total_moves > 0 {
+                (user_total_cp / user_total_moves as f64 * 10.0).round() / 10.0
+            } else {
+                0.0
+            };
+            let opp_avg = if opp_total_moves > 0 {
+                (opp_total_cp / opp_total_moves as f64 * 10.0).round() / 10.0
+            } else {
+                0.0
+            };
+
+            serde_json::json!({
+                "type": endgame_type,
+                "games": games,
+                "userAvgCpLoss": user_avg,
+                "opponentAvgCpLoss": opp_avg,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "totalGamesWithEndgame": total_games_with_endgame,
+        "typeStats": type_stats,
+    }))
 }
 
 fn first_inaccuracy_move(moves: &JsonValue, is_white: bool) -> i64 {

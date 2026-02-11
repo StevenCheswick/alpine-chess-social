@@ -112,6 +112,14 @@ fn extract_moves(pgn: &str) -> Vec<String> {
         .collect()
 }
 
+/// Extract a string value from a PGN header (e.g. WhiteTitle, BlackTitle).
+pub fn extract_header(pgn: &str, header_name: &str) -> Option<String> {
+    let pattern = format!(r#"\[{}\s+"([^"]*)"\]"#, regex::escape(header_name));
+    let re = Regex::new(&pattern).ok()?;
+    let value = re.captures(pgn)?.get(1)?.as_str().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
 /// Extract an integer value from a PGN header.
 pub fn extract_header_int(pgn: &str, header_name: &str) -> Option<i32> {
     let pattern = format!(r#"\[{}\s+"(\d+)"\]"#, regex::escape(header_name));

@@ -1,11 +1,12 @@
 use axum::{Extension, Json};
 use serde_json::Value as JsonValue;
+use shakmaty::{Chess, Position, uci::UciMove, san::San};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
 use crate::auth::middleware::AuthUser;
-use crate::db::analysis;
+use crate::db::{analysis, opening_moves};
 use crate::error::AppError;
 
 // Simple in-process cache
@@ -152,6 +153,29 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     });
     let least_accurate: Vec<JsonValue> = least.iter().take(5).map(|g| game_summary(g)).collect();
 
+    // Opening blunders: most repeated mistakes (cp_loss >= 50 = half a pawn)
+    let blunder_rows = opening_moves::get_opening_blunders(pool, user_id, 50.0, 5).await?;
+    let opening_blunders: Vec<JsonValue> = blunder_rows
+        .iter()
+        .map(|b| {
+            let san = uci_line_to_san(&b.line);
+            let best_move_san = b.best_move.as_deref()
+                .and_then(|uci| uci_to_san(&san.pre_last_pos, uci));
+            let mut obj = serde_json::json!({
+                "line": san.formatted,
+                "moves": san.moves,
+                "ply": b.ply,
+                "color": b.color,
+                "mistakeCount": b.mistake_count,
+                "avgCpLoss": b.avg_cp_loss,
+            });
+            if let Some(best) = best_move_san {
+                obj["bestMove"] = serde_json::json!(best);
+            }
+            obj
+        })
+        .collect();
+
     Ok(serde_json::json!({
         "totalAnalyzedGames": stats.len(),
         "accuracyOverTime": accuracy_over_time,
@@ -161,6 +185,7 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         "moveQualityBreakdown": move_quality_breakdown,
         "mostAccurateGames": most_accurate,
         "leastAccurateGames": least_accurate,
+        "openingBlunders": opening_blunders,
     }))
 }
 
@@ -255,4 +280,66 @@ fn downsample(data: Vec<JsonValue>) -> Vec<JsonValue> {
         indices.insert((i as f64 * step).round() as usize);
     }
     indices.into_iter().map(|i| data[i].clone()).collect()
+}
+
+/// Result of converting a UCI line to SAN.
+struct SanLine {
+    formatted: String,
+    moves: Vec<String>,
+    /// Position just before the last move was played (for converting best_move).
+    pre_last_pos: Chess,
+}
+
+/// Convert a UCI move line to SAN formatted line + moves array.
+/// e.g. "e2e4 e7e5 g1f3 f7f6" → ("1. e4 e5 2. Nf3 f6", ["e4", "e5", "Nf3", "f6"])
+fn uci_line_to_san(uci_line: &str) -> SanLine {
+    let tokens: Vec<&str> = uci_line.split_whitespace().collect();
+    let mut pos = Chess::default();
+    let mut formatted = String::new();
+    let mut moves = Vec::new();
+    let mut pre_last_pos = pos.clone();
+
+    for (i, uci_str) in tokens.iter().enumerate() {
+        let uci_move: UciMove = match uci_str.parse() {
+            Ok(m) => m,
+            Err(_) => return SanLine {
+                formatted: uci_line.to_string(),
+                moves: tokens.iter().map(|s| s.to_string()).collect(),
+                pre_last_pos: pos,
+            },
+        };
+        let legal_move = match uci_move.to_move(&pos) {
+            Ok(m) => m,
+            Err(_) => return SanLine {
+                formatted: uci_line.to_string(),
+                moves: tokens.iter().map(|s| s.to_string()).collect(),
+                pre_last_pos: pos,
+            },
+        };
+        let san = San::from_move(&pos, &legal_move);
+        let san_str = san.to_string();
+        moves.push(san_str.clone());
+
+        let move_num = (i / 2) + 1;
+        if i % 2 == 0 {
+            if !formatted.is_empty() {
+                formatted.push(' ');
+            }
+            formatted.push_str(&format!("{}. {}", move_num, san_str));
+        } else {
+            formatted.push_str(&format!(" {}", san_str));
+        }
+
+        pre_last_pos = pos.clone();
+        pos.play_unchecked(&legal_move);
+    }
+
+    SanLine { formatted, moves, pre_last_pos }
+}
+
+/// Convert a single UCI move to SAN at a given position.
+fn uci_to_san(pos: &Chess, uci_str: &str) -> Option<String> {
+    let uci_move: UciMove = uci_str.parse().ok()?;
+    let legal_move = uci_move.to_move(pos).ok()?;
+    Some(San::from_move(pos, &legal_move).to_string())
 }

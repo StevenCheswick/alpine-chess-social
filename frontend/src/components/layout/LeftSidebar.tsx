@@ -30,6 +30,17 @@ const navItems = [
     ),
   },
   {
+    label: 'Puzzles',
+    path: '/puzzles',
+    icon: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 2C9.5 2 8 3.5 8 5.5c0 1.5.5 2 1 2.5L8 10h8l-1-2c.5-.5 1-1 1-2.5C16 3.5 14.5 2 12 2z" />
+        <rect x="7" y="10" width="10" height="2" rx="0.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12v7a3 3 0 003 3h2a3 3 0 003-3v-7" />
+      </svg>
+    ),
+  },
+  {
     label: 'Opening Tree',
     path: '/opening-tree',
     icon: (
@@ -44,6 +55,16 @@ const navItems = [
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Endgames',
+    path: '/endgames',
+    icon: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="8" y="2" width="8" height="4" rx="1" strokeLinecap="round" strokeLinejoin="round" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6v3M14 6v3M7 9h10l-1 7H8L7 9zM8 16h8v2a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2z" />
       </svg>
     ),
   },

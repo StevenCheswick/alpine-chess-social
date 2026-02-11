@@ -4,18 +4,20 @@ use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 
 use crate::auth::middleware::AuthUser;
-use crate::db::{games, opening_tree as ot_db};
+use crate::db::opening_moves;
 use crate::error::AppError;
 
 const MAX_DEPTH: usize = 15;
+const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[derive(Deserialize)]
 pub struct OpeningTreeQuery {
     pub color: String,
-    pub rebuild: Option<bool>,
+    pub fen: Option<String>,
 }
 
-/// GET /api/opening-tree
+/// GET /api/opening-tree?color=white&fen=...
+/// Returns the children of a single position. No fen = root position.
 pub async fn get_opening_tree(
     Extension(pool): Extension<PgPool>,
     Query(q): Query<OpeningTreeQuery>,
@@ -28,73 +30,73 @@ pub async fn get_opening_tree(
         ));
     }
 
+    let parent_fen = q.fen.as_deref().unwrap_or(STARTING_FEN);
     let account_id = user.id;
 
-    // Check cache
-    if !q.rebuild.unwrap_or(false) {
-        if let Some(cached) = ot_db::get_cached_opening_tree(&pool, account_id, &color).await? {
-            return Ok(Json(serde_json::json!({
-                "color": color,
-                "rootNode": cached["tree"],
-                "totalGames": cached["totalGames"],
-                "depth": MAX_DEPTH,
-            })));
-        }
+    // Trigger backfill only if no stats exist at all (first time after migration)
+    if !opening_moves::has_opening_stats(&pool, account_id).await? {
+        opening_moves::populate_opening_stats(&pool, account_id).await?;
     }
 
-    // Build tree
-    let color_games = games::get_user_games_by_color(&pool, account_id, &color).await?;
+    // Query ONLY the children of this position
+    let rows = opening_moves::get_children(&pool, account_id, &color, parent_fen).await?;
 
-    if color_games.is_empty() {
-        return Ok(Json(serde_json::json!({
-            "color": color,
-            "rootNode": {
-                "move": "start",
-                "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-                "games": 0,
-                "wins": 0,
-                "losses": 0,
-                "draws": 0,
-                "winRate": 0,
-                "children": [],
-            },
-            "totalGames": 0,
-            "depth": MAX_DEPTH,
-        })));
-    }
-
-    // Convert games to format expected by opening tree builder
-    let tree_games: Vec<chess_core::opening_tree::TreeGame> = color_games
+    let mut children: Vec<JsonValue> = rows
         .iter()
-        .filter_map(|g| {
-            let result = g["result"].as_str().unwrap_or("D").to_string();
-            let tcn = g["tcn"].as_str().map(|s| s.to_string());
-
-            // Decode TCN to SAN moves if available
-            let moves = if let Some(ref tcn_str) = tcn {
-                chess_core::tcn::decode_tcn_to_san(tcn_str).unwrap_or_default()
+        .map(|row| {
+            let win_rate = if row.games > 0 {
+                ((row.wins as f64 / row.games as f64) * 1000.0).round() / 10.0
             } else {
-                vec![]
+                0.0
             };
 
-            if moves.is_empty() {
-                return None;
+            let mut node = serde_json::json!({
+                "move": row.move_san,
+                "fen": row.result_fen,
+                "games": row.games,
+                "wins": row.wins,
+                "losses": row.losses,
+                "draws": row.draws,
+                "winRate": win_rate,
+            });
+
+            if let Some(cp) = row.eval_cp {
+                node["evalCp"] = serde_json::json!(cp);
             }
 
-            Some(chess_core::opening_tree::TreeGame { moves, result })
+            node
         })
         .collect();
 
-    let tree = chess_core::opening_tree::build_opening_tree(&tree_games, MAX_DEPTH);
-    let root_node = chess_core::opening_tree::convert_tree_for_response(&tree);
+    // Sort by game count descending
+    children.sort_by(|a, b| {
+        b["games"]
+            .as_i64()
+            .unwrap_or(0)
+            .cmp(&a["games"].as_i64().unwrap_or(0))
+    });
 
-    // Cache it
-    ot_db::save_opening_tree(&pool, account_id, &color, &root_node, tree_games.len() as i32).await?;
+    // Sum stats from children for the current node
+    let total_games: i64 = children.iter().map(|c| c["games"].as_i64().unwrap_or(0)).sum();
+    let total_wins: i64 = children.iter().map(|c| c["wins"].as_i64().unwrap_or(0)).sum();
+    let total_losses: i64 = children.iter().map(|c| c["losses"].as_i64().unwrap_or(0)).sum();
+    let total_draws: i64 = children.iter().map(|c| c["draws"].as_i64().unwrap_or(0)).sum();
+    let win_rate = if total_games > 0 {
+        ((total_wins as f64 / total_games as f64) * 1000.0).round() / 10.0
+    } else {
+        0.0
+    };
 
     Ok(Json(serde_json::json!({
         "color": color,
-        "rootNode": root_node,
-        "totalGames": tree_games.len(),
+        "fen": parent_fen,
+        "games": total_games,
+        "wins": total_wins,
+        "losses": total_losses,
+        "draws": total_draws,
+        "winRate": win_rate,
+        "children": children,
+        "totalGames": total_games,
         "depth": MAX_DEPTH,
     })))
 }

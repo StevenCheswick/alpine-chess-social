@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Chessboard } from 'react-chessboard';
 import { useAuthStore } from '../stores/authStore';
@@ -20,86 +20,75 @@ function getWinRateColor(winRate: number): string {
   return 'text-red-400';
 }
 
+interface PathEntry {
+  move: string;
+  fen: string;
+}
+
 export default function OpeningTreePage() {
   const { user } = useAuthStore();
   const chessComUsername = user?.chessComUsername;
 
   const [color, setColor] = useState<'white' | 'black'>('white');
-  const [tree, setTree] = useState<TreeNode | null>(null);
-  const [currentPath, setCurrentPath] = useState<string[]>([]);
-  const [currentNode, setCurrentNode] = useState<TreeNode | null>(null);
+  const [children, setChildren] = useState<TreeNode[]>([]);
+  const [currentFen, setCurrentFen] = useState(STARTING_FEN);
+  const [path, setPath] = useState<PathEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalGames, setTotalGames] = useState(0);
+  const [nodeStats, setNodeStats] = useState({ games: 0, wins: 0, losses: 0, draws: 0, winRate: 0 });
 
-  // Fetch tree when color changes
-  useEffect(() => {
-    if (chessComUsername) {
-      fetchOpeningTree(color);
-    }
-  }, [color, chessComUsername]);
-
-  const fetchOpeningTree = async (colorToFetch: 'white' | 'black') => {
+  const fetchPosition = useCallback(async (fen: string, colorToFetch: string) => {
     setLoading(true);
     setError(null);
-
     try {
-      const response = await openingService.getOpeningTree(colorToFetch);
-      setTree(response.rootNode);
-      setCurrentNode(response.rootNode);
-      setCurrentPath([]);
+      const response = await openingService.getOpeningTree(colorToFetch as 'white' | 'black', fen);
+      setChildren(response.children);
       setTotalGames(response.totalGames);
+      setNodeStats({
+        games: response.games,
+        wins: response.wins,
+        losses: response.losses,
+        draws: response.draws,
+        winRate: response.winRate,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load opening tree');
-      setTree(null);
-      setCurrentNode(null);
+      setChildren([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Navigate to a child node
-  const navigateToMove = (move: string) => {
-    if (!currentNode) return;
-
-    const childNode = currentNode.children.find(c => c.move === move);
-    if (childNode) {
-      setCurrentPath([...currentPath, move]);
-      setCurrentNode(childNode);
+  // Fetch root when color changes
+  useEffect(() => {
+    if (chessComUsername) {
+      setPath([]);
+      setCurrentFen(STARTING_FEN);
+      fetchPosition(STARTING_FEN, color);
     }
+  }, [color, chessComUsername, fetchPosition]);
+
+  const navigateToMove = (child: TreeNode) => {
+    setPath(prev => [...prev, { move: child.move, fen: child.fen }]);
+    setCurrentFen(child.fen);
+    fetchPosition(child.fen, color);
   };
 
-  // Go back one level
   const goBack = () => {
-    if (currentPath.length === 0 || !tree) return;
-
-    const newPath = [...currentPath];
-    newPath.pop();
-
-    // Navigate to the node at newPath
-    let node = tree;
-    for (const move of newPath) {
-      const child = node.children.find(c => c.move === move);
-      if (child) {
-        node = child;
-      } else {
-        break;
-      }
-    }
-
-    setCurrentPath(newPath);
-    setCurrentNode(node);
+    if (path.length === 0) return;
+    const newPath = path.slice(0, -1);
+    const fen = newPath.length > 0 ? newPath[newPath.length - 1].fen : STARTING_FEN;
+    setPath(newPath);
+    setCurrentFen(fen);
+    fetchPosition(fen, color);
   };
 
-  // Reset to root
   const goToRoot = () => {
-    if (!tree) return;
-    setCurrentPath([]);
-    setCurrentNode(tree);
+    setPath([]);
+    setCurrentFen(STARTING_FEN);
+    fetchPosition(STARTING_FEN, color);
   };
-
-  // Current FEN for the board
-  const currentFen = currentNode?.fen || STARTING_FEN;
 
   // Show link account prompt if no Chess.com username
   if (!chessComUsername) {
@@ -167,14 +156,6 @@ export default function OpeningTreePage() {
         </button>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="text-center py-12">
-          <div className="inline-block w-8 h-8 border-4 border-slate-700 border-t-emerald-500 rounded-full animate-spin"></div>
-          <p className="text-slate-400 mt-4">Loading opening tree...</p>
-        </div>
-      )}
-
       {/* Error State */}
       {error && (
         <div className="card p-4 bg-red-500/10 border-red-500/30">
@@ -183,113 +164,115 @@ export default function OpeningTreePage() {
       )}
 
       {/* Main Content */}
-      {!loading && !error && tree && (
-        <div className="space-y-3">
-          {/* Current Line Breadcrumb */}
-          <div className="flex items-center gap-2 flex-wrap text-sm">
-            <button
-              onClick={goToRoot}
-              className={`px-2 py-1 rounded ${
-                currentPath.length === 0
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              Start
-            </button>
-            {currentPath.length > 0 && (
-              <>
-                {currentPath.map((move, idx) => (
-                  <span key={idx} className="flex items-center gap-1">
-                    <span className="text-slate-600">&gt;</span>
-                    <span className="text-slate-300">
-                      {formatMoveNumber(idx)} {move}
-                    </span>
+      <div className="space-y-3">
+        {/* Current Line Breadcrumb */}
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <button
+            onClick={goToRoot}
+            className={`px-2 py-1 rounded ${
+              path.length === 0
+                ? 'bg-emerald-600 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            Start
+          </button>
+          {path.length > 0 && (
+            <>
+              {path.map((entry, idx) => (
+                <span key={idx} className="flex items-center gap-1">
+                  <span className="text-slate-600">&gt;</span>
+                  <span className="text-slate-300">
+                    {formatMoveNumber(idx)} {entry.move}
                   </span>
-                ))}
-                <button
-                  onClick={goBack}
-                  className="ml-2 text-slate-500 hover:text-white transition-colors"
-                >
-                  (back)
-                </button>
-              </>
-            )}
-            <span className="ml-auto text-slate-500 text-xs">
-              {totalGames} games
-            </span>
-          </div>
+                </span>
+              ))}
+              <button
+                onClick={goBack}
+                className="ml-2 text-slate-500 hover:text-white transition-colors"
+              >
+                (back)
+              </button>
+            </>
+          )}
+          <span className="ml-auto text-slate-500 text-xs">
+            {totalGames} games
+          </span>
+        </div>
 
-          {/* Board + Moves side by side */}
-          <div className="flex gap-4">
-            {/* Board */}
-            <div className="w-80 flex-shrink-0">
-              <div className="card overflow-hidden">
-                <div className="aspect-square">
-                  <Chessboard
-                    key={`opening-${color}`}
-                    options={{
-                      position: currentFen,
-                      boardOrientation: color,
-                    }}
-                  />
-                </div>
+        {/* Board + Moves side by side */}
+        <div className="flex gap-4">
+          {/* Board */}
+          <div className="w-80 flex-shrink-0">
+            <div className="card overflow-hidden">
+              <div className="aspect-square">
+                <Chessboard
+                  key={`opening-${color}`}
+                  options={{
+                    position: currentFen,
+                    boardOrientation: color,
+                  }}
+                />
               </div>
             </div>
+          </div>
 
-            {/* Move List */}
-            <div className="flex-1 min-w-0">
-              {currentNode?.children.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-sm">
-                  No continuation data
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {currentNode?.children.map((child) => (
-                    <button
-                      key={child.move}
-                      onClick={() => navigateToMove(child.move)}
-                      className="w-full px-3 py-2 rounded-lg text-left hover:bg-slate-800 transition-colors flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-500 text-sm w-6">
-                          {formatMoveNumber(currentPath.length)}
-                        </span>
-                        <span className="text-white font-medium">{child.move}</span>
-                        <span className="text-slate-500 text-sm">
-                          ({child.games})
-                        </span>
+          {/* Move List */}
+          <div className="flex-1 min-w-0">
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="inline-block w-6 h-6 border-3 border-slate-700 border-t-emerald-500 rounded-full animate-spin"></div>
+              </div>
+            ) : children.length === 0 ? (
+              <div className="text-center py-8 text-slate-500 text-sm">
+                No continuation data
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {children.map((child) => (
+                  <button
+                    key={child.move}
+                    onClick={() => navigateToMove(child)}
+                    className="w-full px-3 py-2 rounded-lg text-left hover:bg-slate-800 transition-colors flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-sm w-6">
+                        {formatMoveNumber(path.length)}
+                      </span>
+                      <span className="text-white font-medium">{child.move}</span>
+                      <span className="text-slate-500 text-sm">
+                        ({child.games})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
+                        <div
+                          className="bg-green-500 h-full"
+                          style={{ width: `${(child.wins / child.games) * 100}%` }}
+                        />
+                        <div
+                          className="bg-slate-500 h-full"
+                          style={{ width: `${(child.draws / child.games) * 100}%` }}
+                        />
+                        <div
+                          className="bg-red-500 h-full"
+                          style={{ width: `${(child.losses / child.games) * 100}%` }}
+                        />
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
-                          <div
-                            className="bg-green-500 h-full"
-                            style={{ width: `${(child.wins / child.games) * 100}%` }}
-                          />
-                          <div
-                            className="bg-slate-500 h-full"
-                            style={{ width: `${(child.draws / child.games) * 100}%` }}
-                          />
-                          <div
-                            className="bg-red-500 h-full"
-                            style={{ width: `${(child.losses / child.games) * 100}%` }}
-                          />
-                        </div>
-                        <span className={`text-sm font-medium w-12 text-right ${getWinRateColor(child.winRate)}`}>
-                          {child.winRate.toFixed(0)}%
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                      <span className={`text-sm font-medium w-12 text-right ${getWinRateColor(child.winRate)}`}>
+                        {child.winRate.toFixed(0)}%
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Empty State */}
-      {!loading && !error && tree && totalGames === 0 && (
+      {!loading && totalGames === 0 && (
         <div className="card p-8 text-center">
           <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">&#9823;</span>

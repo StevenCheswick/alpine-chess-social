@@ -34,6 +34,10 @@ nul
 sync_result.json
 jan_result.json
 
+# Stockfish binary (used for integration tests)
+stockfish.exe
+stockfish
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,7 @@
+[build]
+target-dir = "C:\\tmp\\chess-social-media-target"
+
+[env]
+# Run tests single-threaded — Stockfish-integrated tests each spawn their own
+# engine process; parallel execution causes CPU contention and lock issues.
+RUST_TEST_THREADS = "1"

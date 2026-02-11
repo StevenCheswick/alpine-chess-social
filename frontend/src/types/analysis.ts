@@ -121,3 +121,52 @@ export interface BatchGameInput {
   moves: string[];
   userColor: 'white' | 'black';
 }
+
+/** Puzzle extracted from a blunder position */
+export interface PuzzleOutput {
+  fen: string;
+  moves: string[];
+  cp: number;
+  themes: string[];
+}
+
+/** Puzzle enriched with game context, as returned by GET /api/puzzles */
+export interface PuzzleWithContext extends PuzzleOutput {
+  id: string;
+  gameId: number;
+  opponent: string;
+  date: string | null;
+  userColor: 'white' | 'black';
+  source: string;
+}
+
+/** A mistake made during an endgame segment */
+export interface EndgameMistake {
+  fen: string;
+  move_uci: string;
+  best_move: string;
+  cp_loss: number;
+  classification: string;
+  move_number: number;
+  is_white: boolean;
+}
+
+/** An endgame segment within a game */
+export interface EndgameSegment {
+  endgame_type: string;
+  entry_move: number;
+  entry_eval: number;
+  white_moves: number;
+  white_cp_loss: number;
+  white_blunders: number;
+  black_moves: number;
+  black_cp_loss: number;
+  black_blunders: number;
+  mistakes: EndgameMistake[];
+}
+
+/** Full analysis result from the WebSocket analysis server */
+export interface FullAnalysis extends GameAnalysis {
+  puzzles: PuzzleOutput[];
+  endgame_segments: EndgameSegment[];
+}

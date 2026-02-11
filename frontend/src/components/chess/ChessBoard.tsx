@@ -162,7 +162,7 @@ export default function ChessBoard({
     setCurrentMoveIndex(targetIndex);
     setLastMove(targetIndex === 0 ? null : lastMoveData);
     onPositionChange?.(newFen, targetIndex);
-  }, [cleanedMoves, onPositionChange]);
+  }, [cleanedMoves, currentMoveIndex, onPositionChange]);
 
   const goToStart = () => goToMove(0);
   const goToPrevious = () => goToMove(Math.max(0, currentMoveIndex - 1));

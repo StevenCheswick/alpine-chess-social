@@ -25,3 +25,6 @@ regex = { workspace = true }
 
 chess-core = { path = "../chess-core" }
 chess-analyzers = { path = "../chess-analyzers" }
+chess_puzzler = { path = "../chess-puzzler" }
+shakmaty = { workspace = true }
+futures = { workspace = true }

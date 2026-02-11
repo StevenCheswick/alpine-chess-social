@@ -45,6 +45,16 @@ export interface GameSummary {
   userColor: string;
 }
 
+export interface OpeningBlunder {
+  line: string;
+  moves: string[];
+  ply: number;
+  color: string;
+  mistakeCount: number;
+  avgCpLoss: number;
+  bestMove?: string;
+}
+
 export interface DashboardStats {
   totalAnalyzedGames: number;
   accuracyOverTime: AccuracyDataPoint[];
@@ -54,6 +64,7 @@ export interface DashboardStats {
   moveQualityBreakdown: MoveQualityBreakdown;
   mostAccurateGames: GameSummary[];
   leastAccurateGames: GameSummary[];
+  openingBlunders: OpeningBlunder[];
 }
 
 export async function getStats(): Promise<DashboardStats> {

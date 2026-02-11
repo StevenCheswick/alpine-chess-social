@@ -1,9 +1,9 @@
-mod auth;
-mod clients;
-mod config;
-mod db;
-mod error;
-mod routes;
+use server::auth;
+use server::clients;
+use server::config;
+use server::db;
+use server::error;
+use server::routes;
 
 use axum::{routing::{get, post, put}, Extension, Router};
 use tower_http::cors::{Any, CorsLayer};
@@ -33,6 +33,23 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
+    // Load titled players cache (and seed from Chess.com API on first run)
+    let titled_count = db::titled_players::load_cache(&pool)
+        .await
+        .expect("Failed to load titled players cache");
+    if titled_count == 0 {
+        tracing::info!("Titled players table is empty — seeding from Chess.com API...");
+        tokio::spawn({
+            let pool = pool.clone();
+            async move {
+                match db::titled_players::seed_from_chesscom(&pool).await {
+                    Ok(count) => tracing::info!("Seeded {} titled players from Chess.com", count),
+                    Err(e) => tracing::warn!("Failed to seed titled players: {}", e),
+                }
+            }
+        });
+    }
+
     // CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -41,6 +58,8 @@ async fn main() {
 
     // Build router — same paths as Python FastAPI
     let app = Router::new()
+        // Analysis WebSocket
+        .route("/api/ws/analyze", get(routes::analysis_ws::ws_handler))
         // Health
         .route("/health", get(routes::health::health_check))
         // Auth
@@ -56,6 +75,7 @@ async fn main() {
         .route("/api/games/stored", get(routes::games::get_stored_games))
         .route("/api/games/tags", get(routes::games::get_game_tags))
         .route("/api/games/stats", get(routes::dashboard::get_game_stats))
+        .route("/api/games/endgame-stats", get(routes::endgame::get_endgame_stats))
         .route("/api/games/analyze", post(routes::games::analyze_games))
         .route("/api/games/{game_id}", get(routes::games::get_game_by_id))
         .route(
@@ -63,6 +83,11 @@ async fn main() {
             get(routes::games::get_game_analysis)
                 .post(routes::games::save_game_analysis),
         )
+        // Puzzles
+        .route("/api/puzzles", get(routes::puzzles::get_puzzles))
+        // Admin — titled players
+        .route("/api/admin/titled-players/refresh", post(routes::titled_players::refresh_titled_players))
+        .route("/api/admin/backfill-titled-tags", post(routes::titled_players::backfill_titled_tags))
         // Opening tree
         .route("/api/opening-tree", get(routes::opening_tree::get_opening_tree))
         // Posts

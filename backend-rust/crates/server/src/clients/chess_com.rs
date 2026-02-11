@@ -9,10 +9,56 @@ impl ChessComClient {
     pub fn new() -> Self {
         let client = Client::builder()
             .user_agent("AlpineChess/1.0")
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap();
         Self { client }
+    }
+
+    /// Fetch the list of monthly archive URLs that actually contain games.
+    /// Returns (year, month) pairs sorted newest-first.
+    pub async fn fetch_archives(&self, username: &str) -> Result<Vec<(i32, u32)>, String> {
+        let url = format!(
+            "https://api.chess.com/pub/player/{}/games/archives",
+            username
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Archives request error: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("Archives HTTP {}", resp.status()));
+        }
+
+        let data: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Archives JSON parse error: {e}"))?;
+
+        let mut months: Vec<(i32, u32)> = data["archives"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|v| {
+                // URLs look like "https://api.chess.com/pub/player/username/games/2024/03"
+                let s = v.as_str()?;
+                let parts: Vec<&str> = s.trim_end_matches('/').rsplit('/').collect();
+                let month: u32 = parts.first()?.parse().ok()?;
+                let year: i32 = parts.get(1)?.parse().ok()?;
+                Some((year, month))
+            })
+            .collect();
+
+        // Sort newest-first so we can break early at 1000 games
+        months.sort_by(|a, b| b.cmp(a));
+        Ok(months)
     }
 
     /// Fetch games for a user from Chess.com.

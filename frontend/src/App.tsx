@@ -16,6 +16,9 @@ import GamesPage from './pages/GamesPage';
 import GamePage from './pages/GamePage';
 import OpeningTreePage from './pages/OpeningTreePage';
 import DashboardPage from './pages/DashboardPage';
+import OpeningLinePage from './pages/OpeningLinePage';
+import PuzzlesPage from './pages/PuzzlesPage';
+import EndgameAnalyticsPage from './pages/EndgameAnalyticsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Protected route wrapper
@@ -78,8 +81,11 @@ function App() {
           <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/games" element={<GamesPage />} />
           <Route path="/games/:gameId" element={<GamePage />} />
+          <Route path="/puzzles" element={<PuzzlesPage />} />
           <Route path="/opening-tree" element={<OpeningTreePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/endgames" element={<EndgameAnalyticsPage />} />
+          <Route path="/opening-line" element={<OpeningLinePage />} />
         </Route>
 
         {/* 404 */}

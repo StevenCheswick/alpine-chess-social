@@ -120,6 +120,7 @@ pub async fn get_user_games_paginated(
     offset: i64,
     tag_filters: Option<&[String]>,
     source: Option<&str>,
+    analyzed: Option<bool>,
 ) -> Result<Vec<serde_json::Value>, AppError> {
     // Build dynamic query
     let mut conditions = vec!["ug.user_id = $1".to_string()];
@@ -129,6 +130,12 @@ pub async fn get_user_games_paginated(
     if let Some(src) = source {
         params_str.push(src.to_string());
         conditions.push(format!("ug.source = ${}", params_i64.len() + params_str.len() + 1 - 1));
+    }
+
+    match analyzed {
+        Some(true) => conditions.push("ga.id IS NOT NULL".to_string()),
+        Some(false) => conditions.push("ga.id IS NULL".to_string()),
+        None => {}
     }
 
     if let Some(filters) = tag_filters {
@@ -253,25 +260,34 @@ pub async fn get_user_games_count_filtered(
     user_id: i64,
     tag_filters: Option<&[String]>,
     source: Option<&str>,
+    analyzed: Option<bool>,
 ) -> Result<i64, AppError> {
-    // Simple case — no tag filters
-    if tag_filters.is_none() || tag_filters.map(|t| t.is_empty()).unwrap_or(true) {
+    // Simple case — no tag filters and no analyzed filter
+    if analyzed.is_none()
+        && (tag_filters.is_none() || tag_filters.map(|t| t.is_empty()).unwrap_or(true))
+    {
         return get_user_games_count(pool, user_id, source).await;
     }
 
-    let filters = tag_filters.unwrap();
+    let filters = tag_filters.unwrap_or(&[]);
 
-    let mut conditions = vec!["user_id = $1".to_string()];
+    let mut conditions = vec!["ug.user_id = $1".to_string()];
 
     if let Some(src) = source {
-        conditions.push(format!("source = '{}'", src.replace('\'', "''")));
+        conditions.push(format!("ug.source = '{}'", src.replace('\'', "''")));
+    }
+
+    match analyzed {
+        Some(true) => conditions.push("ga.id IS NOT NULL".to_string()),
+        Some(false) => conditions.push("ga.id IS NULL".to_string()),
+        None => {}
     }
 
     for f in filters {
         if let Some((_, code)) = RESULT_TAGS.iter().find(|(tag, _)| *tag == f.as_str()) {
-            conditions.push(format!("result = '{}'", code));
+            conditions.push(format!("ug.result = '{}'", code));
         } else if let Some((_, code)) = PLATFORM_TAGS.iter().find(|(tag, _)| *tag == f.as_str()) {
-            conditions.push(format!("source = '{}'", code));
+            conditions.push(format!("ug.source = '{}'", code));
         }
     }
 
@@ -289,14 +305,21 @@ pub async fn get_user_games_count_filtered(
             .map(|t| format!("'{}'", t.replace('\'', "''")))
             .collect();
         conditions.push(format!(
-            "id IN (SELECT game_id FROM game_tags WHERE tag IN ({}) GROUP BY game_id HAVING COUNT(DISTINCT tag) = {})",
+            "ug.id IN (SELECT game_id FROM game_tags WHERE tag IN ({}) GROUP BY game_id HAVING COUNT(DISTINCT tag) = {})",
             quoted.join(","),
             regular_tags.len()
         ));
     }
 
+    let join = if analyzed.is_some() {
+        "LEFT JOIN game_analysis ga ON ug.id = ga.game_id"
+    } else {
+        ""
+    };
+
     let query = format!(
-        "SELECT COUNT(*) as count FROM user_games WHERE {}",
+        "SELECT COUNT(*) as count FROM user_games ug {} WHERE {}",
+        join,
         conditions.join(" AND ")
     );
 
@@ -664,6 +687,46 @@ pub async fn get_user_games_by_color(
                 "result": r.try_get::<String, _>("result").unwrap_or_default(),
                 "tcn": r.try_get::<Option<String>, _>("tcn").unwrap_or(None),
             })
+        })
+        .collect())
+}
+
+/// Get internal DB IDs + opponent for a list of source game IDs.
+pub async fn get_game_ids_and_opponents(
+    pool: &PgPool,
+    user_id: i64,
+    source: &str,
+    source_game_ids: &[String],
+) -> Result<Vec<(i64, String, String)>, AppError> {
+    if source_game_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    use sqlx::Row;
+    let placeholders: Vec<String> = source_game_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("${}", i + 3))
+        .collect();
+    let query = format!(
+        "SELECT id, chess_com_game_id, opponent FROM user_games WHERE user_id = $1 AND source = $2 AND chess_com_game_id IN ({})",
+        placeholders.join(",")
+    );
+
+    let mut q = sqlx::query(&query).bind(user_id).bind(source);
+    for id in source_game_ids {
+        q = q.bind(id);
+    }
+
+    let rows = q.fetch_all(pool).await.map_err(AppError::Sqlx)?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            (
+                r.try_get::<i64, _>("id").unwrap_or(0),
+                r.try_get::<String, _>("chess_com_game_id").unwrap_or_default(),
+                r.try_get::<String, _>("opponent").unwrap_or_default(),
+            )
         })
         .collect())
 }

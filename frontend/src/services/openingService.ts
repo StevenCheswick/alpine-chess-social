@@ -12,22 +12,32 @@ export interface TreeNode {
   losses: number;
   draws: number;
   winRate: number;
-  children: TreeNode[];
+  children?: TreeNode[];
+  evalCp?: number;
 }
 
 export interface OpeningTreeResponse {
   color: 'white' | 'black';
-  rootNode: TreeNode;
+  fen: string;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winRate: number;
+  children: TreeNode[];
   totalGames: number;
   depth: number;
 }
 
 export const openingService = {
   /**
-   * Get opening tree for a specific color.
+   * Get children of a position for a specific color.
+   * If no fen is provided, returns children of the starting position.
    */
-  async getOpeningTree(color: 'white' | 'black'): Promise<OpeningTreeResponse> {
-    return api.get<OpeningTreeResponse>(`/api/opening-tree?color=${color}`);
+  async getOpeningTree(color: 'white' | 'black', fen?: string): Promise<OpeningTreeResponse> {
+    const params = new URLSearchParams({ color });
+    if (fen) params.set('fen', fen);
+    return api.get<OpeningTreeResponse>(`/api/opening-tree?${params}`);
   },
 };
 

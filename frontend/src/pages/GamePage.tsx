@@ -4,7 +4,8 @@ import { AnalyzableChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { analyzeGame } from '../services/analysisService';
-import type { GameAnalysis } from '../types/analysis';
+import { analyzeGameProxy } from '../services/analysisProxy';
+import type { GameAnalysis, FullAnalysis } from '../types/analysis';
 import AnalyzeButton from '../components/chess/AnalyzeButton';
 import GameAnalysisPanel from '../components/chess/GameAnalysisPanel';
 
@@ -57,6 +58,7 @@ export default function GamePage() {
     }
   }, [gameId]);
 
+
   const loadGame = async () => {
     setLoading(true);
     setError(null);
@@ -100,15 +102,34 @@ export default function GamePage() {
     }
   };
 
-  const saveAnalysis = async (analysisData: GameAnalysis) => {
+  const saveAnalysis = async (analysisData: GameAnalysis | FullAnalysis) => {
     try {
+      // Extract theme tags from puzzles + endgame segments if present
+      const fullAnalysis = analysisData as FullAnalysis;
+      const tags = new Set<string>();
+
+      if (fullAnalysis.puzzles) {
+        for (const puzzle of fullAnalysis.puzzles) {
+          for (const theme of puzzle.themes) tags.add(theme);
+        }
+      }
+      if (fullAnalysis.endgame_segments) {
+        for (const seg of fullAnalysis.endgame_segments) {
+          tags.add(seg.endgame_type);
+        }
+      }
+
+      const payload = tags.size > 0
+        ? { ...analysisData, tags: [...tags] }
+        : analysisData;
+
       await fetch(`${API_BASE_URL}/api/games/${gameId}/analysis`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(analysisData),
+        body: JSON.stringify(payload),
       });
     } catch (err) {
       console.error('Failed to save analysis:', err);
@@ -122,11 +143,24 @@ export default function GamePage() {
     setAnalysisProgress(0);
 
     try {
-      const result = await analyzeGame(game.moves, game.userColor, {
-        onProgress: (progress) => setAnalysisProgress(progress),
-      });
+      let result: GameAnalysis;
+
+      // Try WebSocket proxy first (includes puzzles + endgame analysis)
+      try {
+        result = await analyzeGameProxy(
+          gameId!,
+          game.moves,
+          100000,
+          (progress) => setAnalysisProgress(progress),
+        );
+      } catch {
+        // Fallback to client-side analysis
+        result = await analyzeGame(game.moves, game.userColor, {
+          onProgress: (progress) => setAnalysisProgress(progress),
+        });
+      }
+
       setAnalysis(result);
-      // Save analysis to database
       await saveAnalysis(result);
     } catch (err) {
       console.error('Analysis failed:', err);

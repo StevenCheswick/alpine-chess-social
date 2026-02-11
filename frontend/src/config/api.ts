@@ -2,6 +2,7 @@
 // For now, we'll use mock data. When backend is ready, update this.
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+export const ANALYSIS_WS_URL = import.meta.env.VITE_ANALYSIS_WS_URL || 'ws://localhost:8000';
 
 export const API_ENDPOINTS = {
   // Auth

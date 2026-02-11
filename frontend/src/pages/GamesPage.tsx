@@ -5,7 +5,9 @@ import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { gameService, type SyncResponse } from '../services/gameService';
 import { analyzeGamesBatch } from '../services/analysisService';
-import type { BatchProgress } from '../types/analysis';
+import { analyzeGamesBatchProxy } from '../services/analysisProxy';
+import type { BatchProgress, FullAnalysis } from '../types/analysis';
+import { tagDisplayName } from '../utils/tagDisplay';
 
 const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 10;
@@ -143,14 +145,29 @@ export default function GamesPage() {
   // Bulk analysis state
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<BatchProgress | null>(null);
+  const [totalUnanalyzed, setTotalUnanalyzed] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const hasAnyLinkedAccount = chessComUsername || lichessUsername;
 
-  // Load tags on mount
+  // Load unanalyzed count
+  const loadUnanalyzedCount = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/games/stored?limit=0&analyzed=false`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTotalUnanalyzed(data.total || 0);
+      }
+    } catch { /* ignore */ }
+  };
+
+  // Load tags and unanalyzed count on mount
   useEffect(() => {
     if (hasAnyLinkedAccount) {
       loadAllTags([]);
+      loadUnanalyzedCount();
     }
   }, [hasAnyLinkedAccount]);
 
@@ -234,6 +251,7 @@ export default function GamesPage() {
       setSelectedTags(new Set());
       await loadStoredGames(1, []);
       await loadAllTags([]);
+      await loadUnanalyzedCount();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync games');
     } finally {
@@ -277,65 +295,112 @@ export default function GamesPage() {
     loadAllTags([]);
   };
 
-  // Bulk analyze all games on current page using parallel workers
-  const analyzePageGames = async () => {
-    const unanalyzedGames = games.filter(g => !g.hasAnalysis);
-    if (unanalyzedGames.length === 0) return;
+  // Save analysis result (with tags extraction for proxy results)
+  const saveGameAnalysis = async (gameId: string, analysisData: FullAnalysis | import('../types/analysis').GameAnalysis) => {
+    const fullAnalysis = analysisData as FullAnalysis;
+    const tags = new Set<string>();
+
+    if (fullAnalysis.puzzles) {
+      for (const puzzle of fullAnalysis.puzzles) {
+        for (const theme of puzzle.themes) tags.add(theme);
+      }
+    }
+    if (fullAnalysis.endgame_segments) {
+      for (const seg of fullAnalysis.endgame_segments) {
+        tags.add(seg.endgame_type);
+      }
+    }
+
+    const payload = tags.size > 0
+      ? { ...analysisData, tags: [...tags] }
+      : analysisData;
+
+    await fetch(`${API_BASE}/api/games/${gameId}/analysis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  };
+
+  // Bulk analyze up to 100 unanalyzed games
+  const bulkAnalyzeGames = async () => {
+    const BATCH_SIZE = 100;
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     setBulkAnalyzing(true);
-    setBulkProgress({
-      gamesCompleted: 0,
-      gamesTotal: unanalyzedGames.length,
-      gamesSucceeded: 0,
-      gamesFailed: 0,
-      activeWorkers: 0,
-    });
 
     try {
-      await analyzeGamesBatch(
-        unanalyzedGames.map(g => ({ id: g.id, moves: g.moves, userColor: g.userColor })),
-        {
+      // Fetch up to 100 unanalyzed games from the backend
+      const response = await fetch(
+        `${API_BASE}/api/games/stored?limit=${BATCH_SIZE}&analyzed=false`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) throw new Error('Failed to fetch unanalyzed games');
+      const data = await response.json();
+      const unanalyzedGames: Game[] = data.games || [];
+
+      if (unanalyzedGames.length === 0) {
+        setTotalUnanalyzed(0);
+        return;
+      }
+
+      setBulkProgress({
+        gamesCompleted: 0,
+        gamesTotal: unanalyzedGames.length,
+        gamesSucceeded: 0,
+        gamesFailed: 0,
+        activeWorkers: 0,
+      });
+
+      const gameInputs = unanalyzedGames.map(g => ({ id: g.id, moves: g.moves, userColor: g.userColor }));
+
+      const onGameComplete = async (result: import('../types/analysis').BatchGameResult) => {
+        if (result.analysis) {
+          try {
+            await saveGameAnalysis(result.gameId, result.analysis);
+            // Update current page games if the completed game is visible
+            setGames(prev => prev.map(g =>
+              g.id === result.gameId
+                ? {
+                    ...g,
+                    hasAnalysis: true,
+                    whiteAccuracy: result.analysis!.white_accuracy,
+                    blackAccuracy: result.analysis!.black_accuracy,
+                  }
+                : g
+            ));
+          } catch (err) {
+            console.error(`Failed to save analysis for game ${result.gameId}:`, err);
+          }
+        } else {
+          console.error(`Analysis failed for game ${result.gameId}:`, result.error);
+        }
+      };
+
+      // Try WebSocket proxy first (includes puzzles + endgame + tags)
+      try {
+        await analyzeGamesBatchProxy(gameInputs, {
           nodes: 100000,
           signal: abortController.signal,
-          onProgress: (progress) => {
-            setBulkProgress(progress);
-          },
-          onGameComplete: async (result) => {
-            if (result.analysis) {
-              // Save to backend immediately
-              try {
-                await fetch(`${API_BASE}/api/games/${result.gameId}/analysis`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                  },
-                  body: JSON.stringify(result.analysis),
-                });
-
-                // Update local game state so accuracy badge appears immediately
-                setGames(prev => prev.map(g =>
-                  g.id === result.gameId
-                    ? {
-                        ...g,
-                        hasAnalysis: true,
-                        whiteAccuracy: result.analysis!.white_accuracy,
-                        blackAccuracy: result.analysis!.black_accuracy,
-                      }
-                    : g
-                ));
-              } catch (err) {
-                console.error(`Failed to save analysis for game ${result.gameId}:`, err);
-              }
-            } else {
-              console.error(`Analysis failed for game ${result.gameId}:`, result.error);
-            }
-          },
-        }
-      );
+          onProgress: (progress) => setBulkProgress(progress),
+          onGameComplete,
+        });
+      } catch (proxyErr) {
+        // Fallback to client-side analysis if proxy unavailable
+        if (proxyErr instanceof DOMException && proxyErr.name === 'AbortError') throw proxyErr;
+        console.log('WebSocket proxy unavailable, falling back to client-side analysis');
+        await analyzeGamesBatch(gameInputs, {
+          nodes: 100000,
+          signal: abortController.signal,
+          onProgress: (progress) => setBulkProgress(progress),
+          onGameComplete,
+        });
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User cancelled — completed games are already saved
@@ -346,6 +411,9 @@ export default function GamesPage() {
       setBulkAnalyzing(false);
       setBulkProgress(null);
       abortControllerRef.current = null;
+      // Refresh counts and current page
+      loadUnanalyzedCount();
+      loadStoredGames(currentPage, selectedTagsArray);
     }
   };
 
@@ -353,7 +421,7 @@ export default function GamesPage() {
     abortControllerRef.current?.abort();
   };
 
-  const unanalyzedCount = games.filter(g => !g.hasAnalysis).length;
+  const pageUnanalyzedCount = games.filter(g => !g.hasAnalysis).length;
   const analyzedCount = games.filter(g => g.hasAnalysis).length;
 
   // Show link account prompt if no accounts linked at all
@@ -456,10 +524,10 @@ export default function GamesPage() {
                 </span>
               )}
             </p>
-            {unanalyzedCount > 0 && (
+            {totalUnanalyzed > 0 && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={analyzePageGames}
+                  onClick={bulkAnalyzeGames}
                   disabled={bulkAnalyzing || syncing || loading}
                   className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                 >
@@ -476,7 +544,7 @@ export default function GamesPage() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
-                      Analyze Page ({unanalyzedCount})
+                      Analyze Games ({totalUnanalyzed > 100 ? '100' : totalUnanalyzed})
                     </>
                   )}
                 </button>
@@ -508,7 +576,7 @@ export default function GamesPage() {
                           : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                       }`}
                     >
-                      {tag} ({allTags.get(tag)})
+                      {tagDisplayName(tag)} ({allTags.get(tag)})
                     </button>
                   );
                 })}

@@ -90,11 +90,20 @@ CREATE TABLE IF NOT EXISTS game_analysis (
     moves                 JSONB NOT NULL,
     phase_accuracy        JSONB,
     first_inaccuracy_move JSONB,
+    puzzles               JSONB,
+    endgame_segments      JSONB,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_game_analysis_game_id
     ON game_analysis (game_id);
+
+-- Add columns that may be missing on older schemas
+DO $$ BEGIN
+    ALTER TABLE game_analysis ADD COLUMN IF NOT EXISTS puzzles JSONB;
+    ALTER TABLE game_analysis ADD COLUMN IF NOT EXISTS endgame_segments JSONB;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- Posts
 CREATE TABLE IF NOT EXISTS posts (
@@ -111,14 +120,47 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE INDEX IF NOT EXISTS idx_posts_account_id  ON posts (account_id);
 CREATE INDEX IF NOT EXISTS idx_posts_created_at  ON posts (created_at DESC);
 
--- Opening tree cache
-CREATE TABLE IF NOT EXISTS user_opening_trees (
+-- Titled players lookup (Chess.com usernames → title)
+CREATE TABLE IF NOT EXISTS titled_players (
+    username TEXT PRIMARY KEY,
+    title    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_titled_players_title ON titled_players (title);
+
+-- Per-position opening stats (replaces monolithic JSONB cache)
+CREATE TABLE IF NOT EXISTS user_opening_moves (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES accounts(id),
     color       TEXT NOT NULL,
-    tree_json   JSONB NOT NULL,
-    total_games INTEGER DEFAULT 0,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, color)
+    parent_fen  TEXT NOT NULL,
+    move_san    TEXT NOT NULL,
+    result_fen  TEXT NOT NULL,
+    depth       SMALLINT NOT NULL,
+    games       INTEGER NOT NULL DEFAULT 0,
+    wins        INTEGER NOT NULL DEFAULT 0,
+    losses      INTEGER NOT NULL DEFAULT 0,
+    draws       INTEGER NOT NULL DEFAULT 0,
+    eval_cp     INTEGER,
+    total_cp_loss BIGINT NOT NULL DEFAULT 0,
+    cp_loss_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(user_id, color, parent_fen, move_san)
 );
+CREATE INDEX IF NOT EXISTS idx_uom_user_color_fen
+    ON user_opening_moves (user_id, color, parent_fen);
+
+-- Add cp_loss columns if missing on older schemas
+DO $$ BEGIN
+    ALTER TABLE user_opening_moves ADD COLUMN IF NOT EXISTS total_cp_loss BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE user_opening_moves ADD COLUMN IF NOT EXISTS cp_loss_count INTEGER NOT NULL DEFAULT 0;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Track which games have been processed for opening stats
+DO $$ BEGIN
+    ALTER TABLE user_games ADD COLUMN IF NOT EXISTS opening_stats_at TIMESTAMPTZ;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Drop old monolithic JSONB opening tree cache (replaced by user_opening_moves)
+DROP TABLE IF EXISTS user_opening_trees;
 "#;

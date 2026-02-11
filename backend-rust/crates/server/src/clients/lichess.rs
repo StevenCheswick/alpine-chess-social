@@ -17,10 +17,12 @@ impl LichessClient {
 
     /// Fetch games for a user from Lichess.
     /// Returns list of (pgn, game_id) tuples.
+    /// `since` is an optional epoch-millisecond timestamp to only fetch games after that time.
     pub async fn fetch_user_games(
         &self,
         username: &str,
         max_games: Option<usize>,
+        since: Option<i64>,
     ) -> Result<Vec<(String, String)>, String> {
         let mut url = format!("https://lichess.org/api/games/user/{}", username);
 
@@ -32,6 +34,10 @@ impl LichessClient {
 
         if let Some(max) = max_games {
             params.push(("max", max.to_string()));
+        }
+
+        if let Some(since_ms) = since {
+            params.push(("since", since_ms.to_string()));
         }
 
         // Rate limit

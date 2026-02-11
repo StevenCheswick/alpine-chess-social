@@ -1,7 +1,11 @@
+pub mod analysis_ws;
 pub mod auth;
 pub mod dashboard;
+pub mod endgame;
 pub mod games;
 pub mod health;
 pub mod opening_tree;
 pub mod posts;
 pub mod profile;
+pub mod puzzles;
+pub mod titled_players;

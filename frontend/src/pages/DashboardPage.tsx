@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer,
   LineChart,
@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from 'recharts';
 import { useAuthStore } from '../stores/authStore';
-import { getStats, type DashboardStats, type AccuracyDataPoint, type PhaseAccuracyDataPoint, type FirstInaccuracyDataPoint, type GameSummary } from '../services/dashboardService';
+import { getStats, type DashboardStats, type AccuracyDataPoint, type PhaseAccuracyDataPoint, type FirstInaccuracyDataPoint, type GameSummary, type OpeningBlunder } from '../services/dashboardService';
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   best: '#22c55e',
@@ -346,6 +346,11 @@ export default function DashboardPage() {
           <GameAccuracyList title="Most Accurate Games" games={stats.mostAccurateGames} accent="emerald" />
           <GameAccuracyList title="Least Accurate Games" games={stats.leastAccurateGames} accent="red" />
         </div>
+
+        {/* Opening Blunders */}
+        {stats.openingBlunders && stats.openingBlunders.length > 0 && (
+          <OpeningBlundersList blunders={stats.openingBlunders} />
+        )}
       </div>
     </div>
   );
@@ -389,6 +394,60 @@ function GameAccuracyList({ title, games, accent }: { title: string; games: Game
             </span>
           </Link>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
+  const navigate = useNavigate();
+
+  const openLine = (b: OpeningBlunder) => {
+    const params = new URLSearchParams({
+      moves: b.moves.join(','),
+      color: b.color,
+      line: b.line,
+      count: String(b.mistakeCount),
+      cp: String(b.avgCpLoss),
+    });
+    if (b.bestMove) params.set('best', b.bestMove);
+    navigate(`/opening-line?${params.toString()}`);
+  };
+
+  return (
+    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+      <h2 className="text-lg font-semibold text-white mb-1">Costliest Opening Habits</h2>
+      <p className="text-sm text-slate-500 mb-4">Opening mistakes you keep repeating</p>
+      <div className="space-y-2">
+        {blunders.map((b, i) => {
+          const lastSpace = b.line.lastIndexOf(' ');
+          const prefix = lastSpace > 0 ? b.line.slice(0, lastSpace) : '';
+          const blunderMove = lastSpace > 0 ? b.line.slice(lastSpace + 1) : b.line;
+
+          return (
+            <button
+              key={`${b.ply}-${b.line}`}
+              onClick={() => openLine(b)}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-700/50 transition-colors text-left cursor-pointer"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-sm text-slate-500 w-5 text-right shrink-0">{i + 1}.</span>
+                <div className="min-w-0">
+                  <div className="text-sm leading-relaxed">
+                    {prefix && <span className="text-slate-400">{prefix} </span>}
+                    <span className="text-orange-400 font-semibold">{blunderMove}</span>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Repeated {b.mistakeCount} times as {b.color}
+                  </div>
+                </div>
+              </div>
+              <span className="text-sm font-semibold text-orange-400 whitespace-nowrap ml-3">
+                -{b.avgCpLoss} cp
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
