@@ -1,5 +1,5 @@
 # Multi-stage build for server
-FROM rust:1.84-bookworm AS builder
+FROM rust:latest AS builder
 
 WORKDIR /app
 
@@ -47,4 +47,3 @@ ENV RUST_LOG=info
 EXPOSE 8000
 
 ENTRYPOINT ["/app/server"]
-# Trigger rebuild
