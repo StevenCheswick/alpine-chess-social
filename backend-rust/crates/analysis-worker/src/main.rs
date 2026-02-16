@@ -4,6 +4,7 @@
 //! Designed for AWS Batch on ARM Graviton instances.
 
 mod analyzer;
+mod book_cache;
 mod config;
 mod db;
 mod error;

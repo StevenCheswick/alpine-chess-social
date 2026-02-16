@@ -137,25 +137,6 @@ pub async fn save_game_analysis(
     Ok(())
 }
 
-/// Check if a move exists in the opening book
-pub async fn is_book_move(pool: &PgPool, fen: &str, san: &str) -> bool {
-    let normalized = normalize_fen(fen);
-    let result: Result<Option<(i32,)>, _> = sqlx::query_as(
-        "SELECT games FROM opening_book WHERE parent_fen = $1 AND move_san = $2",
-    )
-    .bind(&normalized)
-    .bind(san)
-    .fetch_optional(pool)
-    .await;
-
-    matches!(result, Ok(Some(_)))
-}
-
-/// Normalize FEN to 4 parts for opening book lookup
-fn normalize_fen(fen: &str) -> String {
-    fen.split_whitespace().take(4).collect::<Vec<_>>().join(" ")
-}
-
 /// Calculate per-phase accuracy from moves
 fn phase_accuracy(moves: &JsonValue, is_white: bool) -> JsonValue {
     let arr = match moves.as_array() {

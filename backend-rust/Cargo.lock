@@ -64,6 +64,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",
  "aws-sdk-sqs",
+ "bincode",
  "chess",
  "chess-core",
  "chess_puzzler",
