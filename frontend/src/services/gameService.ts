@@ -82,7 +82,7 @@ export const gameService = {
   async analyzeServerAll(limit?: number): Promise<AnalyzeServerResponse> {
     return api.post<AnalyzeServerResponse>('/api/games/analyze-server', {
       all_unanalyzed: true,
-      limit: limit ?? 10,  // Default to 10 for testing
+      limit: limit ?? 100,
     });
   },
 };
