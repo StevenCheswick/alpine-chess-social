@@ -1,11 +1,13 @@
 # TODO
 
 ## Backend Cleanup
-- [ ] Remove social feed/posts from backend:
-  - `routes/posts.rs` (if exists)
-  - `db/posts.rs` (if exists)
-  - Post-related database tables
-  - Post-related API endpoints
+- [x] Remove social feed/posts from backend (done)
+
+## Server-Side Analysis (Premium Feature)
+- [ ] Fix WebSocket coordination for bulk analysis on App Runner
+  - App Runner doesn't support WebSocket upgrades (Envoy returns 403)
+  - Options: HTTP polling protocol OR API Gateway WebSocket API
+  - Client-side Stockfish WASM works fine as free version
 
 ## Sacrifice Tag Detection
 - [ ] Detect and tag sacrifice moves during analysis:
