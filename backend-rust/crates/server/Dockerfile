@@ -9,18 +9,16 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace Cargo.toml first (for dependency caching)
-COPY Cargo.toml Cargo.lock* ./
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
 
-# Copy crates
+# Copy only the crates needed for server
 COPY crates/chess-core ./crates/chess-core
 COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
 
-# Create stub for analysis-worker (referenced in workspace but not needed for server build)
-RUN mkdir -p crates/analysis-worker/src && \
-    echo '[package]\nname = "analysis-worker"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]' > crates/analysis-worker/Cargo.toml && \
-    echo 'fn main() {}' > crates/analysis-worker/src/main.rs
+# Remove analysis-worker from workspace members (it has extra deps we don't need)
+RUN sed -i 's/"crates\/analysis-worker",//' Cargo.toml
 
 # Build release binary
 RUN cargo build --release -p server
