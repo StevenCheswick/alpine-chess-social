@@ -297,8 +297,8 @@ export async function analyzeGamesBatchProxy(
   const { nodes = 100000, onProgress, onGameComplete, signal } = options;
   if (games.length === 0) return [];
 
-  const hwConcurrency = navigator.hardwareConcurrency || 4;
-  const workerCount = Math.max(2, Math.min(8, Math.floor(hwConcurrency * 0.75), games.length));
+  // Limit to 1 concurrent WebSocket - App Runner may not support multiple concurrent WS connections
+  const workerCount = 1;
 
   let gamesCompleted = 0;
   let gamesSucceeded = 0;
