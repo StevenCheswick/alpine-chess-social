@@ -29,9 +29,10 @@ shakmaty = { workspace = true }
 chess = "3.2"
 futures = { workspace = true }
 
-# AWS SDK for SQS (server-side analysis)
+# AWS SDK for server-side analysis
 aws-config = { workspace = true }
 aws-sdk-sqs = { workspace = true }
+aws-sdk-batch = { workspace = true }
 
 # Binary serialization for opening book cache
 bincode = { workspace = true }

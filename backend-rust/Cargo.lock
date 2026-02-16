@@ -242,6 +242,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-batch"
+version = "1.105.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6ea60f3c6e8567ad628a72885c49d2b9d57bd97aa492e13cc34207109ea3879"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http 0.2.12",
+ "http 1.4.0",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-secretsmanager"
 version = "1.100.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2844,6 +2868,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "aws-config",
+ "aws-sdk-batch",
  "aws-sdk-sqs",
  "axum",
  "bcrypt",

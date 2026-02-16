@@ -69,5 +69,6 @@ bincode = "1"
 # AWS SDK
 aws-config = "1"
 aws-sdk-sqs = "1"
+aws-sdk-batch = "1"
 aws-sdk-secretsmanager = "1"
 num_cpus = "1.16"
