@@ -358,7 +358,10 @@ export async function analyzeGamesBatchProxy(
 
   const workers: Promise<void>[] = [];
   for (let i = 0; i < workerCount; i++) {
-    workers.push(workerLoop());
+    // Stagger worker starts to avoid rate limiting on WebSocket connections
+    workers.push(
+      new Promise(resolve => setTimeout(resolve, i * 200)).then(() => workerLoop())
+    );
   }
   await Promise.all(workers);
   reportProgress();
