@@ -100,11 +100,8 @@ async fn main() {
         .route("/api/opening-tree", get(routes::opening_tree::get_opening_tree))
         // Opening book (master games)
         .route("/api/opening-book/check", get(routes::opening_book::check_book_move))
-        // Posts
-        .route("/api/posts", post(routes::posts::create_post).get(routes::posts::get_posts))
-        // User profile + posts (parameterized — must be last)
+        // User profile (parameterized — must be last)
         .route("/api/users/{username}", get(routes::profile::get_user_profile))
-        .route("/api/users/{username}/posts", get(routes::posts::get_user_posts))
         // Shared state
         .layer(Extension(pool))
         .layer(Extension(config.clone()))

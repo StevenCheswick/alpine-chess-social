@@ -101,21 +101,6 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- Posts
-CREATE TABLE IF NOT EXISTS posts (
-    id                 BIGSERIAL PRIMARY KEY,
-    account_id         BIGINT NOT NULL REFERENCES accounts(id),
-    post_type          TEXT NOT NULL,
-    content            TEXT NOT NULL,
-    game_id            BIGINT REFERENCES user_games(id),
-    key_position_index INTEGER DEFAULT 0,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_posts_account_id  ON posts (account_id);
-CREATE INDEX IF NOT EXISTS idx_posts_created_at  ON posts (created_at DESC);
-
 -- Titled players lookup (Chess.com usernames → title)
 CREATE TABLE IF NOT EXISTS titled_players (
     username TEXT PRIMARY KEY,
