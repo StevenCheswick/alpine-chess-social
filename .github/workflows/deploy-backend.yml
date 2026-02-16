@@ -45,4 +45,4 @@ jobs:
 
       - name: Deploy to App Runner
         run: |
-          aws apprunner start-deployment --service-arn arn:aws:apprunner:us-east-1:019304715762:service/alpine-chess-api/27c27b6b560d4167992d9ebea28abd65
+          aws apprunner start-deployment --service-arn arn:aws:apprunner:us-east-1:019304715762:service/alpine-chess-api/3b238f1208be4ad29b5bbd0d6aca957e
