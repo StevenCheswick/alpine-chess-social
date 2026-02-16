@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { gameService, type AnalyzeServerResponse } from '../services/gameService';
+import { gameService } from '../services/gameService';
 import { analyzeGamesBatch } from '../services/analysisService';
 import { analyzeGamesBatchProxy } from '../services/analysisProxy';
 import type { BatchProgress, FullAnalysis } from '../types/analysis';
@@ -147,10 +147,6 @@ export default function GamesPage() {
   const [totalUnanalyzed, setTotalUnanalyzed] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Server-side analysis state
-  const [serverAnalyzing, setServerAnalyzing] = useState(false);
-  const [serverAnalysisResult, setServerAnalysisResult] = useState<AnalyzeServerResponse | null>(null);
-  const [serverAnalysisError, setServerAnalysisError] = useState<string | null>(null);
 
   const hasAnyLinkedAccount = !!chessComUsername;
 
@@ -417,29 +413,6 @@ export default function GamesPage() {
     abortControllerRef.current?.abort();
   };
 
-  // Queue games for server-side analysis (AWS Batch)
-  const serverAnalyzeGames = async () => {
-    setServerAnalyzing(true);
-    setServerAnalysisResult(null);
-    setServerAnalysisError(null);
-
-    try {
-      const result = await gameService.analyzeAllUnanalyzedServer();
-      setServerAnalysisResult(result);
-
-      if (result.queued > 0) {
-        // Clear the result message after 10 seconds
-        setTimeout(() => setServerAnalysisResult(null), 10000);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to queue games';
-      setServerAnalysisError(message);
-      // Clear error after 5 seconds
-      setTimeout(() => setServerAnalysisError(null), 5000);
-    } finally {
-      setServerAnalyzing(false);
-    }
-  };
 
   const analyzedCount = games.filter(g => g.hasAnalysis).length;
 
@@ -548,7 +521,7 @@ export default function GamesPage() {
                 {/* Client-side analysis buttons */}
                 <button
                   onClick={() => bulkAnalyzeGames(100)}
-                  disabled={bulkAnalyzing || serverAnalyzing || syncing || loading}
+                  disabled={bulkAnalyzing || syncing || loading}
                   className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                 >
                   {bulkAnalyzing && bulkProgress ? (
@@ -571,7 +544,7 @@ export default function GamesPage() {
                 {totalUnanalyzed > 100 && !bulkAnalyzing && (
                   <button
                     onClick={() => bulkAnalyzeGames(0)}
-                    disabled={bulkAnalyzing || serverAnalyzing || syncing || loading}
+                    disabled={bulkAnalyzing || syncing || loading}
                     className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -589,46 +562,6 @@ export default function GamesPage() {
                   </button>
                 )}
 
-                {/* Server-side analysis button */}
-                {!bulkAnalyzing && (
-                  <button
-                    onClick={serverAnalyzeGames}
-                    disabled={serverAnalyzing || bulkAnalyzing || syncing || loading}
-                    title="Queue for server analysis - no need to keep tab open"
-                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
-                  >
-                    {serverAnalyzing ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                        Queueing...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                        </svg>
-                        Server Analyze ({totalUnanalyzed})
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Server analysis feedback */}
-            {serverAnalysisResult && (
-              <div className="px-4 py-2 bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-cyan-300 text-sm flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                {serverAnalysisResult.queued > 0
-                  ? `Queued ${serverAnalysisResult.queued} games for server analysis. Results will appear automatically.`
-                  : serverAnalysisResult.message || 'No games to analyze'}
-              </div>
-            )}
-            {serverAnalysisError && (
-              <div className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-300 text-sm">
-                {serverAnalysisError}
               </div>
             )}
           </div>
