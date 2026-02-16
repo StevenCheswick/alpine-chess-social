@@ -24,7 +24,11 @@ dotenvy = { workspace = true }
 regex = { workspace = true }
 
 chess-core = { path = "../chess-core" }
-chess-analyzers = { path = "../chess-analyzers" }
 chess_puzzler = { path = "../chess-puzzler" }
 shakmaty = { workspace = true }
+chess = "3.2"
 futures = { workspace = true }
+
+# AWS SDK for SQS (server-side analysis)
+aws-config = { workspace = true }
+aws-sdk-sqs = { workspace = true }
