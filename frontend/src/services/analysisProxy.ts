@@ -151,6 +151,7 @@ export async function analyzeGameProxy(
 
   try {
     return await new Promise<FullAnalysis>((resolve, reject) => {
+      console.log('[WS] Connecting to:', `${ANALYSIS_WS_URL}/api/ws/analyze`);
       const ws = new WebSocket(`${ANALYSIS_WS_URL}/api/ws/analyze`);
 
       const cleanup = () => {
@@ -161,6 +162,7 @@ export async function analyzeGameProxy(
       };
 
       ws.onopen = () => {
+        console.log('[WS] Connected, sending analyze_game for', gameId);
         ws.send(JSON.stringify({
           type: 'analyze_game',
           game_id: String(gameId),
@@ -169,7 +171,8 @@ export async function analyzeGameProxy(
         }));
       };
 
-      ws.onerror = () => {
+      ws.onerror = (event) => {
+        console.error('[WS] Connection error for game', gameId, event);
         cleanup();
         reject(new Error('WebSocket connection failed'));
       };
