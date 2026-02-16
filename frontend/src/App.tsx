@@ -6,11 +6,9 @@ import MainLayout from './components/layout/MainLayout';
 import AuthLayout from './components/layout/AuthLayout';
 
 // Pages
-import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
-import PostPage from './pages/PostPage';
 import AchievementsPage from './pages/AchievementsPage';
 import GamesPage from './pages/GamesPage';
 import GamePage from './pages/GamePage';
@@ -75,9 +73,8 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/u/:username" element={<ProfilePage />} />
-          <Route path="/post/:postId" element={<PostPage />} />
           <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/games" element={<GamesPage />} />
           <Route path="/games/:gameId" element={<GamePage />} />
