@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from 'recharts';
 import { useAuthStore } from '../stores/authStore';
-import { getStats, type DashboardStats, type AccuracyDataPoint, type PhaseAccuracyDataPoint, type FirstInaccuracyDataPoint, type GameSummary, type OpeningBlunder, type CleanLine } from '../services/dashboardService';
+import { getStats, type DashboardStats, type GameSummary, type OpeningBlunder, type CleanLine } from '../services/dashboardService';
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   best: '#22c55e',
@@ -55,7 +55,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const hasLinkedAccount = !!(user?.chessComUsername || user?.lichessUsername);
+  const hasLinkedAccount = !!user?.chessComUsername;
 
   useEffect(() => {
     if (!hasLinkedAccount) {
@@ -97,7 +97,7 @@ export default function DashboardPage() {
           </svg>
           <h2 className="text-xl font-semibold text-white mb-2">No linked account</h2>
           <p className="text-slate-400 mb-4">
-            Link your Chess.com or Lichess account in settings to see your dashboard.
+            Link your Chess.com account in settings to see your dashboard.
           </p>
           <Link
             to={`/u/${user?.username}`}

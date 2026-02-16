@@ -1,5 +1,5 @@
 import type { GameAnalysis, MoveClassifications, MoveClassification } from '../../types/analysis';
-import { CLASSIFICATION_COLORS, CLASSIFICATION_BG_COLORS } from '../../types/analysis';
+import { CLASSIFICATION_COLORS } from '../../types/analysis';
 
 interface GameAnalysisPanelProps {
   analysis: GameAnalysis;

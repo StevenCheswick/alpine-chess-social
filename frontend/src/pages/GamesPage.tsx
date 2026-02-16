@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { gameService, type SyncResponse } from '../services/gameService';
+import { gameService, type AnalyzeServerResponse } from '../services/gameService';
 import { analyzeGamesBatch } from '../services/analysisService';
 import { analyzeGamesBatchProxy } from '../services/analysisProxy';
 import type { BatchProgress, FullAnalysis } from '../types/analysis';
@@ -23,7 +23,7 @@ interface Game {
   tags: string[];
   moves: string[];
   userColor: 'white' | 'black';
-  source: 'chess_com' | 'lichess';
+  source: 'chess_com';
   hasAnalysis?: boolean;
   whiteAccuracy?: number;
   blackAccuracy?: number;
@@ -122,7 +122,6 @@ const gameTypeConfig: Record<GameType, { label: string; color: string; icon: Rea
 export default function GamesPage() {
   const { user, token } = useAuthStore();
   const chessComUsername = user?.chessComUsername;
-  const lichessUsername = user?.lichessUsername;
 
   const [games, setGames] = useState<Game[]>([]);
   const [totalGames, setTotalGames] = useState(0);
@@ -148,7 +147,12 @@ export default function GamesPage() {
   const [totalUnanalyzed, setTotalUnanalyzed] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const hasAnyLinkedAccount = chessComUsername || lichessUsername;
+  // Server-side analysis state
+  const [serverAnalyzing, setServerAnalyzing] = useState(false);
+  const [serverAnalysisResult, setServerAnalysisResult] = useState<AnalyzeServerResponse | null>(null);
+  const [serverAnalysisError, setServerAnalysisError] = useState<string | null>(null);
+
+  const hasAnyLinkedAccount = !!chessComUsername;
 
   // Load unanalyzed count
   const loadUnanalyzedCount = async () => {
@@ -235,16 +239,10 @@ export default function GamesPage() {
     setError(null);
 
     try {
-      // Sync all linked accounts in parallel
-      const syncPromises: Promise<SyncResponse>[] = [];
+      // Sync Chess.com games
       if (chessComUsername) {
-        syncPromises.push(gameService.syncGames());
+        await gameService.syncGames();
       }
-      if (lichessUsername) {
-        syncPromises.push(gameService.syncLichessGames());
-      }
-
-      await Promise.all(syncPromises);
 
       // Reload games after sync
       setCurrentPage(1);
@@ -325,19 +323,17 @@ export default function GamesPage() {
     });
   };
 
-  // Bulk analyze up to 100 unanalyzed games
-  const bulkAnalyzeGames = async () => {
-    const BATCH_SIZE = 100;
-
+  // Bulk analyze unanalyzed games (limit=0 means all)
+  const bulkAnalyzeGames = async (limit: number = 100) => {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     setBulkAnalyzing(true);
 
     try {
-      // Fetch up to 100 unanalyzed games from the backend
+      // Fetch unanalyzed games from the backend
       const response = await fetch(
-        `${API_BASE}/api/games/stored?limit=${BATCH_SIZE}&analyzed=false`,
+        `${API_BASE}/api/games/stored?limit=${limit}&analyzed=false`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!response.ok) throw new Error('Failed to fetch unanalyzed games');
@@ -421,7 +417,30 @@ export default function GamesPage() {
     abortControllerRef.current?.abort();
   };
 
-  const pageUnanalyzedCount = games.filter(g => !g.hasAnalysis).length;
+  // Queue games for server-side analysis (AWS Batch)
+  const serverAnalyzeGames = async () => {
+    setServerAnalyzing(true);
+    setServerAnalysisResult(null);
+    setServerAnalysisError(null);
+
+    try {
+      const result = await gameService.analyzeAllUnanalyzedServer();
+      setServerAnalysisResult(result);
+
+      if (result.queued > 0) {
+        // Clear the result message after 10 seconds
+        setTimeout(() => setServerAnalysisResult(null), 10000);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to queue games';
+      setServerAnalysisError(message);
+      // Clear error after 5 seconds
+      setTimeout(() => setServerAnalysisError(null), 5000);
+    } finally {
+      setServerAnalyzing(false);
+    }
+  };
+
   const analyzedCount = games.filter(g => g.hasAnalysis).length;
 
   // Show link account prompt if no accounts linked at all
@@ -439,9 +458,9 @@ export default function GamesPage() {
           <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">&#9823;</span>
           </div>
-          <h2 className="text-xl font-semibold text-white mb-2">Link a chess account</h2>
+          <h2 className="text-xl font-semibold text-white mb-2">Link your Chess.com account</h2>
           <p className="text-slate-400 mb-6">
-            Connect your Chess.com or Lichess account to sync and analyze your games.
+            Connect your Chess.com account to sync and analyze your games.
           </p>
           <Link
             to={user ? `/u/${user.username}?settings=true` : '/'}
@@ -494,14 +513,14 @@ export default function GamesPage() {
           </button>
         </div>
 
-        {/* Link more accounts prompt */}
-        {(!chessComUsername || !lichessUsername) && (
+        {/* Link account prompt */}
+        {!chessComUsername && (
           <div className="border-t border-slate-800 pt-4">
             <Link
               to={user ? `/u/${user.username}?settings=true` : '/'}
               className="text-sm text-emerald-400 hover:text-emerald-300"
             >
-              + Link {!chessComUsername ? 'Chess.com' : 'Lichess'} account
+              + Link Chess.com account
             </Link>
           </div>
         )}
@@ -525,10 +544,11 @@ export default function GamesPage() {
               )}
             </p>
             {totalUnanalyzed > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Client-side analysis buttons */}
                 <button
-                  onClick={bulkAnalyzeGames}
-                  disabled={bulkAnalyzing || syncing || loading}
+                  onClick={() => bulkAnalyzeGames(100)}
+                  disabled={bulkAnalyzing || serverAnalyzing || syncing || loading}
                   className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                 >
                   {bulkAnalyzing && bulkProgress ? (
@@ -544,10 +564,22 @@ export default function GamesPage() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                       </svg>
-                      Analyze Games ({totalUnanalyzed > 100 ? '100' : totalUnanalyzed})
+                      Analyze {totalUnanalyzed > 100 ? '100' : totalUnanalyzed}
                     </>
                   )}
                 </button>
+                {totalUnanalyzed > 100 && !bulkAnalyzing && (
+                  <button
+                    onClick={() => bulkAnalyzeGames(0)}
+                    disabled={bulkAnalyzing || serverAnalyzing || syncing || loading}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    Analyze All ({totalUnanalyzed})
+                  </button>
+                )}
                 {bulkAnalyzing && (
                   <button
                     onClick={cancelBulkAnalysis}
@@ -556,6 +588,47 @@ export default function GamesPage() {
                     Cancel
                   </button>
                 )}
+
+                {/* Server-side analysis button */}
+                {!bulkAnalyzing && (
+                  <button
+                    onClick={serverAnalyzeGames}
+                    disabled={serverAnalyzing || bulkAnalyzing || syncing || loading}
+                    title="Queue for server analysis - no need to keep tab open"
+                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+                  >
+                    {serverAnalyzing ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        Queueing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                        </svg>
+                        Server Analyze ({totalUnanalyzed})
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Server analysis feedback */}
+            {serverAnalysisResult && (
+              <div className="px-4 py-2 bg-cyan-500/20 border border-cyan-500/30 rounded-lg text-cyan-300 text-sm flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {serverAnalysisResult.queued > 0
+                  ? `Queued ${serverAnalysisResult.queued} games for server analysis. Results will appear automatically.`
+                  : serverAnalysisResult.message || 'No games to analyze'}
+              </div>
+            )}
+            {serverAnalysisError && (
+              <div className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-300 text-sm">
+                {serverAnalysisError}
               </div>
             )}
           </div>

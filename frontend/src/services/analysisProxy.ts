@@ -9,13 +9,11 @@
 
 import { ANALYSIS_WS_URL } from '../config/api';
 import type {
-  GameAnalysis,
   FullAnalysis,
   BatchProgress,
   BatchGameResult,
   BatchGameInput,
 } from '../types/analysis';
-import { loadBook } from './polyglotBook';
 
 const STOCKFISH_PATH = '/stockfish/stockfish.js';
 

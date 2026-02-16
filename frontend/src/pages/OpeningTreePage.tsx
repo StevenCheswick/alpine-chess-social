@@ -36,7 +36,7 @@ export default function OpeningTreePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalGames, setTotalGames] = useState(0);
-  const [nodeStats, setNodeStats] = useState({ games: 0, wins: 0, losses: 0, draws: 0, winRate: 0 });
+  const [_nodeStats, setNodeStats] = useState({ games: 0, wins: 0, losses: 0, draws: 0, winRate: 0 });
 
   const fetchPosition = useCallback(async (fen: string, colorToFetch: string) => {
     setLoading(true);

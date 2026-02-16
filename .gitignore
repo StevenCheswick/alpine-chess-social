@@ -23,6 +23,9 @@ target/
 .env.local
 .env.*.local
 
+# AWS Credentials (never commit)
+AWS_CREDENTIALS.md
+
 # Database
 *.db
 backend/data/
@@ -41,3 +44,6 @@ stockfish
 # OS
 .DS_Store
 Thumbs.db
+
+# Feature testing (large datasets, experimental code)
+feature-testing/
