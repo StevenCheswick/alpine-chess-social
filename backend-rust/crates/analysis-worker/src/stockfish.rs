@@ -61,7 +61,7 @@ impl StockfishEngine {
 
         // Configure for analysis
         engine.send("setoption name Threads value 1")?;
-        engine.send("setoption name Hash value 64")?;
+        engine.send("setoption name Hash value 256")?;  // Increased from 64MB
         engine.send("isready")?;
         engine.wait_for("readyok")?;
 

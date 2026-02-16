@@ -192,11 +192,9 @@ pub async fn analyze_game(
         let cp_loss =
             analysis::calculate_cp_loss(eval_before, eval_after, is_white, is_checkmate);
 
-        // Check if this is a book move
-        let san = &san_moves[i];
-        let classification = if db::is_book_move(pool, fen_before, san).await {
-            "book"
-        } else {
+        // TODO: Re-enable book move checking with batch query optimization
+        // Currently disabled for performance testing
+        let classification = {
             let mate_blunder =
                 analysis::is_mate_blunder(eval_before, eval_after, is_white, is_checkmate);
             analysis::classify_move(cp_loss, mate_blunder)
