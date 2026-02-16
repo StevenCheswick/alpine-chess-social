@@ -84,25 +84,23 @@ docker build -t alpine-chess-server -f crates/server/Dockerfile .
 - **Instance Role**: `alpine-chess-apprunner-instance` - allows SQS API calls
 
 ### Deploying
-**Automatic** via GitHub Actions (`.github/workflows/deploy-backend.yml`):
-1. Push to `main` with changes in `backend-rust/`
-2. GitHub Actions builds Docker image
+
+**Local deploy (recommended)** - faster due to Docker layer caching:
+```bash
+cd backend-rust
+./deploy.sh
+```
+
+This script:
+1. Logs into ECR
+2. Builds Docker image locally (cached layers = fast rebuilds)
 3. Pushes to ECR
 4. Triggers App Runner deployment
 
-**Manual**:
-```bash
-# Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 019304715762.dkr.ecr.us-east-1.amazonaws.com
-
-# Build and push
-cd backend-rust
-docker build -t 019304715762.dkr.ecr.us-east-1.amazonaws.com/alpine-chess-server:latest -f crates/server/Dockerfile .
-docker push 019304715762.dkr.ecr.us-east-1.amazonaws.com/alpine-chess-server:latest
-
-# Trigger deployment
-aws apprunner start-deployment --service-arn arn:aws:apprunner:us-east-1:019304715762:service/alpine-chess-api/3b238f1208be4ad29b5bbd0d6aca957e
-```
+**GitHub Actions** (automatic on push to `main`):
+- Workflow: `.github/workflows/deploy-backend.yml`
+- Triggers on changes to `backend-rust/**`
+- Slower (~5 min) due to no cache, but good for CI/CD
 
 ### Logs
 ```bash
@@ -155,30 +153,34 @@ docker build -t alpine-chess-analysis-worker -f crates/analysis-worker/Dockerfil
 - **Task Role**: `alpine-chess-worker-task-role` - SQS + Secrets Manager access
 
 ### Deploying
-**Manual** (no GitHub Actions workflow yet):
-```bash
-# Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 019304715762.dkr.ecr.us-east-1.amazonaws.com
 
-# Build and push
+**Local deploy (recommended)**:
+```bash
 cd backend-rust
-docker build -t 019304715762.dkr.ecr.us-east-1.amazonaws.com/alpine-chess-analysis-worker:latest -f crates/analysis-worker/Dockerfile .
-docker push 019304715762.dkr.ecr.us-east-1.amazonaws.com/alpine-chess-analysis-worker:latest
+./deploy-worker.sh
 ```
 
-### Running a Job
-```bash
-# Submit a job manually
-aws batch submit-job \
-  --job-name "analysis-worker-$(date +%s)" \
-  --job-queue alpine-chess-analysis-queue \
-  --job-definition alpine-chess-analysis-worker
+**GitHub Actions** (automatic on push to `main`):
+- Workflow: `.github/workflows/deploy-worker.yml`
+- Triggers on changes to `analysis-worker/**`, `chess-core/**`, `chess-puzzler/**`
 
+### Running a Job
+
+Jobs are triggered **automatically** via Lambda when messages arrive in SQS.
+See "Lambda Trigger" section below for details.
+
+```bash
 # Check job status
 aws batch list-jobs --job-queue alpine-chess-analysis-queue --job-status RUNNING
 
 # View logs
-aws logs tail /aws/batch/alpine-chess-analysis-worker --follow
+MSYS_NO_PATHCONV=1 aws logs tail /aws/batch/alpine-chess-analysis-worker --follow
+
+# Manual job submission (if needed)
+aws batch submit-job \
+  --job-name "analysis-worker-$(date +%s)" \
+  --job-queue alpine-chess-analysis-queue \
+  --job-definition alpine-chess-analysis-worker
 ```
 
 ### Logs
