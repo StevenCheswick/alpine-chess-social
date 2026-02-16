@@ -1,5 +1,6 @@
 # Multi-stage build for server
-FROM rust:latest AS builder
+# Use rust:bookworm to match runtime glibc version (bookworm = Debian 12)
+FROM rust:bookworm AS builder
 
 WORKDIR /app
 
