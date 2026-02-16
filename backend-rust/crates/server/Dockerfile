@@ -17,8 +17,14 @@ COPY crates/chess-core ./crates/chess-core
 COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
 
-# Remove analysis-worker from workspace members (it has extra deps we don't need)
-RUN sed -i 's/"crates\/analysis-worker",//' Cargo.toml
+# Create a clean workspace Cargo.toml (remove package, dev-deps, and analysis-worker)
+RUN head -1 Cargo.toml > /dev/null && \
+    echo '[workspace]' > Cargo.toml.new && \
+    echo 'resolver = "2"' >> Cargo.toml.new && \
+    echo 'members = ["crates/server", "crates/chess-core", "crates/chess-puzzler"]' >> Cargo.toml.new && \
+    echo '' >> Cargo.toml.new && \
+    grep -A1000 '^\[workspace.dependencies\]' Cargo.toml >> Cargo.toml.new && \
+    mv Cargo.toml.new Cargo.toml
 
 # Build release binary
 RUN cargo build --release -p server
