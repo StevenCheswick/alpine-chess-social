@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace files
-COPY Cargo.toml Cargo.lock ./
+# Copy workspace Cargo.toml (skip Cargo.lock - let cargo regenerate it)
+COPY Cargo.toml ./
 
 # Copy only the crates needed for server
 COPY crates/chess-core ./crates/chess-core

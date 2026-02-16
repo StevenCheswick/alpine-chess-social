@@ -39,7 +39,15 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         working-directory: backend-rust
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f crates/server/Dockerfile .
+          echo "Building Docker image..."
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f crates/server/Dockerfile . 2>&1 || {
+            echo "Docker build failed. Checking Dockerfile exists:"
+            ls -la crates/server/Dockerfile
+            echo "Checking build context:"
+            ls -la
+            exit 1
+          }
+          echo "Pushing images..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
