@@ -1,5 +1,5 @@
 # Multi-stage build for server
-FROM rust:latest AS builder
+FROM rust:1.84-bookworm AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace Cargo.toml (skip Cargo.lock - let cargo regenerate it)
+# Copy workspace Cargo.toml
 COPY Cargo.toml ./
 
 # Copy only the crates needed for server
@@ -18,8 +18,7 @@ COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
 
 # Create a clean workspace Cargo.toml (remove package, dev-deps, and analysis-worker)
-RUN head -1 Cargo.toml > /dev/null && \
-    echo '[workspace]' > Cargo.toml.new && \
+RUN echo '[workspace]' > Cargo.toml.new && \
     echo 'resolver = "2"' >> Cargo.toml.new && \
     echo 'members = ["crates/server", "crates/chess-core", "crates/chess-puzzler"]' >> Cargo.toml.new && \
     echo '' >> Cargo.toml.new && \
@@ -41,7 +40,6 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/server /app/server
 
-# Environment
 ENV HOST=0.0.0.0
 ENV PORT=8000
 ENV RUST_LOG=info
