@@ -105,7 +105,20 @@ async fn main() -> anyhow::Result<()> {
                             }
                             empty_receives = 0;
 
-                            for (i, msg) in messages.into_iter().enumerate() {
+                            // Collect all available messages (SQS may distribute across servers)
+                            let mut all_messages = messages;
+                            while all_messages.len() < num_workers {
+                                if let Ok(more) = sqs.receive_messages_nowait().await {
+                                    if more.is_empty() {
+                                        break;
+                                    }
+                                    all_messages.extend(more);
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            for (i, msg) in all_messages.into_iter().enumerate() {
                                 let game_id: i64 = match msg.body.parse() {
                                     Ok(id) => id,
                                     Err(_) => {
@@ -170,7 +183,20 @@ async fn main() -> anyhow::Result<()> {
                     }
                     empty_receives = 0;
 
-                    for (i, msg) in messages.into_iter().enumerate() {
+                    // Collect all available messages (SQS may distribute across servers)
+                    let mut all_messages = messages;
+                    while all_messages.len() < num_workers {
+                        if let Ok(more) = sqs.receive_messages_nowait().await {
+                            if more.is_empty() {
+                                break;
+                            }
+                            all_messages.extend(more);
+                        } else {
+                            break;
+                        }
+                    }
+
+                    for (i, msg) in all_messages.into_iter().enumerate() {
                         let game_id: i64 = match msg.body.parse() {
                             Ok(id) => id,
                             Err(_) => {

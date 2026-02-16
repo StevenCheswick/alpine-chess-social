@@ -75,6 +75,35 @@ impl SqsClient {
         Ok(messages)
     }
 
+    /// Receive messages without waiting (short poll to drain queue)
+    pub async fn receive_messages_nowait(&self) -> Result<Vec<SqsMessage>, WorkerError> {
+        let response = self
+            .client
+            .receive_message()
+            .queue_url(&self.queue_url)
+            .max_number_of_messages(10)
+            .wait_time_seconds(0) // No wait - immediate return
+            .visibility_timeout(self.visibility_timeout)
+            .send()
+            .await
+            .map_err(|e| WorkerError::Sqs(format!("Failed to receive messages: {e}")))?;
+
+        let messages = response
+            .messages()
+            .iter()
+            .filter_map(|msg| {
+                let body = msg.body()?;
+                let receipt = msg.receipt_handle()?;
+                Some(SqsMessage {
+                    body: body.to_string(),
+                    receipt_handle: receipt.to_string(),
+                })
+            })
+            .collect();
+
+        Ok(messages)
+    }
+
     /// Delete a message from the queue (after successful processing)
     pub async fn delete_message(&self, receipt_handle: &str) -> Result<(), WorkerError> {
         self.client
