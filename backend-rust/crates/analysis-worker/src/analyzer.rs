@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::info;
 
+use crate::book_cache;
 use crate::config::WorkerConfig;
 use crate::db;
 use crate::error::WorkerError;
@@ -192,9 +193,12 @@ pub async fn analyze_game(
         let cp_loss =
             analysis::calculate_cp_loss(eval_before, eval_after, is_white, is_checkmate);
 
-        // TODO: Re-enable book move checking with batch query optimization
-        // Currently disabled for performance testing
-        let classification = {
+        // Check if this is a book move (instant in-memory lookup)
+        let is_book = book_cache::is_book_move(fen_before, &san_moves[i]);
+
+        let classification = if is_book {
+            "book"
+        } else {
             let mate_blunder =
                 analysis::is_mate_blunder(eval_before, eval_after, is_white, is_checkmate);
             analysis::classify_move(cp_loss, mate_blunder)

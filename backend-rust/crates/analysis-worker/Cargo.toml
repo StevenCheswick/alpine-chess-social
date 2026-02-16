@@ -32,3 +32,6 @@ chess_puzzler = { path = "../chess-puzzler" }
 # Chess
 chess = "3.2"
 shakmaty = { workspace = true }
+
+# Binary serialization for opening book
+bincode = { workspace = true }
