@@ -13,7 +13,6 @@ pub struct ProfileResponse {
     pub username: String,
     pub display_name: String,
     pub chess_com_username: Option<String>,
-    pub lichess_username: Option<String>,
     pub bio: Option<String>,
     pub avatar_url: Option<String>,
     pub created_at: String,
@@ -27,7 +26,6 @@ pub struct UpdateProfileRequest {
     pub display_name: Option<String>,
     pub bio: Option<String>,
     pub chess_com_username: Option<String>,
-    pub lichess_username: Option<String>,
 }
 
 pub async fn get_user_profile(
@@ -55,7 +53,6 @@ pub async fn get_user_profile(
             .clone()
             .unwrap_or_else(|| profile.username.clone()),
         chess_com_username: profile.chess_com_username.clone(),
-        lichess_username: profile.lichess_username.clone(),
         bio: profile.bio.clone(),
         avatar_url: profile.avatar_url.clone(),
         created_at: profile.created_at.to_rfc3339(),
@@ -94,13 +91,6 @@ pub async fn update_profile(
             ));
         }
     }
-    if let Some(ref li) = req.lichess_username {
-        if li.len() > 50 {
-            return Err(AppError::BadRequest(
-                "Lichess username must be at most 50 characters".into(),
-            ));
-        }
-    }
 
     let updated = accounts::update_account(
         &pool,
@@ -108,7 +98,6 @@ pub async fn update_profile(
         req.display_name.as_deref(),
         req.bio.as_deref(),
         req.chess_com_username.as_deref(),
-        req.lichess_username.as_deref(),
     )
     .await?;
 
@@ -121,7 +110,6 @@ pub async fn update_profile(
             .unwrap_or_else(|| updated.username.clone()),
         email: updated.email.clone(),
         chess_com_username: updated.chess_com_username.clone(),
-        lichess_username: updated.lichess_username.clone(),
         bio: updated.bio.clone(),
         avatar_url: updated.avatar_url.clone(),
         created_at: updated.created_at.to_rfc3339(),

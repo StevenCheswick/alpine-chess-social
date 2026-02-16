@@ -30,7 +30,7 @@ pub async fn backfill_titled_tags(
 
     // Get all games that don't already have a "titled" tag
     let rows = sqlx::query(
-        r#"SELECT ug.id, ug.opponent, ug.source
+        r#"SELECT ug.id, ug.opponent
            FROM user_games ug
            WHERE NOT EXISTS (
                SELECT 1 FROM game_tags gt WHERE gt.game_id = ug.id AND gt.tag = 'titled'
@@ -40,41 +40,28 @@ pub async fn backfill_titled_tags(
     .await
     .map_err(AppError::Sqlx)?;
 
-    let mut chess_com_tagged = 0usize;
-    let mut lichess_tagged = 0usize;
     let mut title_pairs: Vec<(i64, String)> = Vec::new();
 
     for row in &rows {
         let game_id: i64 = row.try_get("id").unwrap_or(0);
         let opponent: String = row.try_get("opponent").unwrap_or_default();
-        let source: String = row.try_get("source").unwrap_or_default();
 
-        // For all sources, check against the in-memory titled players cache
+        // Check against the in-memory titled players cache
         if let Some(title) = titled_players::lookup(&opponent) {
             title_pairs.push((game_id, title));
-            if source == "lichess" {
-                lichess_tagged += 1;
-            } else {
-                chess_com_tagged += 1;
-            }
         }
     }
 
+    let tagged_count = title_pairs.len();
     if !title_pairs.is_empty() {
         titled_players::insert_title_tags(&pool, &title_pairs).await?;
     }
 
-    let total = chess_com_tagged + lichess_tagged;
-    tracing::info!(
-        "Backfill complete: {} games tagged ({} Chess.com, {} Lichess)",
-        total, chess_com_tagged, lichess_tagged
-    );
+    tracing::info!("Backfill complete: {} games tagged", tagged_count);
 
     Ok(Json(serde_json::json!({
         "success": true,
-        "totalTagged": total,
-        "chessComTagged": chess_com_tagged,
-        "lichessTagged": lichess_tagged,
+        "totalTagged": tagged_count,
         "gamesChecked": rows.len(),
     })))
 }

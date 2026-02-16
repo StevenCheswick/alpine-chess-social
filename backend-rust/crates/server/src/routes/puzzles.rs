@@ -31,3 +31,12 @@ pub async fn get_puzzles(
         "themes": themes,
     })))
 }
+
+/// GET /api/puzzles/stats
+pub async fn get_puzzle_stats(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+) -> Result<Json<JsonValue>, AppError> {
+    let stats = analysis::get_user_puzzle_stats(&pool, user.id).await?;
+    Ok(Json(stats))
+}

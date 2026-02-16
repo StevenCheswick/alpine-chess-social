@@ -8,8 +8,10 @@ use anyhow::Result;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::IntoResponse,
+    Extension,
 };
 use chess_puzzler::chess::{Board, Color, MoveGen, Piece};
+use sqlx::PgPool;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
@@ -166,15 +168,24 @@ struct PuzzleOutput {
     moves: Vec<String>,
     cp: i32,
     themes: Vec<String>,
+    /// Whether the solver (who should punish the blunder) is white
+    solver_is_white: bool,
+    /// Whether the solver actually played the correct first move
+    found: bool,
+    /// Centipawn evaluation before the blunder (from solver's perspective)
+    cp_before_blunder: i32,
 }
 
 // ---- WebSocket handler ----
 
-pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_socket)
+pub async fn ws_handler(
+    Extension(pool): Extension<PgPool>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, pool))
 }
 
-async fn handle_socket(socket: WebSocket) {
+async fn handle_socket(socket: WebSocket, pool: PgPool) {
     let (mut sender, mut receiver) = socket.split();
 
     while let Some(Ok(msg)) = receiver.next().await {
@@ -213,6 +224,7 @@ async fn handle_socket(socket: WebSocket) {
                     &game_id,
                     &moves,
                     nodes,
+                    &pool,
                 )
                 .await
                 {
@@ -337,6 +349,7 @@ async fn orchestrate_analysis(
     game_id: &str,
     san_moves: &[String],
     nodes: u32,
+    pool: &PgPool,
 ) -> Result<()> {
     // Step 1: Parse SAN moves to get FENs and UCI moves
     let mut board = Board::default();
@@ -482,9 +495,16 @@ async fn orchestrate_analysis(
 
         let cp_loss =
             analysis::calculate_cp_loss(eval_before, eval_after, is_white, is_checkmate);
-        let mate_blunder =
-            analysis::is_mate_blunder(eval_before, eval_after, is_white, is_checkmate);
-        let classification = analysis::classify_move(cp_loss, mate_blunder);
+
+        // Check if this is a book move
+        let san = &san_moves[i];
+        let classification = if is_book_move(pool, fen_before, san).await {
+            "book"
+        } else {
+            let mate_blunder =
+                analysis::is_mate_blunder(eval_before, eval_after, is_white, is_checkmate);
+            analysis::classify_move(cp_loss, mate_blunder)
+        };
 
         let best = &best_moves[i];
 
@@ -631,6 +651,25 @@ async fn orchestrate_analysis(
 
                 let tags = cook::cook(&puzzle);
 
+                // Check if solver actually found the puzzle (played the first solution move)
+                let solver_is_white = solver_color == Color::White;
+                let found = if !mainline_moves.is_empty() && blunder_i + 1 < positions.len() {
+                    let actual_move = &positions[blunder_i + 1].1;
+                    let solution_move = &mainline_moves[0];
+                    actual_move == solution_move
+                } else {
+                    false
+                };
+
+                // Get eval before blunder from solver's perspective
+                // evals[] is from White's perspective, so negate if solver is Black
+                let eval_before_raw = evals[blunder_i];
+                let cp_before_blunder = if solver_is_white {
+                    eval_before_raw
+                } else {
+                    -eval_before_raw
+                };
+
                 puzzles.push(PuzzleOutput {
                     fen: puzzle.initial_board().to_string(),
                     moves: puzzle
@@ -665,6 +704,9 @@ async fn orchestrate_analysis(
                                 .to_string()
                         })
                         .collect(),
+                    solver_is_white,
+                    found,
+                    cp_before_blunder,
                 });
 
                 puzzle_objects.push(puzzle);
@@ -1110,4 +1152,23 @@ fn update_class(class: &mut ClassificationsOutput, classification: &str) {
         "book" => class.book += 1,
         _ => {}
     }
+}
+
+/// Normalize FEN to 4 parts (position, side, castling, ep) for opening book lookup.
+fn normalize_fen(fen: &str) -> String {
+    fen.split_whitespace().take(4).collect::<Vec<_>>().join(" ")
+}
+
+/// Check if a move exists in the opening_book table.
+async fn is_book_move(pool: &PgPool, fen: &str, san: &str) -> bool {
+    let normalized = normalize_fen(fen);
+    let result: Result<Option<(i32,)>, _> = sqlx::query_as(
+        "SELECT games FROM opening_book WHERE parent_fen = $1 AND move_san = $2",
+    )
+    .bind(&normalized)
+    .bind(san)
+    .fetch_optional(pool)
+    .await;
+
+    matches!(result, Ok(Some(_)))
 }

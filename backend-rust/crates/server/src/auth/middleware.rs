@@ -17,7 +17,6 @@ pub struct AuthUser {
     pub email: String,
     pub display_name: Option<String>,
     pub chess_com_username: Option<String>,
-    pub lichess_username: Option<String>,
     pub bio: Option<String>,
     pub avatar_url: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -59,7 +58,7 @@ where
         let account = sqlx::query_as::<_, AuthUser>(
             r#"SELECT
                 id, username, email, display_name,
-                chess_com_username, lichess_username,
+                chess_com_username,
                 bio, avatar_url, created_at
             FROM accounts WHERE id = $1"#,
         )

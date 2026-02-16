@@ -1,2 +1,2 @@
 pub mod chess_com;
-pub mod lichess;
+pub mod sqs;

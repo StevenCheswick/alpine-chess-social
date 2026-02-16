@@ -5,7 +5,7 @@ use crate::error::AppError;
 
 // Virtual tag mappings
 pub const RESULT_TAGS: &[(&str, &str)] = &[("Win", "W"), ("Loss", "L"), ("Draw", "D")];
-pub const PLATFORM_TAGS: &[(&str, &str)] = &[("Chess.com", "chess_com"), ("Lichess", "lichess")];
+pub const PLATFORM_TAGS: &[(&str, &str)] = &[("Chess.com", "chess_com")];
 
 fn result_to_tag(result: &str) -> Option<&'static str> {
     match result {
@@ -19,7 +19,6 @@ fn result_to_tag(result: &str) -> Option<&'static str> {
 fn source_to_tag(source: &str) -> Option<&'static str> {
     match source {
         "chess_com" => Some("Chess.com"),
-        "lichess" => Some("Lichess"),
         _ => None,
     }
 }
@@ -542,123 +541,6 @@ pub async fn get_game_by_id(
     }))
 }
 
-/// Get unanalyzed games for batch analysis.
-pub async fn get_unanalyzed_games(
-    pool: &PgPool,
-    user_id: i64,
-    limit: i64,
-    source: Option<&str>,
-) -> Result<Vec<serde_json::Value>, AppError> {
-    use sqlx::Row;
-
-    let rows = if let Some(src) = source {
-        sqlx::query(
-            r#"SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                      result, user_color, time_control, date, tcn, source,
-                      moves, tags
-               FROM user_games
-               WHERE user_id = $1 AND analyzed_at IS NULL AND source = $2
-               ORDER BY date DESC
-               LIMIT $3"#,
-        )
-        .bind(user_id)
-        .bind(src)
-        .bind(limit)
-        .fetch_all(pool)
-        .await
-        .map_err(AppError::Sqlx)?
-    } else {
-        sqlx::query(
-            r#"SELECT id, chess_com_game_id, opponent, opponent_rating, user_rating,
-                      result, user_color, time_control, date, tcn, source,
-                      moves, tags
-               FROM user_games
-               WHERE user_id = $1 AND analyzed_at IS NULL
-               ORDER BY date DESC
-               LIMIT $2"#,
-        )
-        .bind(user_id)
-        .bind(limit)
-        .fetch_all(pool)
-        .await
-        .map_err(AppError::Sqlx)?
-    };
-
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            serde_json::json!({
-                "id": r.try_get::<i64, _>("id").unwrap_or(0),
-                "chessComGameId": r.try_get::<String, _>("chess_com_game_id").unwrap_or_default(),
-                "opponent": r.try_get::<String, _>("opponent").unwrap_or_default(),
-                "opponentRating": r.try_get::<Option<i32>, _>("opponent_rating").unwrap_or(None),
-                "userRating": r.try_get::<Option<i32>, _>("user_rating").unwrap_or(None),
-                "result": r.try_get::<String, _>("result").unwrap_or_default(),
-                "userColor": r.try_get::<String, _>("user_color").unwrap_or_default(),
-                "timeControl": r.try_get::<Option<String>, _>("time_control").unwrap_or(None),
-                "date": r.try_get::<Option<String>, _>("date").unwrap_or(None),
-                "tcn": r.try_get::<Option<String>, _>("tcn").unwrap_or(None),
-                "moves": r.try_get::<Option<JsonValue>, _>("moves").unwrap_or(None),
-                "tags": r.try_get::<Option<JsonValue>, _>("tags").unwrap_or(None),
-            })
-        })
-        .collect())
-}
-
-pub async fn get_unanalyzed_games_count(pool: &PgPool, user_id: i64) -> Result<i64, AppError> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM user_games WHERE user_id = $1 AND analyzed_at IS NULL",
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Sqlx)?;
-
-    Ok(count.0)
-}
-
-/// Mark games as analyzed and update their tags in the game_tags table.
-pub async fn mark_games_analyzed(
-    pool: &PgPool,
-    tags_map: &std::collections::HashMap<i64, Vec<String>>,
-) -> Result<i64, AppError> {
-    let mut updated = 0i64;
-
-    for (game_id, tags) in tags_map {
-        // Update analyzed_at
-        sqlx::query(
-            "UPDATE user_games SET analyzed_at = NOW(), tags = $2, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(game_id)
-        .bind(serde_json::to_value(tags).unwrap_or_default())
-        .execute(pool)
-        .await
-        .map_err(AppError::Sqlx)?;
-
-        // Delete old tags and insert new ones
-        sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
-            .bind(game_id)
-            .execute(pool)
-            .await
-            .map_err(AppError::Sqlx)?;
-
-        for tag in tags {
-            sqlx::query(
-                "INSERT INTO game_tags (game_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            )
-            .bind(game_id)
-            .bind(tag)
-            .execute(pool)
-            .await
-            .map_err(AppError::Sqlx)?;
-        }
-
-        updated += 1;
-    }
-
-    Ok(updated)
-}
-
 /// Get games by color for opening tree building.
 pub async fn get_user_games_by_color(
     pool: &PgPool,
@@ -748,6 +630,98 @@ pub async fn get_games_count_by_chess_com_username(
         Some((uid,)) => get_user_games_count(pool, uid, None).await,
         None => Ok(0),
     }
+}
+
+/// Verify that a list of game IDs belong to a user.
+/// Returns only the IDs that belong to the user.
+pub async fn verify_game_ownership(
+    pool: &PgPool,
+    user_id: i64,
+    game_ids: &[i64],
+) -> Result<Vec<i64>, AppError> {
+    if game_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let placeholders: Vec<String> = game_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("${}", i + 2))
+        .collect();
+
+    let query = format!(
+        "SELECT id FROM user_games WHERE user_id = $1 AND id IN ({})",
+        placeholders.join(",")
+    );
+
+    let mut q = sqlx::query_as::<_, (i64,)>(&query).bind(user_id);
+    for id in game_ids {
+        q = q.bind(*id);
+    }
+
+    let rows = q.fetch_all(pool).await.map_err(AppError::Sqlx)?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
+/// Get IDs of games that haven't been analyzed yet.
+pub async fn get_unanalyzed_game_ids(
+    pool: &PgPool,
+    user_id: i64,
+    tag_filters: Option<&[String]>,
+    source: Option<&str>,
+) -> Result<Vec<i64>, AppError> {
+    let mut conditions = vec!["ug.user_id = $1".to_string(), "ga.id IS NULL".to_string()];
+
+    if let Some(src) = source {
+        conditions.push(format!("ug.source = '{}'", src.replace('\'', "''")));
+    }
+
+    if let Some(filters) = tag_filters {
+        for f in filters {
+            if let Some((_, code)) = RESULT_TAGS.iter().find(|(tag, _)| *tag == f.as_str()) {
+                conditions.push(format!("ug.result = '{}'", code));
+            } else if let Some((_, code)) = PLATFORM_TAGS.iter().find(|(tag, _)| *tag == f.as_str()) {
+                conditions.push(format!("ug.source = '{}'", code));
+            }
+        }
+
+        let regular_tags: Vec<&String> = filters
+            .iter()
+            .filter(|t| {
+                !RESULT_TAGS.iter().any(|(tag, _)| tag == &t.as_str())
+                    && !PLATFORM_TAGS.iter().any(|(tag, _)| tag == &t.as_str())
+            })
+            .collect();
+
+        if !regular_tags.is_empty() {
+            let quoted: Vec<String> = regular_tags
+                .iter()
+                .map(|t| format!("'{}'", t.replace('\'', "''")))
+                .collect();
+            conditions.push(format!(
+                "ug.id IN (SELECT game_id FROM game_tags WHERE tag IN ({}) GROUP BY game_id HAVING COUNT(DISTINCT tag) = {})",
+                quoted.join(","),
+                regular_tags.len()
+            ));
+        }
+    }
+
+    let query = format!(
+        r#"SELECT ug.id
+           FROM user_games ug
+           LEFT JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE {}
+           ORDER BY ug.date DESC"#,
+        conditions.join(" AND ")
+    );
+
+    let rows: Vec<(i64,)> = sqlx::query_as(&query)
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Sqlx)?;
+
+    Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
 /// Get games by Chess.com username (for user profile /users/me/games).

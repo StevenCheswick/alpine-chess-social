@@ -33,6 +33,14 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
+    // Initialize SQS client for server-side analysis (optional)
+    let analysis_queue = clients::sqs::AnalysisQueue::new(&config).await;
+    if analysis_queue.is_some() {
+        tracing::info!("SQS analysis queue configured");
+    } else {
+        tracing::info!("SQS not configured - server-side analysis disabled");
+    }
+
     // Load titled players cache (and seed from Chess.com API on first run)
     let titled_count = db::titled_players::load_cache(&pool)
         .await
@@ -71,12 +79,11 @@ async fn main() {
         .route("/api/users/me/games", get(routes::games::get_my_games))
         // Games — order matters: specific routes before parameterized
         .route("/api/games/sync", post(routes::games::sync_games))
-        .route("/api/games/sync/lichess", post(routes::games::sync_lichess_games))
         .route("/api/games/stored", get(routes::games::get_stored_games))
         .route("/api/games/tags", get(routes::games::get_game_tags))
+        .route("/api/games/analyze-server", post(routes::games::analyze_server))
         .route("/api/games/stats", get(routes::dashboard::get_game_stats))
         .route("/api/games/endgame-stats", get(routes::endgame::get_endgame_stats))
-        .route("/api/games/analyze", post(routes::games::analyze_games))
         .route("/api/games/{game_id}", get(routes::games::get_game_by_id))
         .route(
             "/api/games/{game_id}/analysis",
@@ -84,12 +91,15 @@ async fn main() {
                 .post(routes::games::save_game_analysis),
         )
         // Puzzles
+        .route("/api/puzzles/stats", get(routes::puzzles::get_puzzle_stats))
         .route("/api/puzzles", get(routes::puzzles::get_puzzles))
         // Admin — titled players
         .route("/api/admin/titled-players/refresh", post(routes::titled_players::refresh_titled_players))
         .route("/api/admin/backfill-titled-tags", post(routes::titled_players::backfill_titled_tags))
         // Opening tree
         .route("/api/opening-tree", get(routes::opening_tree::get_opening_tree))
+        // Opening book (master games)
+        .route("/api/opening-book/check", get(routes::opening_book::check_book_move))
         // Posts
         .route("/api/posts", post(routes::posts::create_post).get(routes::posts::get_posts))
         // User profile + posts (parameterized — must be last)
@@ -98,6 +108,7 @@ async fn main() {
         // Shared state
         .layer(Extension(pool))
         .layer(Extension(config.clone()))
+        .layer(Extension(analysis_queue))
         .layer(cors);
 
     let addr = format!("{}:{}", config.host, config.port);

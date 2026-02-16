@@ -467,6 +467,312 @@ pub async fn get_user_endgame_stats(
     }))
 }
 
+/// Puzzle performance stats: found vs missed, user vs opponent, by theme
+pub async fn get_user_puzzle_stats(
+    pool: &PgPool,
+    user_id: i64,
+) -> Result<JsonValue, AppError> {
+    use sqlx::Row;
+
+    // Unnest puzzles JSONB arrays, join with user_games for color info
+    let rows = sqlx::query(
+        r#"
+        WITH puzzle_data AS (
+            SELECT
+                ug.id AS game_id,
+                LOWER(ug.user_color) AS user_color,
+                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
+                (puzzle->>'found')::boolean AS found,
+                puzzle->'themes' AS themes
+            FROM user_games ug
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
+            jsonb_array_elements(ga.puzzles) AS puzzle
+            WHERE ug.user_id = $1
+              AND ga.puzzles IS NOT NULL
+              AND jsonb_array_length(ga.puzzles) > 0
+        )
+        SELECT
+            user_color,
+            solver_is_white,
+            found,
+            COUNT(*)::bigint AS count
+        FROM puzzle_data
+        GROUP BY user_color, solver_is_white, found
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    // Aggregate into user/opponent found/missed
+    let mut user_found: i64 = 0;
+    let mut user_missed: i64 = 0;
+    let mut opp_found: i64 = 0;
+    let mut opp_missed: i64 = 0;
+
+    for r in &rows {
+        let user_color: String = r.try_get("user_color").unwrap_or_default();
+        let solver_is_white: bool = r.try_get("solver_is_white").unwrap_or(false);
+        let found: bool = r.try_get("found").unwrap_or(false);
+        let count: i64 = r.try_get("count").unwrap_or(0);
+
+        // User is solver if (user is white AND solver is white) OR (user is black AND solver is black)
+        let user_is_solver = (user_color == "white") == solver_is_white;
+
+        if user_is_solver {
+            if found {
+                user_found += count;
+            } else {
+                user_missed += count;
+            }
+        } else {
+            if found {
+                opp_found += count;
+            } else {
+                opp_missed += count;
+            }
+        }
+    }
+
+    let user_total = user_found + user_missed;
+    let opp_total = opp_found + opp_missed;
+
+    let user_rate = if user_total > 0 {
+        (user_found as f64 / user_total as f64 * 1000.0).round() / 10.0
+    } else {
+        0.0
+    };
+    let opp_rate = if opp_total > 0 {
+        (opp_found as f64 / opp_total as f64 * 1000.0).round() / 10.0
+    } else {
+        0.0
+    };
+
+    // Per-theme stats for both user and opponent
+    let theme_rows = sqlx::query(
+        r#"
+        WITH puzzle_data AS (
+            SELECT
+                LOWER(ug.user_color) AS user_color,
+                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
+                (puzzle->>'found')::boolean AS found,
+                puzzle->'themes' AS themes
+            FROM user_games ug
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
+            jsonb_array_elements(ga.puzzles) AS puzzle
+            WHERE ug.user_id = $1
+              AND ga.puzzles IS NOT NULL
+              AND jsonb_array_length(ga.puzzles) > 0
+        ),
+        labeled_puzzles AS (
+            SELECT
+                found,
+                themes,
+                (user_color = 'white') = solver_is_white AS is_user_puzzle
+            FROM puzzle_data
+        ),
+        theme_unnest AS (
+            SELECT found, is_user_puzzle, jsonb_array_elements_text(themes) AS theme
+            FROM labeled_puzzles
+            WHERE themes IS NOT NULL
+        )
+        SELECT
+            theme,
+            is_user_puzzle,
+            COUNT(*) FILTER (WHERE found = true)::bigint AS found_count,
+            COUNT(*) FILTER (WHERE found = false)::bigint AS missed_count
+        FROM theme_unnest
+        GROUP BY theme, is_user_puzzle
+        ORDER BY theme
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    // Aggregate into a map: theme -> {user: {found, missed}, opp: {found, missed}}
+    let mut theme_map: std::collections::HashMap<String, (i64, i64, i64, i64)> = std::collections::HashMap::new();
+
+    for r in &theme_rows {
+        let theme: String = r.try_get("theme").unwrap_or_default();
+        let is_user: bool = r.try_get("is_user_puzzle").unwrap_or(false);
+        let found_count: i64 = r.try_get("found_count").unwrap_or(0);
+        let missed_count: i64 = r.try_get("missed_count").unwrap_or(0);
+
+        let entry = theme_map.entry(theme).or_insert((0, 0, 0, 0));
+        if is_user {
+            entry.0 += found_count;  // user_found
+            entry.1 += missed_count; // user_missed
+        } else {
+            entry.2 += found_count;  // opp_found
+            entry.3 += missed_count; // opp_missed
+        }
+    }
+
+    // Convert to vec and sort by total user puzzles descending
+    let mut by_theme: Vec<JsonValue> = theme_map
+        .into_iter()
+        .map(|(theme, (uf, um, of, om))| {
+            let user_total = uf + um;
+            let opp_total = of + om;
+            let user_rate = if user_total > 0 {
+                (uf as f64 / user_total as f64 * 1000.0).round() / 10.0
+            } else {
+                0.0
+            };
+            let opp_rate = if opp_total > 0 {
+                (of as f64 / opp_total as f64 * 1000.0).round() / 10.0
+            } else {
+                0.0
+            };
+
+            serde_json::json!({
+                "theme": theme,
+                "user": {
+                    "found": uf,
+                    "missed": um,
+                    "total": user_total,
+                    "rate": user_rate,
+                },
+                "opponent": {
+                    "found": of,
+                    "missed": om,
+                    "total": opp_total,
+                    "rate": opp_rate,
+                },
+            })
+        })
+        .collect();
+
+    // Sort by total user puzzles descending
+    by_theme.sort_by(|a, b| {
+        let a_total = a["user"]["total"].as_i64().unwrap_or(0);
+        let b_total = b["user"]["total"].as_i64().unwrap_or(0);
+        b_total.cmp(&a_total)
+    });
+
+    // Stats by position type (based on cp_before_blunder)
+    // Winning: cp > 100, Equal: -100 to 100, Losing: cp < -100
+    let position_rows = sqlx::query(
+        r#"
+        WITH puzzle_data AS (
+            SELECT
+                LOWER(ug.user_color) AS user_color,
+                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
+                (puzzle->>'found')::boolean AS found,
+                (puzzle->>'cp_before_blunder')::int AS cp_before
+            FROM user_games ug
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
+            jsonb_array_elements(ga.puzzles) AS puzzle
+            WHERE ug.user_id = $1
+              AND ga.puzzles IS NOT NULL
+              AND jsonb_array_length(ga.puzzles) > 0
+              AND puzzle->>'cp_before_blunder' IS NOT NULL
+        ),
+        labeled_puzzles AS (
+            SELECT
+                found,
+                cp_before,
+                (user_color = 'white') = solver_is_white AS is_user_puzzle,
+                CASE
+                    WHEN cp_before > 100 THEN 'winning'
+                    WHEN cp_before < -100 THEN 'losing'
+                    ELSE 'equal'
+                END AS position_type
+            FROM puzzle_data
+        )
+        SELECT
+            position_type,
+            is_user_puzzle,
+            COUNT(*) FILTER (WHERE found = true)::bigint AS found_count,
+            COUNT(*) FILTER (WHERE found = false)::bigint AS missed_count
+        FROM labeled_puzzles
+        GROUP BY position_type, is_user_puzzle
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    // Aggregate position stats
+    let mut position_map: std::collections::HashMap<String, (i64, i64, i64, i64)> =
+        std::collections::HashMap::new();
+
+    for r in &position_rows {
+        let pos_type: String = r.try_get("position_type").unwrap_or_default();
+        let is_user: bool = r.try_get("is_user_puzzle").unwrap_or(false);
+        let found_count: i64 = r.try_get("found_count").unwrap_or(0);
+        let missed_count: i64 = r.try_get("missed_count").unwrap_or(0);
+
+        let entry = position_map.entry(pos_type).or_insert((0, 0, 0, 0));
+        if is_user {
+            entry.0 += found_count;
+            entry.1 += missed_count;
+        } else {
+            entry.2 += found_count;
+            entry.3 += missed_count;
+        }
+    }
+
+    let by_position: Vec<JsonValue> = ["winning", "equal", "losing"]
+        .iter()
+        .filter_map(|&pos| {
+            let (uf, um, of, om) = position_map.get(pos).copied().unwrap_or((0, 0, 0, 0));
+            let user_total = uf + um;
+            let opp_total = of + om;
+            if user_total == 0 && opp_total == 0 {
+                return None;
+            }
+            let user_rate = if user_total > 0 {
+                (uf as f64 / user_total as f64 * 1000.0).round() / 10.0
+            } else {
+                0.0
+            };
+            let opp_rate = if opp_total > 0 {
+                (of as f64 / opp_total as f64 * 1000.0).round() / 10.0
+            } else {
+                0.0
+            };
+
+            Some(serde_json::json!({
+                "position": pos,
+                "user": {
+                    "found": uf,
+                    "missed": um,
+                    "total": user_total,
+                    "rate": user_rate,
+                },
+                "opponent": {
+                    "found": of,
+                    "missed": om,
+                    "total": opp_total,
+                    "rate": opp_rate,
+                },
+            }))
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "user": {
+            "found": user_found,
+            "missed": user_missed,
+            "total": user_total,
+            "rate": user_rate,
+        },
+        "opponent": {
+            "found": opp_found,
+            "missed": opp_missed,
+            "total": opp_total,
+            "rate": opp_rate,
+        },
+        "byTheme": by_theme,
+        "byPosition": by_position,
+    }))
+}
+
 fn first_inaccuracy_move(moves: &JsonValue, is_white: bool) -> i64 {
     let arr = match moves.as_array() {
         Some(a) => a,

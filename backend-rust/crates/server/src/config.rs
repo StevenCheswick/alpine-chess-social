@@ -7,6 +7,10 @@ pub struct Config {
     pub jwt_expire_hours: i64,
     pub host: String,
     pub port: u16,
+    /// SQS queue URL for server-side analysis (optional)
+    pub sqs_queue_url: Option<String>,
+    /// Custom SQS endpoint (for LocalStack)
+    pub sqs_endpoint_url: Option<String>,
 }
 
 impl Config {
@@ -25,6 +29,8 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(8000),
+            sqs_queue_url: env::var("SQS_QUEUE_URL").ok(),
+            sqs_endpoint_url: env::var("SQS_ENDPOINT_URL").ok(),
         }
     }
 }

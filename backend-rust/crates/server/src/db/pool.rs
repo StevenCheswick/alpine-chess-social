@@ -22,11 +22,9 @@ CREATE TABLE IF NOT EXISTS accounts (
     password_hash TEXT NOT NULL,
     display_name  TEXT,
     chess_com_username TEXT,
-    lichess_username  TEXT,
     bio           TEXT,
     avatar_url    TEXT,
     chess_com_last_synced_at TIMESTAMPTZ,
-    lichess_last_synced_at   TIMESTAMPTZ,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -47,8 +45,6 @@ CREATE TABLE IF NOT EXISTS user_games (
     user_color        TEXT NOT NULL,
     time_control      TEXT,
     date              TEXT,
-    pgn               TEXT,
-    moves             JSONB,
     tags              JSONB DEFAULT '[]'::jsonb,
     tcn               TEXT,
     source            TEXT NOT NULL DEFAULT 'chess_com',
@@ -163,4 +159,18 @@ END $$;
 
 -- Drop old monolithic JSONB opening tree cache (replaced by user_opening_moves)
 DROP TABLE IF EXISTS user_opening_trees;
+
+-- Master opening book (FEN-keyed, from KingBase 2500+ games)
+CREATE TABLE IF NOT EXISTS opening_book (
+    parent_fen  TEXT NOT NULL,
+    move_san    TEXT NOT NULL,
+    result_fen  TEXT NOT NULL,
+    games       INTEGER NOT NULL,
+    white_wins  INTEGER NOT NULL,
+    draws       INTEGER NOT NULL,
+    black_wins  INTEGER NOT NULL,
+    avg_rating  SMALLINT,
+    PRIMARY KEY (parent_fen, move_san)
+);
+CREATE INDEX IF NOT EXISTS idx_opening_book_parent_fen ON opening_book (parent_fen);
 "#;

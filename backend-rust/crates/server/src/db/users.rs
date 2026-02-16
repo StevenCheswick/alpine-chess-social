@@ -27,9 +27,7 @@ pub async fn update_last_synced(
     Ok(())
 }
 
-fn sync_column(platform: &str) -> &'static str {
-    match platform {
-        "lichess" => "lichess_last_synced_at",
-        _ => "chess_com_last_synced_at",
-    }
+fn sync_column(_platform: &str) -> &'static str {
+    // Only Chess.com is supported
+    "chess_com_last_synced_at"
 }

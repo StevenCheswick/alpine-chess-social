@@ -11,7 +11,6 @@ pub struct Account {
     pub password_hash: String,
     pub display_name: Option<String>,
     pub chess_com_username: Option<String>,
-    pub lichess_username: Option<String>,
     pub bio: Option<String>,
     pub avatar_url: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -42,7 +41,7 @@ pub async fn create_account(
 
 pub async fn get_account_by_id(pool: &PgPool, id: i64) -> Result<Option<Account>, AppError> {
     sqlx::query_as::<_, Account>(
-        "SELECT id, username, email, password_hash, display_name, chess_com_username, lichess_username, bio, avatar_url, created_at FROM accounts WHERE id = $1",
+        "SELECT id, username, email, password_hash, display_name, chess_com_username, bio, avatar_url, created_at FROM accounts WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -52,7 +51,7 @@ pub async fn get_account_by_id(pool: &PgPool, id: i64) -> Result<Option<Account>
 
 pub async fn get_account_by_email(pool: &PgPool, email: &str) -> Result<Option<Account>, AppError> {
     sqlx::query_as::<_, Account>(
-        "SELECT id, username, email, password_hash, display_name, chess_com_username, lichess_username, bio, avatar_url, created_at FROM accounts WHERE LOWER(email) = LOWER($1)",
+        "SELECT id, username, email, password_hash, display_name, chess_com_username, bio, avatar_url, created_at FROM accounts WHERE LOWER(email) = LOWER($1)",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -90,22 +89,19 @@ pub async fn update_account(
     display_name: Option<&str>,
     bio: Option<&str>,
     chess_com_username: Option<&str>,
-    lichess_username: Option<&str>,
 ) -> Result<Account, AppError> {
     sqlx::query_as::<_, Account>(
         r#"UPDATE accounts SET
             display_name = COALESCE($2, display_name),
             bio = COALESCE($3, bio),
-            chess_com_username = COALESCE($4, chess_com_username),
-            lichess_username = COALESCE($5, lichess_username)
+            chess_com_username = COALESCE($4, chess_com_username)
         WHERE id = $1
-        RETURNING id, username, email, password_hash, display_name, chess_com_username, lichess_username, bio, avatar_url, created_at"#,
+        RETURNING id, username, email, password_hash, display_name, chess_com_username, bio, avatar_url, created_at"#,
     )
     .bind(account_id)
     .bind(display_name)
     .bind(bio)
     .bind(chess_com_username)
-    .bind(lichess_username)
     .fetch_one(pool)
     .await
     .map_err(AppError::Sqlx)
@@ -132,7 +128,7 @@ pub async fn get_public_profile(
     username: &str,
 ) -> Result<Option<Account>, AppError> {
     sqlx::query_as::<_, Account>(
-        "SELECT id, username, email, password_hash, display_name, chess_com_username, lichess_username, bio, avatar_url, created_at FROM accounts WHERE LOWER(username) = LOWER($1)",
+        "SELECT id, username, email, password_hash, display_name, chess_com_username, bio, avatar_url, created_at FROM accounts WHERE LOWER(username) = LOWER($1)",
     )
     .bind(username)
     .fetch_optional(pool)
