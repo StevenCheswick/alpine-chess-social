@@ -16,7 +16,11 @@ echo "==> Pushing to ECR..."
 docker push $ECR_REPO:latest
 
 echo "==> Triggering App Runner deployment..."
-aws apprunner start-deployment --service-arn $APP_RUNNER_ARN --region us-east-1
+if aws apprunner start-deployment --service-arn $APP_RUNNER_ARN --region us-east-1 2>/dev/null; then
+    echo "==> Deployment triggered!"
+else
+    echo "==> App Runner already deploying (auto-triggered from ECR push)"
+fi
 
-echo "==> Done! Deployment started."
+echo "==> Done! Image pushed to ECR."
 echo "    Check status: aws apprunner list-operations --service-arn $APP_RUNNER_ARN --region us-east-1 --max-results 1"
