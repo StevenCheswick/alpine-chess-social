@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { gameService } from '../services/gameService';
+import { gameService, type AnalyzeServerResponse } from '../services/gameService';
 import { analyzeGamesBatch } from '../services/analysisService';
 import { analyzeGamesBatchProxy } from '../services/analysisProxy';
 import type { BatchProgress, FullAnalysis } from '../types/analysis';
@@ -147,6 +147,9 @@ export default function GamesPage() {
   const [totalUnanalyzed, setTotalUnanalyzed] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Server-side analysis state
+  const [serverAnalyzing, setServerAnalyzing] = useState(false);
+  const [serverResult, setServerResult] = useState<AnalyzeServerResponse | null>(null);
 
   const hasAnyLinkedAccount = !!chessComUsername;
 
@@ -413,6 +416,22 @@ export default function GamesPage() {
     abortControllerRef.current?.abort();
   };
 
+  // Queue all unanalyzed games for server-side analysis (AWS Batch)
+  const serverAnalyzeGames = async () => {
+    setServerAnalyzing(true);
+    setServerResult(null);
+    try {
+      const result = await gameService.analyzeServerAll();
+      setServerResult(result);
+      // Clear success message after 10 seconds
+      setTimeout(() => setServerResult(null), 10000);
+    } catch (err) {
+      setServerResult({ queued: 0, message: err instanceof Error ? err.message : 'Failed to queue games' });
+      setTimeout(() => setServerResult(null), 5000);
+    } finally {
+      setServerAnalyzing(false);
+    }
+  };
 
   const analyzedCount = games.filter(g => g.hasAnalysis).length;
 
@@ -562,6 +581,49 @@ export default function GamesPage() {
                   </button>
                 )}
 
+                {/* Server-side analysis button */}
+                {!bulkAnalyzing && (
+                  <button
+                    onClick={serverAnalyzeGames}
+                    disabled={serverAnalyzing || bulkAnalyzing || syncing || loading}
+                    title="Queue for server analysis - no need to keep tab open"
+                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+                  >
+                    {serverAnalyzing ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        Queueing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                        </svg>
+                        Server Analyze
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Server analysis feedback */}
+            {serverResult && (
+              <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
+                serverResult.queued > 0
+                  ? 'bg-cyan-500/20 border border-cyan-500/30 text-cyan-300'
+                  : 'bg-red-500/20 border border-red-500/30 text-red-300'
+              }`}>
+                {serverResult.queued > 0 ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Queued {serverResult.queued} games for server analysis. Results will appear automatically.
+                  </>
+                ) : (
+                  serverResult.message
+                )}
               </div>
             )}
           </div>

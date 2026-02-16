@@ -37,6 +37,11 @@ export interface AnalyzeResponse {
   total: number;
 }
 
+export interface AnalyzeServerResponse {
+  queued: number;
+  message: string;
+}
+
 export type ChessPlatform = 'chess_com' | 'lichess';
 
 export const gameService = {
@@ -68,6 +73,14 @@ export const gameService = {
    */
   async analyzeGames(limit: number = 1000, platform: ChessPlatform = 'chess_com'): Promise<AnalyzeResponse> {
     return api.post<AnalyzeResponse>(`/api/games/analyze?limit=${limit}&platform=${platform}`, {});
+  },
+
+  /**
+   * Queue all unanalyzed games for server-side analysis via AWS Batch.
+   * Games are processed in the background - no need to keep tab open.
+   */
+  async analyzeServerAll(): Promise<AnalyzeServerResponse> {
+    return api.post<AnalyzeServerResponse>('/api/games/analyze-server', { all_unanalyzed: true });
   },
 };
 
