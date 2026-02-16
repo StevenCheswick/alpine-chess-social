@@ -2,10 +2,10 @@ use axum::{extract::Path, extract::Query, Extension, Json};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
-use std::collections::HashMap;
 
 use crate::auth::middleware::AuthUser;
 use crate::clients;
+use crate::clients::sqs::AnalysisQueue;
 use crate::db::{analysis, games, opening_moves, titled_players, users};
 use crate::error::AppError;
 
@@ -23,23 +23,22 @@ pub struct TagsQuery {
     pub selected_tags: Option<String>,
 }
 
-#[derive(Deserialize)]
-pub struct AnalyzeQuery {
-    pub limit: Option<i64>,
-    pub platform: Option<String>,
-}
-
 /// GET /api/games/stored
 pub async fn get_stored_games(
     Extension(pool): Extension<PgPool>,
     Query(q): Query<StoredGamesQuery>,
     user: AuthUser,
 ) -> Result<Json<JsonValue>, AppError> {
-    let limit = q.limit.unwrap_or(50).min(200);
+    // limit=0 means no limit (for bulk analysis), otherwise cap at 10000
+    let limit = match q.limit {
+        Some(0) => 10000,  // "all" - practical max
+        Some(n) => n.min(10000),
+        None => 50,
+    };
     let offset = q.offset.unwrap_or(0).max(0);
     let account_id = user.id;
 
-    let source = q.platform.as_deref().filter(|p| *p == "chess_com" || *p == "lichess");
+    let source = q.platform.as_deref().filter(|p| *p == "chess_com");
 
     let tags_list: Option<Vec<String>> = q.tags.as_ref().map(|t| {
         t.split(',')
@@ -218,134 +217,6 @@ pub async fn sync_games(
     })))
 }
 
-/// POST /api/games/sync/lichess
-pub async fn sync_lichess_games(
-    Extension(pool): Extension<PgPool>,
-    user: AuthUser,
-) -> Result<Json<JsonValue>, AppError> {
-    let lichess_username = user
-        .lichess_username
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .ok_or(AppError::BadRequest(
-            "No Lichess username linked to account".into(),
-        ))?
-        .to_string();
-
-    let account_id = user.id;
-    let last_synced = users::get_last_synced(&pool, account_id, "lichess").await?;
-    let is_first_sync = last_synced.is_none();
-
-    let client = clients::lichess::LichessClient::new();
-    let max_games = if is_first_sync { Some(1000) } else { None };
-
-    // On re-sync, only fetch games since last sync (epoch milliseconds)
-    let since = last_synced.map(|ts| ts.timestamp_millis());
-
-    let pgn_pairs = client
-        .fetch_user_games(&lichess_username, max_games, since)
-        .await
-        .map_err(|e| AppError::Internal(format!("Failed to fetch Lichess games: {e}")))?;
-
-    let synced_count = if !pgn_pairs.is_empty() {
-        let game_records = build_lichess_game_records(&pgn_pairs, &lichess_username);
-        let count = games::upsert_games(&pool, account_id, &game_records, "lichess").await?;
-
-        // Incrementally populate opening stats for newly synced games
-        opening_moves::populate_opening_stats(&pool, account_id).await?;
-
-        // Tag titled opponents (Lichess: extract from PGN WhiteTitle/BlackTitle headers)
-        let source_ids: Vec<String> = game_records
-            .iter()
-            .filter_map(|g| g["id"].as_str().map(|s| s.to_string()))
-            .collect();
-        let db_games = games::get_game_ids_and_opponents(&pool, account_id, "lichess", &source_ids).await?;
-
-        // Build a map from source game ID → PGN for title extraction
-        let pgn_map: HashMap<String, &str> = pgn_pairs
-            .iter()
-            .map(|(pgn, game_id)| (game_id.clone(), pgn.as_str()))
-            .collect();
-
-        let title_pairs: Vec<(i64, String)> = db_games
-            .iter()
-            .filter_map(|(db_id, source_id, _opponent)| {
-                let pgn = pgn_map.get(source_id)?;
-                // Determine if user is white to know which title to check
-                let game = chess_core::pgn::parse_pgn(pgn, None)?;
-                let user_is_white = game.metadata.white.eq_ignore_ascii_case(&lichess_username);
-                let title_header = if user_is_white { "BlackTitle" } else { "WhiteTitle" };
-                let title = chess_core::pgn::extract_header(pgn, title_header)?;
-                if titled_players::is_valid_title(&title) {
-                    Some((*db_id, title))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        if !title_pairs.is_empty() {
-            let tagged = titled_players::insert_title_tags(&pool, &title_pairs).await?;
-            tracing::info!("Tagged {} Lichess games with titled opponent tags", tagged);
-        }
-
-        count
-    } else {
-        0
-    };
-
-    users::update_last_synced(&pool, account_id, "lichess").await?;
-    let total_games = games::get_user_games_count(&pool, account_id, Some("lichess")).await?;
-
-    Ok(Json(serde_json::json!({
-        "username": lichess_username,
-        "synced": synced_count,
-        "total": total_games,
-        "lastSyncedAt": users::get_last_synced(&pool, account_id, "lichess").await?.map(|t| t.to_rfc3339()),
-        "isFirstSync": is_first_sync,
-    })))
-}
-
-/// POST /api/games/analyze
-pub async fn analyze_games(
-    Extension(pool): Extension<PgPool>,
-    Query(q): Query<AnalyzeQuery>,
-    user: AuthUser,
-) -> Result<Json<JsonValue>, AppError> {
-    let platform = q.platform.as_deref().unwrap_or("chess_com");
-    let limit = q.limit.unwrap_or(1000).min(5000) as usize;
-
-    let platform_username = if platform == "lichess" {
-        user.lichess_username
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .ok_or(AppError::BadRequest("No Lichess username linked".into()))?
-            .to_string()
-    } else {
-        user.chess_com_username
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .ok_or(AppError::BadRequest("No Chess.com username linked".into()))?
-            .to_string()
-    };
-
-    let source = if platform == "lichess" { "lichess" } else { "chess_com" };
-    let account_id = user.id;
-
-    let (analyzed, skipped) =
-        analyze_user_games_internal(&pool, account_id, &platform_username, source, limit).await?;
-
-    let remaining = games::get_unanalyzed_games_count(&pool, account_id).await?;
-    let total = games::get_user_games_count(&pool, account_id, Some(source)).await?;
-
-    Ok(Json(serde_json::json!({
-        "analyzed": analyzed,
-        "remaining": remaining,
-        "total": total,
-        "skippedNoPgn": skipped,
-    })))
-}
-
 /// GET /api/games/{game_id}/analysis
 pub async fn get_game_analysis(
     Extension(pool): Extension<PgPool>,
@@ -376,6 +247,85 @@ pub async fn save_game_analysis(
     super::dashboard::invalidate_stats_cache();
 
     Ok(Json(serde_json::json!({"success": true})))
+}
+
+#[derive(Deserialize)]
+pub struct AnalyzeServerRequest {
+    /// Specific game IDs to analyze
+    pub game_ids: Option<Vec<i64>>,
+    /// Or analyze all unanalyzed games (with optional filters)
+    pub all_unanalyzed: Option<bool>,
+    pub platform: Option<String>,
+    pub tags: Option<String>,
+    /// Max number of games to queue (for testing)
+    pub limit: Option<usize>,
+}
+
+/// POST /api/games/analyze-server
+/// Queue games for server-side analysis via AWS Batch
+pub async fn analyze_server(
+    Extension(pool): Extension<PgPool>,
+    Extension(queue): Extension<Option<AnalysisQueue>>,
+    user: AuthUser,
+    Json(body): Json<AnalyzeServerRequest>,
+) -> Result<Json<JsonValue>, AppError> {
+    let queue = queue.ok_or_else(|| {
+        AppError::BadRequest("Server-side analysis is not configured".into())
+    })?;
+
+    let game_ids = if let Some(ids) = body.game_ids {
+        // Verify all games belong to user
+        let verified = games::verify_game_ownership(&pool, user.id, &ids).await?;
+        if verified.len() != ids.len() {
+            return Err(AppError::BadRequest(
+                "Some game IDs do not belong to this user".into(),
+            ));
+        }
+        verified
+    } else if body.all_unanalyzed == Some(true) {
+        // Get all unanalyzed games for user
+        let tags_list: Option<Vec<String>> = body.tags.as_ref().map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        });
+        let source = body.platform.as_deref().filter(|p| *p == "chess_com");
+
+        let mut ids = games::get_unanalyzed_game_ids(&pool, user.id, tags_list.as_deref(), source).await?;
+        // Apply limit if specified
+        if let Some(limit) = body.limit {
+            ids.truncate(limit);
+        }
+        ids
+    } else {
+        return Err(AppError::BadRequest(
+            "Must provide game_ids or set all_unanalyzed=true".into(),
+        ));
+    };
+
+    if game_ids.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "queued": 0,
+            "message": "No games to analyze"
+        })));
+    }
+
+    let queued = queue
+        .queue_games(&game_ids)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    tracing::info!(
+        user_id = user.id,
+        queued = queued,
+        "Queued games for server-side analysis"
+    );
+
+    Ok(Json(serde_json::json!({
+        "queued": queued,
+        "total_requested": game_ids.len(),
+    })))
 }
 
 /// GET /api/users/me/games
@@ -448,46 +398,6 @@ fn build_game_records(pairs: &[(String, Option<String>)], username: &str) -> Vec
         .collect()
 }
 
-fn build_lichess_game_records(
-    pairs: &[(String, String)],
-    username: &str,
-) -> Vec<JsonValue> {
-    pairs
-        .iter()
-        .filter_map(|(pgn, game_id)| {
-            let game = chess_core::pgn::parse_pgn(pgn, None)?;
-            let user_is_white = game.metadata.white.eq_ignore_ascii_case(username);
-            let opponent = if user_is_white {
-                &game.metadata.black
-            } else {
-                &game.metadata.white
-            };
-
-            let opponent_elo =
-                chess_core::pgn::extract_header_int(pgn, if user_is_white { "BlackElo" } else { "WhiteElo" });
-            let user_elo =
-                chess_core::pgn::extract_header_int(pgn, if user_is_white { "WhiteElo" } else { "BlackElo" });
-
-            let result = get_result_code(&game.metadata.result, user_is_white);
-            let date = game.metadata.date.map(|d| d.replace('.', "-"));
-
-            Some(serde_json::json!({
-                "id": game_id,
-                "opponent": opponent,
-                "opponentRating": opponent_elo,
-                "userRating": user_elo,
-                "result": result,
-                "timeControl": game.metadata.time_control,
-                "date": date,
-                "userColor": if user_is_white { "white" } else { "black" },
-                "moves": game.moves,
-                "tcn": game.tcn,
-                "tags": [],
-            }))
-        })
-        .collect()
-}
-
 fn get_result_code(result: &str, user_is_white: bool) -> &'static str {
     match result {
         "1-0" => {
@@ -506,152 +416,4 @@ fn get_result_code(result: &str, user_is_white: bool) -> &'static str {
         }
         _ => "D",
     }
-}
-
-/// Run batch analysis on unanalyzed games. Returns (analyzed, skipped).
-async fn analyze_user_games_internal(
-    pool: &PgPool,
-    account_id: i64,
-    platform_username: &str,
-    source: &str,
-    limit: usize,
-) -> Result<(i64, i64), AppError> {
-    let batch_size = 100i64;
-    let mut total_analyzed = 0i64;
-    let mut total_skipped = 0i64;
-
-    while (total_analyzed as usize) < limit {
-        let remaining = (limit - total_analyzed as usize).min(batch_size as usize);
-
-        let unanalyzed =
-            games::get_unanalyzed_games(pool, account_id, remaining as i64, Some(source)).await?;
-
-        if unanalyzed.is_empty() {
-            break;
-        }
-
-        tracing::info!(
-            "Analyzing batch of {} {} games for {}",
-            unanalyzed.len(),
-            source,
-            platform_username
-        );
-
-        // Convert to GameData and run analyzers
-        let mut game_data_list = Vec::new();
-        let mut game_id_map: HashMap<String, i64> = HashMap::new();
-
-        for g in &unanalyzed {
-            let db_id = g["id"].as_i64().unwrap_or(0);
-            let game_link = g["chessComGameId"].as_str().unwrap_or("");
-
-            // Build GameData for analyzers
-            let moves: Vec<String> = g["moves"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let tcn = g["tcn"].as_str().map(|s| s.to_string());
-
-            if moves.is_empty() && tcn.is_none() {
-                total_skipped += 1;
-                continue;
-            }
-
-            let user_color = g["userColor"].as_str().unwrap_or("white");
-            let result_code = g["result"].as_str().unwrap_or("D");
-            let chess_result = match result_code {
-                "W" => {
-                    if user_color == "white" {
-                        "1-0"
-                    } else {
-                        "0-1"
-                    }
-                }
-                "L" => {
-                    if user_color == "white" {
-                        "0-1"
-                    } else {
-                        "1-0"
-                    }
-                }
-                _ => "1/2-1/2",
-            };
-
-            let gd = chess_core::game_data::GameData {
-                metadata: chess_core::game_data::GameMetadata {
-                    white: if user_color == "white" {
-                        platform_username.to_string()
-                    } else {
-                        g["opponent"].as_str().unwrap_or("").to_string()
-                    },
-                    black: if user_color == "black" {
-                        platform_username.to_string()
-                    } else {
-                        g["opponent"].as_str().unwrap_or("").to_string()
-                    },
-                    result: chess_result.to_string(),
-                    date: g["date"].as_str().map(|s| s.to_string()),
-                    time_control: g["timeControl"].as_str().map(|s| s.to_string()),
-                    eco: None,
-                    event: None,
-                    link: Some(game_link.to_string()),
-                },
-                moves,
-                pgn: String::new(),
-                tcn,
-            };
-
-            game_data_list.push(gd);
-            game_id_map.insert(game_link.to_string(), db_id);
-        }
-
-        if game_data_list.is_empty() {
-            // Mark games with no moves as analyzed
-            let no_move_ids: Vec<i64> = unanalyzed
-                .iter()
-                .filter(|g| {
-                    let moves_empty = g["moves"]
-                        .as_array()
-                        .map(|a| a.is_empty())
-                        .unwrap_or(true);
-                    let tcn_empty = g["tcn"].as_str().map(|s| s.is_empty()).unwrap_or(true);
-                    moves_empty && tcn_empty
-                })
-                .filter_map(|g| g["id"].as_i64())
-                .collect();
-
-            if !no_move_ids.is_empty() {
-                let tags_map: HashMap<i64, Vec<String>> =
-                    no_move_ids.iter().map(|id| (*id, vec![])).collect();
-                games::mark_games_analyzed(pool, &tags_map).await?;
-            }
-            continue;
-        }
-
-        // Run analyzers
-        let game_tags = chess_analyzers::analyze_batch(platform_username, &game_data_list);
-
-        // Map to database IDs
-        let mut tags_map: HashMap<i64, Vec<String>> = HashMap::new();
-        for gd in &game_data_list {
-            if let Some(ref link) = gd.metadata.link {
-                if let Some(&db_id) = game_id_map.get(link) {
-                    let tags = game_tags.get(link).cloned().unwrap_or_default();
-                    tags_map.insert(db_id, tags);
-                }
-            }
-        }
-
-        let updated = games::mark_games_analyzed(pool, &tags_map).await?;
-        total_analyzed += updated;
-
-        tracing::info!("Batch complete: {} games tagged (total: {})", updated, total_analyzed);
-    }
-
-    Ok((total_analyzed, total_skipped))
 }

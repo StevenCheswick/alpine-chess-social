@@ -76,11 +76,14 @@ export const gameService = {
   },
 
   /**
-   * Queue all unanalyzed games for server-side analysis via AWS Batch.
+   * Queue unanalyzed games for server-side analysis via AWS Batch.
    * Games are processed in the background - no need to keep tab open.
    */
-  async analyzeServerAll(): Promise<AnalyzeServerResponse> {
-    return api.post<AnalyzeServerResponse>('/api/games/analyze-server', { all_unanalyzed: true });
+  async analyzeServerAll(limit?: number): Promise<AnalyzeServerResponse> {
+    return api.post<AnalyzeServerResponse>('/api/games/analyze-server', {
+      all_unanalyzed: true,
+      limit: limit ?? 10,  // Default to 10 for testing
+    });
   },
 };
 
