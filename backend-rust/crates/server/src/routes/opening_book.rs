@@ -2,12 +2,8 @@ use axum::{extract::Query, Extension, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
+use crate::book_cache::{self, BOOK_CACHE};
 use crate::error::AppError;
-
-/// Strips move counters from FEN, keeping only position + side + castling + ep.
-fn normalize_fen(fen: &str) -> String {
-    fen.split_whitespace().take(4).collect::<Vec<_>>().join(" ")
-}
 
 #[derive(Deserialize)]
 pub struct BookCheckQuery {
@@ -26,11 +22,35 @@ pub struct BookCheckResponse {
 
 /// GET /api/opening-book/check?fen=...&san=...
 /// Check if a move exists in the opening book.
+/// Uses in-memory cache for instant lookups, falls back to DB if cache is empty.
 pub async fn check_book_move(
     Extension(pool): Extension<PgPool>,
     Query(q): Query<BookCheckQuery>,
 ) -> Result<Json<BookCheckResponse>, AppError> {
-    let normalized_fen = normalize_fen(&q.fen);
+    // Try in-memory cache first (instant lookup)
+    if !BOOK_CACHE.is_empty() {
+        if let Some(stats) = book_cache::lookup(&q.fen, &q.san) {
+            return Ok(Json(BookCheckResponse {
+                is_book: true,
+                games: Some(stats.games),
+                white_wins: Some(stats.white_wins),
+                draws: Some(stats.draws),
+                black_wins: Some(stats.black_wins),
+            }));
+        } else {
+            // Cache is loaded but move not found - it's not a book move
+            return Ok(Json(BookCheckResponse {
+                is_book: false,
+                games: None,
+                white_wins: None,
+                draws: None,
+                black_wins: None,
+            }));
+        }
+    }
+
+    // Fallback to database query (cache not loaded)
+    let normalized_fen = book_cache::normalize_fen(&q.fen);
 
     let row: Option<(i32, i32, i32, i32)> = sqlx::query_as(
         r#"SELECT games, white_wins, draws, black_wins

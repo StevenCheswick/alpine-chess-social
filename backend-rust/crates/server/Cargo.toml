@@ -32,3 +32,14 @@ futures = { workspace = true }
 # AWS SDK for SQS (server-side analysis)
 aws-config = { workspace = true }
 aws-sdk-sqs = { workspace = true }
+
+# Binary serialization for opening book cache
+bincode = { workspace = true }
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "export-book"
+path = "src/bin/export_book.rs"
