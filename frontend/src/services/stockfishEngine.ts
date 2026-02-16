@@ -10,7 +10,21 @@
  * - Fallback to single-threaded mode when threading unavailable
  */
 
-export const STOCKFISH_PATH = '/stockfish/stockfish.js';
+// Stockfish paths - multi-threaded requires SharedArrayBuffer
+export const STOCKFISH_PATH_MT = '/stockfish/stockfish.js';
+export const STOCKFISH_PATH_ST = '/stockfish/stockfish-single.js';
+
+/**
+ * Get the appropriate stockfish path based on browser capabilities.
+ * Use this instead of hardcoding the path.
+ */
+export function getStockfishPath(): string {
+  const caps = getEngineCapabilities();
+  return caps.supportsThreads ? STOCKFISH_PATH_MT : STOCKFISH_PATH_ST;
+}
+
+// Legacy export for backwards compatibility
+export const STOCKFISH_PATH = STOCKFISH_PATH_MT;
 
 // Default configuration
 const DEFAULT_HASH_MB = 64;
@@ -37,19 +51,26 @@ export function detectThreadingSupport(): EngineCapabilities {
   let maxThreads = 1;
   let deviceMemoryMb: number | null = null;
 
+  console.log('[Stockfish] Detecting threading support...');
+  console.log('[Stockfish] crossOriginIsolated:', typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : 'undefined');
+
   try {
     // 1. Check WebAssembly 1.0 support
     const wasmHeader = Uint8Array.of(0x0, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00);
     if (typeof WebAssembly !== 'object' || typeof WebAssembly.validate !== 'function') {
+      console.log('[Stockfish] WebAssembly not supported');
       return { supportsThreads: false, maxThreads: 1, deviceMemoryMb };
     }
     if (!WebAssembly.validate(wasmHeader)) {
+      console.log('[Stockfish] WebAssembly validation failed');
       return { supportsThreads: false, maxThreads: 1, deviceMemoryMb };
     }
 
     // 2. Check SharedArrayBuffer
+    console.log('[Stockfish] typeof SharedArrayBuffer:', typeof SharedArrayBuffer);
     if (typeof SharedArrayBuffer !== 'function') {
       console.log('[Stockfish] SharedArrayBuffer not available - using single thread');
+      console.log('[Stockfish] This usually means COOP/COEP headers are missing');
       return { supportsThreads: false, maxThreads: 1, deviceMemoryMb };
     }
 
@@ -173,9 +194,17 @@ export class StockfishEngine {
   async init(): Promise<void> {
     if (this.isInitialized) return;
 
+    // Choose the right stockfish build based on capabilities
+    const stockfishPath = this.capabilities.supportsThreads
+      ? STOCKFISH_PATH_MT
+      : STOCKFISH_PATH_ST;
+
+    console.log(`[Stockfish] Loading engine from: ${stockfishPath}`);
+    console.log(`[Stockfish] Threading: ${this.capabilities.supportsThreads ? 'enabled' : 'disabled'}`);
+
     return new Promise((resolve, reject) => {
       try {
-        this.worker = new Worker(STOCKFISH_PATH);
+        this.worker = new Worker(stockfishPath);
 
         const handleReady = (e: MessageEvent<string>) => {
           const line = e.data;
@@ -206,12 +235,27 @@ export class StockfishEngine {
 
         this.worker.onerror = (e) => {
           console.error('[Stockfish] Worker error:', e);
+          console.error('[Stockfish] Error details:', {
+            message: e.message,
+            filename: e.filename,
+            lineno: e.lineno,
+            colno: e.colno,
+          });
+
+          // Provide helpful error message
+          if (e.message?.includes('SharedArrayBuffer')) {
+            console.error('[Stockfish] SharedArrayBuffer is not available.');
+            console.error('[Stockfish] This requires Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.');
+            console.error('[Stockfish] Check if your server is sending these headers.');
+          }
+
           reject(new Error(`Stockfish worker error: ${e.message}`));
         };
 
         // Start UCI initialization
         this.worker.postMessage('uci');
       } catch (err) {
+        console.error('[Stockfish] Failed to create worker:', err);
         reject(err);
       }
     });

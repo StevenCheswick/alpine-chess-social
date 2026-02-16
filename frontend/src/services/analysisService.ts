@@ -23,9 +23,32 @@ import type {
   BatchGameInput,
 } from '../types/analysis';
 import { Chess } from 'chess.js';
-import { loadBook, isBookMove } from './polyglotBook';
+import { API_BASE_URL } from '../config/api';
+import { getStockfishPath } from './stockfishEngine';
 
-const STOCKFISH_PATH = '/stockfish/stockfish.js';
+/**
+ * Check if a move exists in the master opening book.
+ * Calls the backend API which queries the opening_book table.
+ */
+async function isBookMove(fen: string, san: string): Promise<boolean> {
+  console.log('[isBookMove] Checking:', san, 'at', fen.slice(0, 40));
+  try {
+    const params = new URLSearchParams({ fen, san });
+    const url = `${API_BASE_URL}/api/opening-book/check?${params}`;
+    console.log('[isBookMove] Fetching:', url);
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.warn('[isBookMove] API returned not ok:', resp.status);
+      return false;
+    }
+    const data = await resp.json();
+    console.log('[isBookMove] Result:', san, '=', data.is_book);
+    return data.is_book === true;
+  } catch (e) {
+    console.error('[isBookMove] Error:', e);
+    return false;
+  }
+}
 
 interface AnalysisResult {
   bestMove: string;
@@ -60,7 +83,7 @@ class StockfishAnalyzer {
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.worker = new Worker(STOCKFISH_PATH);
+        this.worker = new Worker(getStockfishPath());
         this.resolveReady = resolve;
 
         this.worker.onmessage = (e: MessageEvent<string>) => {
@@ -298,7 +321,7 @@ async function analyzeGameCore(
 
     if (isForced) {
       classification = 'forced';
-    } else if (isBookMove(moveResult.before, uciMove)) {
+    } else if (await isBookMove(moveResult.before, sanMove)) {
       classification = 'book';
     } else {
       classification = classifyMove(cpLoss);
@@ -371,7 +394,7 @@ export async function analyzeGame(
   options: AnalysisOptions = {}
 ): Promise<GameAnalysis> {
   const analyzer = new StockfishAnalyzer({ threads: 4, hashMb: 64 });
-  await Promise.all([analyzer.init(), loadBook()]);
+  await analyzer.init();
 
   try {
     return await analyzeGameCore(analyzer, moves, {
@@ -448,9 +471,6 @@ export async function analyzeGamesBatch(
     if (nextGameIndex >= games.length) return null;
     return games[nextGameIndex++];
   }
-
-  // Load the opening book once (shared across all workers)
-  await loadBook();
 
   // Initialize all workers in parallel
   const analyzers: StockfishAnalyzer[] = [];

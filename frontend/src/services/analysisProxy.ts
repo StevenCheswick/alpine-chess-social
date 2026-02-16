@@ -14,8 +14,7 @@ import type {
   BatchGameResult,
   BatchGameInput,
 } from '../types/analysis';
-
-const STOCKFISH_PATH = '/stockfish/stockfish.js';
+import { getStockfishPath } from './stockfishEngine';
 
 interface StockfishWorker {
   worker: Worker;
@@ -26,7 +25,7 @@ interface StockfishWorker {
 
 function createStockfishWorker(): Promise<StockfishWorker> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(STOCKFISH_PATH);
+    const worker = new Worker(getStockfishPath());
 
     let resolveReady: (() => void) | null = null;
     let resolveAnalysis: ((r: { cp: number | null; mate: number | null; bestMove: string }) => void) | null = null;

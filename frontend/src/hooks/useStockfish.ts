@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import {
-  STOCKFISH_PATH,
+  getStockfishPath,
   getEngineCapabilities,
   getRecommendedThreads,
   getRecommendedHashMb,
@@ -175,7 +175,7 @@ export function useStockfish(
     if (typeof window === 'undefined') return;
 
     try {
-      const worker = new Worker(STOCKFISH_PATH);
+      const worker = new Worker(getStockfishPath());
       workerRef.current = worker;
 
       worker.onmessage = (event: MessageEvent<string>) => {
