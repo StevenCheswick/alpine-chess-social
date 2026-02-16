@@ -1,0 +1,34 @@
+# Build artifacts
+target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Tests (not needed in container)
+tests/
+**/test_*.rs
+
+# Documentation
+*.md
+!crates/*/README.md
+
+# Local development
+.env
+.env.*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
