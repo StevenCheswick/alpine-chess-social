@@ -8,9 +8,8 @@ resolver = "2"
 members = [
     "crates/server",
     "crates/chess-core",
-    "crates/chess-analyzers",
     "crates/chess-puzzler",
-    "crates/migration-tool",
+    "crates/analysis-worker",
 ]
 
 [dev-dependencies]
@@ -65,3 +64,9 @@ futures = "0.3"
 # Misc
 dotenvy = "0.15"
 regex = "1"
+
+# AWS SDK
+aws-config = "1"
+aws-sdk-sqs = "1"
+aws-sdk-secretsmanager = "1"
+num_cpus = "1.16"
