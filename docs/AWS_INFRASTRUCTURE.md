@@ -252,7 +252,42 @@ aws sqs purge-queue \
 
 ---
 
-## 6. Secrets Manager
+## 6. Lambda Trigger (Auto Job Submission)
+
+### Overview
+- **Function**: `alpine-chess-batch-trigger`
+- **Trigger**: SQS messages from `alpine-chess-analysis-jobs`
+- **Purpose**: Automatically starts Batch jobs when games are queued
+
+### How It Works
+1. User clicks "Server Analyze" → game ID sent to SQS
+2. Lambda triggers on new SQS message
+3. Checks if Batch job is already RUNNING/RUNNABLE/STARTING
+4. If no active job → submits new Batch job
+5. If job exists → skips (running worker drains queue)
+
+### IAM Role
+- **Role**: `alpine-chess-batch-trigger-role`
+- **Policies**: `AWSLambdaBasicExecutionRole`, `AWSLambdaSQSQueueExecutionRole`, inline `BatchJobSubmit`
+
+### Environment Variables
+| Variable | Value |
+|----------|-------|
+| `JOB_QUEUE` | `alpine-chess-analysis-queue` |
+| `JOB_DEFINITION` | `alpine-chess-analysis-worker` |
+
+### Monitoring
+```bash
+# View Lambda invocations
+aws logs tail /aws/lambda/alpine-chess-batch-trigger --follow
+
+# Test manually
+aws lambda invoke --function-name alpine-chess-batch-trigger /dev/stdout
+```
+
+---
+
+## 7. Secrets Manager
 
 ### Secrets
 | Secret Name | Contents |
@@ -270,7 +305,7 @@ aws secretsmanager put-secret-value --secret-id alpine-chess/database-url --secr
 
 ---
 
-## 7. ECR Repositories
+## 8. ECR Repositories
 
 | Repository | Description |
 |------------|-------------|

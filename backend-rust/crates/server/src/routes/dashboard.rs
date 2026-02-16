@@ -4,14 +4,24 @@ use shakmaty::{Chess, Position, uci::UciMove, san::San};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::RwLock;
+use std::time::{Duration, Instant};
 
 use crate::auth::middleware::AuthUser;
 use crate::db::{analysis, opening_moves};
 use crate::error::AppError;
 
-// Simple in-process cache
-static STATS_CACHE: std::sync::LazyLock<RwLock<HashMap<i64, JsonValue>>> =
+// Cache entry with TTL
+struct CacheEntry {
+    data: JsonValue,
+    created_at: Instant,
+}
+
+// Simple in-process cache with TTL
+static STATS_CACHE: std::sync::LazyLock<RwLock<HashMap<i64, CacheEntry>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
+
+// Cache TTL: 60 seconds (allows server-side analysis to appear within a minute)
+const CACHE_TTL: Duration = Duration::from_secs(60);
 
 pub fn invalidate_stats_cache() {
     if let Ok(mut cache) = STATS_CACHE.write() {
@@ -29,18 +39,23 @@ pub async fn get_game_stats(
 ) -> Result<Json<JsonValue>, AppError> {
     let account_id = user.id;
 
-    // Check cache
+    // Check cache with TTL
     if let Ok(cache) = STATS_CACHE.read() {
-        if let Some(cached) = cache.get(&account_id) {
-            return Ok(Json(cached.clone()));
+        if let Some(entry) = cache.get(&account_id) {
+            if entry.created_at.elapsed() < CACHE_TTL {
+                return Ok(Json(entry.data.clone()));
+            }
         }
     }
 
     let stats = build_game_stats(&pool, account_id).await?;
 
-    // Store in cache
+    // Store in cache with timestamp
     if let Ok(mut cache) = STATS_CACHE.write() {
-        cache.insert(account_id, stats.clone());
+        cache.insert(account_id, CacheEntry {
+            data: stats.clone(),
+            created_at: Instant::now(),
+        });
     }
 
     Ok(Json(stats))
