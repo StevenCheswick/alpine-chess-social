@@ -44,7 +44,8 @@ regex = "1"\n\
 aws-config = "1"\n\
 aws-sdk-sqs = "1"\n\
 aws-sdk-secretsmanager = "1"\n\
-num_cpus = "1.16"\n' > Cargo.toml
+num_cpus = "1.16"\n\
+bincode = "1"\n' > Cargo.toml
 
 # Build release binary
 RUN cargo build --release -p analysis-worker
@@ -90,6 +91,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/analysis-worker /app/analysis-worker
+
+# Copy opening book data
+COPY data/opening_book.bin /app/data/opening_book.bin
 
 # Copy Stockfish from stockfish stage
 COPY --from=stockfish /stockfish/stockfish /usr/local/bin/stockfish
