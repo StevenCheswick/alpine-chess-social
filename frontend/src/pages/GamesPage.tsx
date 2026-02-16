@@ -145,6 +145,7 @@ export default function GamesPage() {
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<BatchProgress | null>(null);
   const [totalUnanalyzed, setTotalUnanalyzed] = useState(0);
+  const [totalAnalyzed, setTotalAnalyzed] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Server-side analysis state
@@ -166,11 +167,25 @@ export default function GamesPage() {
     } catch { /* ignore */ }
   };
 
-  // Load tags and unanalyzed count on mount
+  // Load analyzed count
+  const loadAnalyzedCount = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/games/stored?limit=0&analyzed=true`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTotalAnalyzed(data.total || 0);
+      }
+    } catch { /* ignore */ }
+  };
+
+  // Load tags and counts on mount
   useEffect(() => {
     if (hasAnyLinkedAccount) {
       loadAllTags([]);
       loadUnanalyzedCount();
+      loadAnalyzedCount();
     }
   }, [hasAnyLinkedAccount]);
 
@@ -249,6 +264,7 @@ export default function GamesPage() {
       await loadStoredGames(1, []);
       await loadAllTags([]);
       await loadUnanalyzedCount();
+      await loadAnalyzedCount();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync games');
     } finally {
@@ -408,6 +424,7 @@ export default function GamesPage() {
       abortControllerRef.current = null;
       // Refresh counts and current page
       loadUnanalyzedCount();
+      loadAnalyzedCount();
       loadStoredGames(currentPage, selectedTagsArray);
     }
   };
@@ -433,7 +450,6 @@ export default function GamesPage() {
     }
   };
 
-  const analyzedCount = games.filter(g => g.hasAnalysis).length;
 
   // Show link account prompt if no accounts linked at all
   if (!hasAnyLinkedAccount) {
@@ -529,9 +545,9 @@ export default function GamesPage() {
           <div className="flex items-center justify-between">
             <p className="text-slate-400 text-sm">
               {totalGames} {totalGames === 1 ? 'game' : 'games'}
-              {analyzedCount > 0 && (
+              {totalAnalyzed > 0 && (
                 <span className="ml-2 text-emerald-400">
-                  ({analyzedCount} analyzed)
+                  ({totalAnalyzed} analyzed)
                 </span>
               )}
             </p>
