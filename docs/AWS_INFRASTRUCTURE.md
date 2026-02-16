@@ -85,7 +85,7 @@ docker build -t alpine-chess-server -f crates/server/Dockerfile .
 
 ### Deploying
 
-**Local deploy (recommended)** - faster due to Docker layer caching:
+**Local deploy**:
 ```bash
 cd backend-rust
 ./deploy.sh
@@ -96,11 +96,6 @@ This script:
 2. Builds Docker image locally (cached layers = fast rebuilds)
 3. Pushes to ECR
 4. Triggers App Runner deployment
-
-**GitHub Actions** (automatic on push to `main`):
-- Workflow: `.github/workflows/deploy-backend.yml`
-- Triggers on changes to `backend-rust/**`
-- Slower (~5 min) due to no cache, but good for CI/CD
 
 ### Logs
 ```bash
@@ -154,15 +149,11 @@ docker build -t alpine-chess-analysis-worker -f crates/analysis-worker/Dockerfil
 
 ### Deploying
 
-**Local deploy (recommended)**:
+**Local deploy**:
 ```bash
 cd backend-rust
 ./deploy-worker.sh
 ```
-
-**GitHub Actions** (automatic on push to `main`):
-- Workflow: `.github/workflows/deploy-worker.yml`
-- Triggers on changes to `analysis-worker/**`, `chess-core/**`, `chess-puzzler/**`
 
 ### Running a Job
 
