@@ -5,6 +5,7 @@ import { PuzzleBoard, type PuzzleStatus } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { tagDisplayName } from '../utils/tagDisplay';
+import { getPuzzleStats, type PuzzleStats, type PositionStats } from '../services/puzzleStatsService';
 import type { PuzzleWithContext } from '../types/analysis';
 
 const API_BASE = API_BASE_URL;
@@ -27,6 +28,7 @@ export default function PuzzlesPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [stats, setStats] = useState<PuzzleStats | null>(null);
 
   // Solve mode
   const [activePuzzle, setActivePuzzle] = useState<PuzzleWithContext | null>(null);
@@ -62,6 +64,10 @@ export default function PuzzlesPage() {
   useEffect(() => {
     loadPuzzles(selectedTheme);
   }, [selectedTheme]);
+
+  useEffect(() => {
+    getPuzzleStats().then(setStats).catch(() => {});
+  }, []);
 
   const selectTheme = (theme: string) => {
     setPage(1);
@@ -243,6 +249,61 @@ export default function PuzzlesPage() {
         </p>
       </div>
 
+      {/* Puzzle Performance Stats */}
+      {stats && stats.user.total + stats.opponent.total > 0 && (
+        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+          <h2 className="text-lg font-semibold text-white mb-4">Tactical Performance</h2>
+          <div className="grid grid-cols-2 gap-6">
+            {/* Your tactics */}
+            <div>
+              <h3 className="text-sm font-medium text-slate-400 mb-2">Your Tactics</h3>
+              <p className="text-slate-500 text-xs mb-3">When opponent blundered, did you punish?</p>
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="text-3xl font-bold text-emerald-400">{stats.user.rate}%</span>
+                <span className="text-slate-500 text-sm">found</span>
+              </div>
+              <div className="flex gap-4 text-sm">
+                <span className="text-emerald-400">{stats.user.found} found</span>
+                <span className="text-red-400">{stats.user.missed} missed</span>
+              </div>
+            </div>
+            {/* Opponent tactics */}
+            <div>
+              <h3 className="text-sm font-medium text-slate-400 mb-2">Opponent Tactics</h3>
+              <p className="text-slate-500 text-xs mb-3">When you blundered, did they punish?</p>
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="text-3xl font-bold text-indigo-400">{stats.opponent.rate}%</span>
+                <span className="text-slate-500 text-sm">found</span>
+              </div>
+              <div className="flex gap-4 text-sm">
+                <span className="text-emerald-400">{stats.opponent.found} found</span>
+                <span className="text-red-400">{stats.opponent.missed} missed</span>
+              </div>
+            </div>
+          </div>
+          {/* Edge comparison */}
+          {stats.user.total > 0 && stats.opponent.total > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-400">Tactical Edge</span>
+                <span className={`text-lg font-semibold ${
+                  stats.user.rate > stats.opponent.rate ? 'text-emerald-400' :
+                  stats.user.rate < stats.opponent.rate ? 'text-red-400' : 'text-slate-400'
+                }`}>
+                  {stats.user.rate > stats.opponent.rate ? '+' : ''}
+                  {(stats.user.rate - stats.opponent.rate).toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Position type breakdown */}
+          {stats.byPosition && stats.byPosition.length > 0 && (
+            <PositionBreakdown positions={stats.byPosition} />
+          )}
+        </div>
+      )}
+
       {loading && puzzles.length === 0 && (
         <div className="flex items-center justify-center py-12">
           <span className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
@@ -418,6 +479,65 @@ export default function PuzzlesPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** Position type breakdown - compare find rates by position type */
+function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
+  if (positions.length === 0) return null;
+
+  const getEdgeColor = (edge: number) =>
+    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-400';
+
+  const getPositionLabel = (pos: string) => {
+    switch (pos) {
+      case 'winning': return { label: 'Winning', desc: '(you were ahead)', color: 'text-emerald-400' };
+      case 'equal': return { label: 'Equal', desc: '(balanced position)', color: 'text-slate-300' };
+      case 'losing': return { label: 'Losing', desc: '(you were behind)', color: 'text-red-400' };
+      default: return { label: pos, desc: '', color: 'text-white' };
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-slate-700">
+      <h3 className="text-sm font-medium text-slate-400 mb-3">Find Rate by Position</h3>
+      <p className="text-xs text-slate-500 mb-3">
+        How well you find tactics based on the position before opponent blundered.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-700">
+              <th className="text-left py-2 pr-4">Position</th>
+              <th className="text-right py-2 px-3">Your Puzzles</th>
+              <th className="text-right py-2 px-3">Your Rate</th>
+              <th className="text-right py-2 px-3">Opp Rate</th>
+              <th className="text-right py-2 pl-3">Edge</th>
+            </tr>
+          </thead>
+          <tbody>
+            {positions.map((p) => {
+              const { label, desc, color } = getPositionLabel(p.position);
+              const edge = p.user.rate - p.opponent.rate;
+              return (
+                <tr key={p.position} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <td className="py-2 pr-4">
+                    <span className={`font-medium ${color}`}>{label}</span>
+                    <span className="text-slate-500 text-xs ml-2">{desc}</span>
+                  </td>
+                  <td className="py-2 px-3 text-right text-slate-300">{p.user.total}</td>
+                  <td className="py-2 px-3 text-right text-emerald-400">{p.user.rate}%</td>
+                  <td className="py-2 px-3 text-right text-indigo-400">{p.opponent.rate}%</td>
+                  <td className={`py-2 pl-3 text-right font-medium ${getEdgeColor(edge)}`}>
+                    {edge > 0 ? '+' : ''}{edge.toFixed(1)}%
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

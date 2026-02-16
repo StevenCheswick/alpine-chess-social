@@ -9,7 +9,7 @@ export default function EndgameAnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const hasLinkedAccount = !!(user?.chessComUsername || user?.lichessUsername);
+  const hasLinkedAccount = !!user?.chessComUsername;
 
   useEffect(() => {
     if (!hasLinkedAccount) {
@@ -48,7 +48,7 @@ export default function EndgameAnalyticsPage() {
         <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
           <h2 className="text-xl font-semibold text-white mb-2">No linked account</h2>
           <p className="text-slate-400 mb-4">
-            Link your Chess.com or Lichess account in settings to see your endgame analytics.
+            Link your Chess.com account in settings to see your endgame analytics.
           </p>
           <Link
             to={`/u/${user?.username}`}

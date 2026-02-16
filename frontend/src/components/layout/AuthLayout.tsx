@@ -19,7 +19,7 @@ export default function AuthLayout() {
             Share your chess journey with the world
           </h1>
           <p className="text-lg text-slate-400">
-            Connect your Chess.com and Lichess accounts, showcase your best games,
+            Connect your Chess.com account, showcase your best games,
             and celebrate achievements with a community of players.
           </p>
           <div className="flex gap-8 text-slate-400">

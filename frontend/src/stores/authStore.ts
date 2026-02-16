@@ -14,7 +14,7 @@ interface AuthState {
   updateUser: (user: Partial<User>) => void;
   setLinkedAccounts: (accounts: LinkedAccount[]) => void;
   addLinkedAccount: (account: LinkedAccount) => void;
-  removeLinkedAccount: (platform: 'chess_com' | 'lichess') => void;
+  removeLinkedAccount: (platform: 'chess_com') => void;
 }
 
 export const useAuthStore = create<AuthState>()(

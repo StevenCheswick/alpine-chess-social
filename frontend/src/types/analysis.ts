@@ -128,6 +128,10 @@ export interface PuzzleOutput {
   moves: string[];
   cp: number;
   themes: string[];
+  /** Whether the solver (who should punish the blunder) is white */
+  solver_is_white: boolean;
+  /** Whether the solver actually played the correct first move */
+  found: boolean;
 }
 
 /** Puzzle enriched with game context, as returned by GET /api/puzzles */

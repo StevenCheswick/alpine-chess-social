@@ -9,7 +9,6 @@ export interface Profile {
   username: string;
   displayName: string;
   chessComUsername: string;
-  lichessUsername: string;
   bio: string | null;
   avatarUrl: string | null;
   createdAt: string;
@@ -21,7 +20,6 @@ export interface UpdateProfileData {
   displayName?: string;
   bio?: string;
   chessComUsername?: string;
-  lichessUsername?: string;
 }
 
 export const profileService = {

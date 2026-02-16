@@ -80,28 +80,26 @@ pub fn decode_tcn(tcn: &str) -> Vec<Move> {
                 if p.role == Role::King {
                     let file_diff = (to_file as i32 - from_file as i32).abs();
                     if file_diff > 1 || (p.role == Role::King && (to_file == 6 || to_file == 2) && (from_file == 4)) {
-                        // Castling - find the matching legal move
+                        // Castling - find the matching legal move for the correct direction
                         let legals = pos.legal_moves();
                         if let Some(castle_move) = legals.iter().find(|m| {
                             match m {
-                                Move::Castle { king, rook: _ } => *king == from_sq,
+                                Move::Castle { king, rook } => {
+                                    // Match by king AND correct direction
+                                    if *king != from_sq {
+                                        return false;
+                                    }
+                                    let expected_to_file = if rook.file() > king.file() { 6u32 } else { 2u32 };
+                                    expected_to_file == to_file
+                                }
                                 Move::Normal { from, to, .. } => *from == from_sq && *to == to_sq,
                                 _ => false,
                             }
                         }) {
-                            // Check if it's the right castling direction
-                            match castle_move {
-                                Move::Castle { king, rook } => {
-                                    let castle_to_file = if rook.file() > king.file() { 6u32 } else { 2u32 };
-                                    if castle_to_file == to_file {
-                                        moves.push(castle_move.clone());
-                                        pos.play_unchecked(&castle_move);
-                                        i += 2;
-                                        continue;
-                                    }
-                                }
-                                _ => {}
-                            }
+                            moves.push(castle_move.clone());
+                            pos.play_unchecked(&castle_move);
+                            i += 2;
+                            continue;
                         }
                     }
                 }
@@ -134,8 +132,8 @@ pub fn decode_tcn(tcn: &str) -> Vec<Move> {
                     f1 == f2 && t1 == t2 && p1 == p2,
                 (Move::EnPassant { from: f1, to: t1 }, Move::EnPassant { from: f2, to: t2 }) =>
                     f1 == f2 && t1 == t2,
-                (Move::Castle { king, .. }, Move::Normal { from, to, .. }) => {
-                    // Match castling by king from and expected destination
+                (Move::Castle { king, .. }, Move::Normal { from, .. }) => {
+                    // Match castling by king from square
                     *king == *from
                 },
                 _ => false,
@@ -165,7 +163,16 @@ pub fn decode_tcn(tcn: &str) -> Vec<Move> {
                 match m {
                     Move::Normal { from, to, .. } => *from == mv_from && *to == mv_to,
                     Move::EnPassant { from, to } => *from == mv_from && *to == mv_to,
-                    Move::Castle { king, .. } => *king == mv_from,
+                    Move::Castle { king, rook } => {
+                        // Must match both king start AND castle direction
+                        // Kingside: king goes to g-file (6), rook is on h-file (7)
+                        // Queenside: king goes to c-file (2), rook is on a-file (0)
+                        if *king != mv_from {
+                            return false;
+                        }
+                        let expected_to_file = if rook.file() > king.file() { 6u32 } else { 2u32 };
+                        expected_to_file == mv_to.file() as u32
+                    }
                     _ => false,
                 }
             }) {
@@ -272,5 +279,28 @@ mod tests {
         let san = decode_tcn_to_san("mCmc").unwrap_or_default();
         // Should decode to valid chess moves
         assert!(!san.is_empty() || true); // TCN encoding varies, just test no panic
+    }
+
+    #[test]
+    fn test_decode_game_13602_castling() {
+        // Game 13602 TCN - move 15 white should be O-O-O
+        let tcn = "mC0Kgv5Qbs!TfATCsCZJAJ7Jlt6EpxENoENUdm86iqQBvBKBcl1LELULec78nv65mo2UxFJilM3VMT?3TBYIBsVNow54CT9VvD8m";
+        let moves = decode_tcn_to_san(tcn).unwrap();
+
+        // Print all moves for debugging
+        for (i, mv) in moves.iter().enumerate() {
+            let move_num = (i / 2) + 1;
+            if i % 2 == 0 {
+                print!("{}. {} ", move_num, mv);
+            } else {
+                println!("{}", mv);
+            }
+        }
+        println!();
+
+        // Move 15 white is at index 28 (0-indexed: moves 0,1 = move 1, ... moves 28,29 = move 15)
+        let move_15_white = &moves[28];
+        println!("Move 15 white: {}", move_15_white);
+        assert_eq!(move_15_white, "O-O-O", "Move 15 white should be O-O-O (queenside castle)");
     }
 }

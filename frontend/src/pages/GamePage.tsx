@@ -20,7 +20,7 @@ interface Game {
   tags: string[];
   moves: string[];
   userColor: 'white' | 'black';
-  source: 'chess_com' | 'lichess';
+  source: 'chess_com';
 }
 
 export default function GamePage() {
@@ -39,7 +39,7 @@ export default function GamePage() {
   // Move navigation state
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
 
-  const displayUsername = user?.chessComUsername || user?.lichessUsername;
+  const displayUsername = user?.chessComUsername;
 
   // Handle position changes from the board
   const handlePositionChange = (_fen: string, moveIndex: number) => {

@@ -5,7 +5,6 @@ export interface User {
   displayName: string;
   email: string;
   chessComUsername?: string;
-  lichessUsername?: string;
   bio: string | null;
   avatarUrl: string | null;
   createdAt: string;
@@ -14,11 +13,11 @@ export interface User {
   followingCount: number;
 }
 
-export type ChessPlatform = 'chess_com' | 'lichess';
+export type ChessPlatform = 'chess_com';
 
 export interface LinkedAccount {
   id: string;
-  platform: 'chess_com' | 'lichess';
+  platform: 'chess_com';
   platformUsername: string;
   isVerified: boolean;
   ratings: {
@@ -59,7 +58,7 @@ export interface Comment {
 // Game types
 export interface GameData {
   id: string;
-  platform: 'chess_com' | 'lichess';
+  platform: 'chess_com';
   pgn: string;
   white: {
     username: string;
