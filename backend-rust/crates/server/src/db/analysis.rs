@@ -408,6 +408,7 @@ pub async fn get_user_endgame_stats(
             jsonb_array_elements(ga.endgame_segments) AS seg
             WHERE ug.user_id = $1
               AND ga.endgame_segments IS NOT NULL
+              AND jsonb_typeof(ga.endgame_segments) = 'array'
               AND jsonb_array_length(ga.endgame_segments) > 0
         )
         SELECT
@@ -489,6 +490,7 @@ pub async fn get_user_puzzle_stats(
             jsonb_array_elements(ga.puzzles) AS puzzle
             WHERE ug.user_id = $1
               AND ga.puzzles IS NOT NULL
+              AND jsonb_typeof(ga.puzzles) = 'array'
               AND jsonb_array_length(ga.puzzles) > 0
         )
         SELECT
@@ -563,6 +565,7 @@ pub async fn get_user_puzzle_stats(
             jsonb_array_elements(ga.puzzles) AS puzzle
             WHERE ug.user_id = $1
               AND ga.puzzles IS NOT NULL
+              AND jsonb_typeof(ga.puzzles) = 'array'
               AND jsonb_array_length(ga.puzzles) > 0
         ),
         labeled_puzzles AS (
@@ -668,6 +671,7 @@ pub async fn get_user_puzzle_stats(
             jsonb_array_elements(ga.puzzles) AS puzzle
             WHERE ug.user_id = $1
               AND ga.puzzles IS NOT NULL
+              AND jsonb_typeof(ga.puzzles) = 'array'
               AND jsonb_array_length(ga.puzzles) > 0
               AND puzzle->>'cp_before_blunder' IS NOT NULL
         ),
