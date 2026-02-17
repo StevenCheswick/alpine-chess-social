@@ -4,7 +4,7 @@ import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { gameService, type AnalyzeServerResponse } from '../services/gameService';
-import { tagDisplayName } from '../utils/tagDisplay';
+import { tagDisplayName, isVisibleTag } from '../utils/tagDisplay';
 
 const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 10;
@@ -266,6 +266,7 @@ export default function GamesPage() {
   };
 
   const sortedTags = Array.from(allTags.entries())
+    .filter(([tag]) => isVisibleTag(tag))
     .sort((a, b) => b[1] - a[1])  // Sort by count descending
     .map(([tag]) => tag);
 
@@ -599,9 +600,9 @@ export default function GamesPage() {
                     </div>
 
                     {/* Tags */}
-                    {game.tags.length > 0 && (
+                    {game.tags.filter(isVisibleTag).length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {game.tags.map(tag => (
+                        {game.tags.filter(isVisibleTag).map(tag => (
                           <span
                             key={tag}
                             className="px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-xs font-medium text-amber-400"

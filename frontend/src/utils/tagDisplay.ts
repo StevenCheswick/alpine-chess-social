@@ -48,6 +48,21 @@ export const TAG_DISPLAY: Record<string, string> = {
   'Queen + Piece vs Queen': 'Queen+Piece vs Queen',
 };
 
+/** Tags that are kept for internal/backend use but hidden from users */
+const HIDDEN_TAGS = new Set([
+  // Evaluation
+  'mate', 'crushing', 'advantage', 'equality',
+  // Puzzle length
+  'oneMove', 'short', 'long', 'veryLong',
+  // Endgame types
+  'pawnEndgame', 'knightEndgame', 'bishopEndgame',
+  'rookEndgame', 'queenEndgame', 'queenRookEndgame',
+]);
+
+export function isVisibleTag(tag: string): boolean {
+  return !HIDDEN_TAGS.has(tag);
+}
+
 export function tagDisplayName(tag: string): string {
   return TAG_DISPLAY[tag] || tag;
 }
