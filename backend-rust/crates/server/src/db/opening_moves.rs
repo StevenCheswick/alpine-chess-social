@@ -84,9 +84,9 @@ pub async fn populate_opening_stats(pool: &PgPool, user_id: i64) -> Result<(), A
                 break;
             }
 
-            let san = San::from_move(&pos, mv).to_string();
-            pos.play_unchecked(mv);
-            let result_fen = Fen::from_position(pos.clone(), EnPassantMode::Legal).to_string();
+            let san = San::from_move(&pos, mv.clone()).to_string();
+            pos.play_unchecked(mv.clone());
+            let result_fen = Fen::from_position(&pos, EnPassantMode::Legal).to_string();
 
             let analysis_move = analysis_moves
                 .as_ref()
@@ -275,8 +275,8 @@ pub async fn enrich_opening_evals(pool: &PgPool, game_id: i64) -> Result<(), App
             break;
         }
 
-        let san = San::from_move(&pos, mv).to_string();
-        pos.play_unchecked(mv);
+        let san = San::from_move(&pos, mv.clone()).to_string();
+        pos.play_unchecked(mv.clone());
 
         let analysis_move = analysis_arr.get(ply);
 
@@ -312,7 +312,7 @@ pub async fn enrich_opening_evals(pool: &PgPool, game_id: i64) -> Result<(), App
             .map_err(AppError::Sqlx)?;
         }
 
-        let result_fen = Fen::from_position(pos.clone(), EnPassantMode::Legal).to_string();
+        let result_fen = Fen::from_position(&pos, EnPassantMode::Legal).to_string();
         parent_fen = result_fen;
     }
 

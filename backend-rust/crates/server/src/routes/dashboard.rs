@@ -370,7 +370,7 @@ fn uci_line_to_san(uci_line: &str) -> SanLine {
                 pre_last_pos: pos,
             },
         };
-        let san = San::from_move(&pos, &legal_move);
+        let san = San::from_move(&pos, legal_move.clone());
         let san_str = san.to_string();
         moves.push(san_str.clone());
 
@@ -385,7 +385,7 @@ fn uci_line_to_san(uci_line: &str) -> SanLine {
         }
 
         pre_last_pos = pos.clone();
-        pos.play_unchecked(&legal_move);
+        pos.play_unchecked(legal_move);
     }
 
     SanLine { formatted, moves, pre_last_pos }
@@ -395,5 +395,5 @@ fn uci_line_to_san(uci_line: &str) -> SanLine {
 fn uci_to_san(pos: &Chess, uci_str: &str) -> Option<String> {
     let uci_move: UciMove = uci_str.parse().ok()?;
     let legal_move = uci_move.to_move(pos).ok()?;
-    Some(San::from_move(pos, &legal_move).to_string())
+    Some(San::from_move(pos, legal_move).to_string())
 }

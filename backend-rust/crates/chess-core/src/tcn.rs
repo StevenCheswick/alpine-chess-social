@@ -97,7 +97,7 @@ pub fn decode_tcn(tcn: &str) -> Vec<Move> {
                             }
                         }) {
                             moves.push(castle_move.clone());
-                            pos.play_unchecked(&castle_move);
+                            pos.play_unchecked(castle_move.clone());
                             i += 2;
                             continue;
                         }
@@ -140,7 +140,7 @@ pub fn decode_tcn(tcn: &str) -> Vec<Move> {
             }
         }) {
             let legal = legal_move.clone();
-            pos.play_unchecked(&legal);
+            pos.play_unchecked(legal);
             moves.push(legal);
         } else {
             // Try finding any legal move from->to
@@ -177,7 +177,7 @@ pub fn decode_tcn(tcn: &str) -> Vec<Move> {
                 }
             }) {
                 let legal = legal_move.clone();
-                pos.play_unchecked(&legal);
+                pos.play_unchecked(legal);
                 moves.push(legal);
             } else {
                 break; // Illegal move, stop
@@ -196,8 +196,8 @@ pub fn decode_tcn_to_san(tcn: &str) -> Result<Vec<String>, String> {
     let mut pos = Chess::default();
     let mut san_moves = Vec::new();
 
-    for mv in &moves {
-        let san = shakmaty::san::San::from_move(&pos, mv);
+    for mv in moves {
+        let san = shakmaty::san::San::from_move(&pos, mv.clone());
         san_moves.push(san.to_string());
         pos.play_unchecked(mv);
     }
@@ -261,7 +261,7 @@ pub fn encode_san_to_tcn(san_moves: &[String]) -> Result<String, String> {
             _ => {}
         }
 
-        pos.play_unchecked(&mv);
+        pos.play_unchecked(mv);
     }
 
     Ok(tcn)

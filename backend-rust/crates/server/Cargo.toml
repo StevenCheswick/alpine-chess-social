@@ -25,6 +25,8 @@ regex = { workspace = true }
 
 chess-core = { path = "../chess-core" }
 shakmaty = { workspace = true }
+pgn-reader = { workspace = true }
+glob = { workspace = true }
 
 # AWS SDK for server-side analysis
 aws-config = { workspace = true }
@@ -41,3 +43,7 @@ path = "src/main.rs"
 [[bin]]
 name = "export-book"
 path = "src/bin/export_book.rs"
+
+[[bin]]
+name = "build-book"
+path = "src/bin/build_book.rs"
