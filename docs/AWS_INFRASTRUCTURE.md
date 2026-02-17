@@ -81,7 +81,7 @@ docker build -t alpine-chess-server -f crates/server/Dockerfile .
 
 ### IAM Roles
 - **Task Execution Role**: `alpine-chess-task-execution-role` - pulls images from ECR
-- **Instance Role**: `alpine-chess-apprunner-instance` - allows SQS API calls
+- **Instance Role**: `alpine-chess-apprunner-instance` - allows SQS and Batch API calls
 
 ### Deploying
 
@@ -117,7 +117,7 @@ aws logs tail /aws/apprunner/alpine-chess-api/3b238f1208be4ad29b5bbd0d6aca957e/a
 ### How It Works
 1. User clicks "Server Analyze" in frontend
 2. Backend API sends game IDs to SQS queue
-3. AWS Batch job is submitted (manually or via trigger)
+3. Backend checks for active Batch jobs — if none, submits a new one
 4. Worker pulls messages from SQS, runs Stockfish analysis
 5. Results saved to database
 
@@ -157,8 +157,9 @@ cd backend-rust
 
 ### Running a Job
 
-Jobs are triggered **automatically** via Lambda when messages arrive in SQS.
-See "Lambda Trigger" section below for details.
+Jobs are triggered **automatically** by the backend API when games are queued.
+The backend calls `ensure_worker_running()` which checks for active Batch jobs
+and submits a new one if none are running.
 
 ```bash
 # Check job status
@@ -245,42 +246,7 @@ aws sqs purge-queue \
 
 ---
 
-## 6. Lambda Trigger (Auto Job Submission)
-
-### Overview
-- **Function**: `alpine-chess-batch-trigger`
-- **Trigger**: SQS messages from `alpine-chess-analysis-jobs`
-- **Purpose**: Automatically starts Batch jobs when games are queued
-
-### How It Works
-1. User clicks "Server Analyze" → game ID sent to SQS
-2. Lambda triggers on new SQS message
-3. Checks if Batch job is already RUNNING/RUNNABLE/STARTING
-4. If no active job → submits new Batch job
-5. If job exists → skips (running worker drains queue)
-
-### IAM Role
-- **Role**: `alpine-chess-batch-trigger-role`
-- **Policies**: `AWSLambdaBasicExecutionRole`, `AWSLambdaSQSQueueExecutionRole`, inline `BatchJobSubmit`
-
-### Environment Variables
-| Variable | Value |
-|----------|-------|
-| `JOB_QUEUE` | `alpine-chess-analysis-queue` |
-| `JOB_DEFINITION` | `alpine-chess-analysis-worker` |
-
-### Monitoring
-```bash
-# View Lambda invocations
-aws logs tail /aws/lambda/alpine-chess-batch-trigger --follow
-
-# Test manually
-aws lambda invoke --function-name alpine-chess-batch-trigger /dev/stdout
-```
-
----
-
-## 7. Secrets Manager
+## 6. Secrets Manager
 
 ### Secrets
 | Secret Name | Contents |
@@ -298,7 +264,7 @@ aws secretsmanager put-secret-value --secret-id alpine-chess/database-url --secr
 
 ---
 
-## 8. ECR Repositories
+## 7. ECR Repositories
 
 | Repository | Description |
 |------------|-------------|
