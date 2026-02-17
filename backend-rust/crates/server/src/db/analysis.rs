@@ -394,22 +394,25 @@ pub async fn get_user_endgame_stats(
     // then aggregate per endgame_type.
     let rows = sqlx::query(
         r#"
-        WITH segments AS (
+        WITH valid_games AS (
+            SELECT ug.id, ug.user_color, ga.endgame_segments
+            FROM user_games ug
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id
+            WHERE ug.user_id = $1
+              AND ga.endgame_segments IS NOT NULL
+              AND jsonb_typeof(ga.endgame_segments) = 'array'
+        ),
+        segments AS (
             SELECT
-                ug.id AS game_id,
-                LOWER(ug.user_color) AS user_color,
+                vg.id AS game_id,
+                LOWER(vg.user_color) AS user_color,
                 seg->>'endgame_type' AS endgame_type,
                 (seg->>'white_cp_loss')::double precision AS white_cp_loss,
                 (seg->>'white_moves')::int AS white_moves,
                 (seg->>'black_cp_loss')::double precision AS black_cp_loss,
                 (seg->>'black_moves')::int AS black_moves
-            FROM user_games ug
-            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
-            jsonb_array_elements(ga.endgame_segments) AS seg
-            WHERE ug.user_id = $1
-              AND ga.endgame_segments IS NOT NULL
-              AND jsonb_typeof(ga.endgame_segments) = 'array'
-              AND jsonb_array_length(ga.endgame_segments) > 0
+            FROM valid_games vg,
+            jsonb_array_elements(vg.endgame_segments) AS seg
         )
         SELECT
             endgame_type,
@@ -476,22 +479,26 @@ pub async fn get_user_puzzle_stats(
     use sqlx::Row;
 
     // Unnest puzzles JSONB arrays, join with user_games for color info
+    // Filter valid arrays FIRST in CTE, then unnest (fixes "cannot get array length of a scalar")
     let rows = sqlx::query(
         r#"
-        WITH puzzle_data AS (
-            SELECT
-                ug.id AS game_id,
-                LOWER(ug.user_color) AS user_color,
-                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
-                (puzzle->>'found')::boolean AS found,
-                puzzle->'themes' AS themes
+        WITH valid_games AS (
+            SELECT ug.id, ug.user_color, ga.puzzles
             FROM user_games ug
-            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
-            jsonb_array_elements(ga.puzzles) AS puzzle
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id
             WHERE ug.user_id = $1
               AND ga.puzzles IS NOT NULL
               AND jsonb_typeof(ga.puzzles) = 'array'
-              AND jsonb_array_length(ga.puzzles) > 0
+        ),
+        puzzle_data AS (
+            SELECT
+                vg.id AS game_id,
+                LOWER(vg.user_color) AS user_color,
+                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
+                (puzzle->>'found')::boolean AS found,
+                puzzle->'themes' AS themes
+            FROM valid_games vg,
+            jsonb_array_elements(vg.puzzles) AS puzzle
         )
         SELECT
             user_color,
@@ -554,19 +561,22 @@ pub async fn get_user_puzzle_stats(
     // Per-theme stats for both user and opponent
     let theme_rows = sqlx::query(
         r#"
-        WITH puzzle_data AS (
-            SELECT
-                LOWER(ug.user_color) AS user_color,
-                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
-                (puzzle->>'found')::boolean AS found,
-                puzzle->'themes' AS themes
+        WITH valid_games AS (
+            SELECT ug.id, ug.user_color, ga.puzzles
             FROM user_games ug
-            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
-            jsonb_array_elements(ga.puzzles) AS puzzle
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id
             WHERE ug.user_id = $1
               AND ga.puzzles IS NOT NULL
               AND jsonb_typeof(ga.puzzles) = 'array'
-              AND jsonb_array_length(ga.puzzles) > 0
+        ),
+        puzzle_data AS (
+            SELECT
+                LOWER(vg.user_color) AS user_color,
+                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
+                (puzzle->>'found')::boolean AS found,
+                puzzle->'themes' AS themes
+            FROM valid_games vg,
+            jsonb_array_elements(vg.puzzles) AS puzzle
         ),
         labeled_puzzles AS (
             SELECT
@@ -658,22 +668,26 @@ pub async fn get_user_puzzle_stats(
 
     // Stats by position type (based on cp_before_blunder)
     // Winning: cp > 100, Equal: -100 to 100, Losing: cp < -100
+    // Filter valid arrays FIRST in CTE, then unnest (fixes "cannot get array length of a scalar")
     let position_rows = sqlx::query(
         r#"
-        WITH puzzle_data AS (
-            SELECT
-                LOWER(ug.user_color) AS user_color,
-                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
-                (puzzle->>'found')::boolean AS found,
-                (puzzle->>'cp_before_blunder')::int AS cp_before
+        WITH valid_games AS (
+            SELECT ug.id, ug.user_color, ga.puzzles
             FROM user_games ug
-            INNER JOIN game_analysis ga ON ug.id = ga.game_id,
-            jsonb_array_elements(ga.puzzles) AS puzzle
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id
             WHERE ug.user_id = $1
               AND ga.puzzles IS NOT NULL
               AND jsonb_typeof(ga.puzzles) = 'array'
-              AND jsonb_array_length(ga.puzzles) > 0
-              AND puzzle->>'cp_before_blunder' IS NOT NULL
+        ),
+        puzzle_data AS (
+            SELECT
+                LOWER(vg.user_color) AS user_color,
+                (puzzle->>'solver_is_white')::boolean AS solver_is_white,
+                (puzzle->>'found')::boolean AS found,
+                (puzzle->>'cp_before_blunder')::int AS cp_before
+            FROM valid_games vg,
+            jsonb_array_elements(vg.puzzles) AS puzzle
+            WHERE puzzle->>'cp_before_blunder' IS NOT NULL
         ),
         labeled_puzzles AS (
             SELECT
