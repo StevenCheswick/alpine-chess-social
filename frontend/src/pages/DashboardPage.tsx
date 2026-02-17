@@ -235,11 +235,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* First Inaccuracy Over Time */}
+        {/* Earliest Inaccuracy / Mistake / Blunder Over Time */}
         {smoothedInaccuracy.length > 0 && (
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-            <h2 className="text-lg font-semibold text-white mb-1">Earliest Inaccuracy</h2>
-            <p className="text-sm text-slate-500 mb-4">Move number of first inaccuracy, mistake, or blunder (higher is better)</p>
+            <h2 className="text-lg font-semibold text-white mb-1">Earliest Mistake</h2>
+            <p className="text-sm text-slate-500 mb-4">Move number of first inaccuracy / mistake / blunder (higher is better)</p>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={smoothedInaccuracy}>
@@ -261,14 +261,37 @@ export default function DashboardPage() {
                   <Line
                     type="monotone"
                     dataKey="moveNumber"
-                    name="First Inaccuracy"
+                    name="Inaccuracy"
                     stroke="#f59e0b"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="mistakeMoveNumber"
+                    name="Mistake"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="blunderMoveNumber"
+                    name="Blunder"
+                    stroke="#ef4444"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
+            </div>
+            <div className="flex gap-4 mt-3 justify-center text-xs text-slate-400">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-amber-500 inline-block rounded" /> Inaccuracy</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-orange-500 inline-block rounded" /> Mistake</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-500 inline-block rounded" /> Blunder</span>
             </div>
           </div>
         )}

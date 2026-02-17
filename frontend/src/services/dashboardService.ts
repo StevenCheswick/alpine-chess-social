@@ -17,6 +17,8 @@ export interface PhaseAccuracyDataPoint {
 export interface FirstInaccuracyDataPoint {
   date: string;
   moveNumber: number;
+  mistakeMoveNumber: number;
+  blunderMoveNumber: number;
   gameId: number;
 }
 

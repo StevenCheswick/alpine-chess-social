@@ -79,6 +79,8 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     let mut raw_middlegame = Vec::new();
     let mut raw_endgame = Vec::new();
     let mut raw_inaccuracy: Vec<f64> = Vec::new();
+    let mut raw_mistake: Vec<f64> = Vec::new();
+    let mut raw_blunder: Vec<f64> = Vec::new();
 
     for game in &stats {
         let date = game["date"].as_str().unwrap_or("");
@@ -96,6 +98,8 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
 
         first_inaccuracy_over_time.push(serde_json::json!({"date": date, "gameId": game_id}));
         raw_inaccuracy.push(game["first_inaccuracy"].as_f64().unwrap_or(0.0));
+        raw_mistake.push(game["first_mistake"].as_f64().unwrap_or(0.0));
+        raw_blunder.push(game["first_blunder"].as_f64().unwrap_or(0.0));
 
         if let Some(rating) = game["user_rating"].as_i64() {
             rating_over_time.push(serde_json::json!({"date": date, "rating": rating, "gameId": game_id}));
@@ -112,10 +116,14 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     // Apply rolling averages
     let smoothed_acc = rolling_avg(&raw_accuracy);
     let smoothed_inacc = rolling_avg(&raw_inaccuracy);
+    let smoothed_mistake = rolling_avg(&raw_mistake);
+    let smoothed_blunder = rolling_avg(&raw_blunder);
 
     for i in 0..accuracy_over_time.len() {
         accuracy_over_time[i]["accuracy"] = serde_json::json!(smoothed_acc[i]);
         first_inaccuracy_over_time[i]["moveNumber"] = serde_json::json!(smoothed_inacc[i]);
+        first_inaccuracy_over_time[i]["mistakeMoveNumber"] = serde_json::json!(smoothed_mistake[i]);
+        first_inaccuracy_over_time[i]["blunderMoveNumber"] = serde_json::json!(smoothed_blunder[i]);
     }
 
     // Phase accuracy rolling average

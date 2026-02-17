@@ -19,8 +19,12 @@ pub async fn save_game_analysis(
         "black": phase_accuracy(moves, false),
     });
     let first_inacc = serde_json::json!({
-        "white": first_inaccuracy_move(moves, true),
-        "black": first_inaccuracy_move(moves, false),
+        "white": first_bad_move(moves, true, &["inaccuracy", "mistake", "blunder"]),
+        "black": first_bad_move(moves, false, &["inaccuracy", "mistake", "blunder"]),
+        "white_mistake": first_bad_move(moves, true, &["mistake", "blunder"]),
+        "black_mistake": first_bad_move(moves, false, &["mistake", "blunder"]),
+        "white_blunder": first_bad_move(moves, true, &["blunder"]),
+        "black_blunder": first_bad_move(moves, false, &["blunder"]),
     });
 
     let puzzles = analysis.get("puzzles").cloned().unwrap_or(JsonValue::Null);
@@ -200,6 +204,16 @@ pub async fn get_user_game_stats(
                 .and_then(|fi| fi.get(color_key))
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
+            let first_mistake = first_inaccuracy_val
+                .as_ref()
+                .and_then(|fi| fi.get(&format!("{}_mistake", color_key)))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let first_blunder = first_inaccuracy_val
+                .as_ref()
+                .and_then(|fi| fi.get(&format!("{}_blunder", color_key)))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
 
             serde_json::json!({
                 "id": r.try_get::<i64, _>("id").unwrap_or(0),
@@ -213,6 +227,8 @@ pub async fn get_user_game_stats(
                 "classifications": classifications,
                 "phase_accuracy": phase_acc,
                 "first_inaccuracy": first_inaccuracy,
+                "first_mistake": first_mistake,
+                "first_blunder": first_blunder,
             })
         })
         .collect())
@@ -791,13 +807,12 @@ pub async fn get_user_puzzle_stats(
     }))
 }
 
-fn first_inaccuracy_move(moves: &JsonValue, is_white: bool) -> i64 {
+fn first_bad_move(moves: &JsonValue, is_white: bool, bad: &[&str]) -> i64 {
     let arr = match moves.as_array() {
         Some(a) => a,
         None => return 0,
     };
 
-    let bad = ["inaccuracy", "mistake", "blunder"];
     let mut user_move_num = 0;
 
     for (i, mv) in arr.iter().enumerate() {
