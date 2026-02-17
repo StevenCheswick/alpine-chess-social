@@ -16,24 +16,7 @@ export const API_ENDPOINTS = {
   users: {
     me: '/api/users/me',
     profile: (username: string) => `/api/users/${username}`,
-    followers: (username: string) => `/api/users/${username}/followers`,
-    following: (username: string) => `/api/users/${username}/following`,
-    follow: (username: string) => `/api/users/${username}/follow`,
     linkAccount: '/api/users/me/link-account',
-  },
-  // Posts
-  posts: {
-    create: '/api/posts',
-    get: (id: string) => `/api/posts/${id}`,
-    delete: (id: string) => `/api/posts/${id}`,
-    like: (id: string) => `/api/posts/${id}/like`,
-    comments: (id: string) => `/api/posts/${id}/comments`,
-  },
-  // Feed
-  feed: {
-    home: '/api/feed',
-    discover: '/api/feed/discover',
-    user: (username: string) => `/api/users/${username}/posts`,
   },
   // Achievements
   achievements: {

@@ -9,8 +9,6 @@ export interface User {
   avatarUrl: string | null;
   createdAt: string;
   isVerified: boolean;
-  followerCount: number;
-  followingCount: number;
 }
 
 export type ChessPlatform = 'chess_com';
@@ -27,32 +25,6 @@ export interface LinkedAccount {
     classical?: number;
   };
   lastSyncedAt: string;
-}
-
-// Post types
-export type PostType = 'game_share' | 'achievement' | 'text' | 'puzzle';
-
-export interface Post {
-  id: string;
-  author: User;
-  postType: PostType;
-  content: string;
-  gameData: GameData | null;
-  achievementData: AchievementData | null;
-  likeCount: number;
-  commentCount: number;
-  isLiked: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Comment {
-  id: string;
-  postId: string;
-  author: User;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 // Game types
@@ -114,16 +86,14 @@ export interface UserAchievement {
 }
 
 // Notification types
-export type NotificationType = 'follow' | 'like' | 'comment' | 'achievement';
+export type NotificationType = 'achievement';
 
 export interface Notification {
   id: string;
   type: NotificationType;
   isRead: boolean;
   createdAt: string;
-  // Polymorphic data based on type
   actor?: User;
-  post?: Post;
   achievement?: AchievementData;
 }
 
