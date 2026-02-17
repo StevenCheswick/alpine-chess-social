@@ -54,3 +54,22 @@ Before running `cargo test`, `cargo build`, or `cargo run`, check for and kill s
 tasklist | findstr -i "stockfish cargo"
 taskkill //PID <pid> //F
 ```
+
+## Production Deployment
+
+After pushing changes to `main`:
+
+1. **Frontend** (AWS Amplify): Auto-deploys on push to `main` — no manual step needed.
+2. **Backend** (AWS App Runner): Run the deploy script to build, push to ECR, and trigger deployment:
+   ```
+   cd backend-rust && bash deploy.sh
+   ```
+3. **Analysis Worker** (AWS Batch/Fargate): If worker code changed, deploy separately:
+   ```
+   cd backend-rust && bash deploy-worker.sh
+   ```
+
+Check backend deploy status:
+```
+aws apprunner list-operations --service-arn arn:aws:apprunner:us-east-1:019304715762:service/alpine-chess-api/3b238f1208be4ad29b5bbd0d6aca957e --region us-east-1 --max-results 1
+```
