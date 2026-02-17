@@ -11,10 +11,10 @@ This document describes the AWS infrastructure and how to work with each compone
 └─────────────┘     └────────┬────────┘     └─────────────┘
                              │
                              ▼
-                    ┌─────────────────┐     ┌─────────────┐
-                    │    SQS Queue    │────▶│  AWS Batch  │
-                    │ (Analysis Jobs) │     │  (Worker)   │
-                    └─────────────────┘     └─────────────┘
+                    ┌─────────────────┐     ┌──────────────┐
+                    │    SQS Queue    │────▶│  AWS Batch   │
+                    │ (Analysis Jobs) │     │  (Fargate)   │
+                    └─────────────────┘     └──────────────┘
 ```
 
 ## AWS Account & Region
@@ -111,7 +111,7 @@ aws logs tail /aws/apprunner/alpine-chess-api/3b238f1208be4ad29b5bbd0d6aca957e/a
 - **Service**: AWS Batch
 - **Job Queue**: `alpine-chess-analysis-queue`
 - **Job Definition**: `alpine-chess-analysis-worker`
-- **Compute**: c7i.xlarge (4 vCPUs) - scales 0-16 vCPUs
+- **Compute**: Fargate (4 vCPUs, 8GB) — ~30s cold start, scales 0-16 vCPUs
 - **Source**: ECR image `alpine-chess-analysis-worker:latest`
 
 ### How It Works
@@ -327,9 +327,9 @@ VITE_API_URL=http://localhost:8000
 3. Check IAM roles have required permissions
 
 ### Batch Job Stuck in RUNNABLE
-1. Check compute environment has capacity
-2. Verify instance types can fulfill vCPU/memory requirements
-3. Check for spot capacity issues
+1. Check Fargate compute environment is ENABLED and VALID
+2. Verify subnets have internet access (needed for ECR image pull)
+3. Check `assignPublicIp` is ENABLED in job definition
 
 ### glibc Version Mismatch
 Error: `GLIBC_X.XX not found`
@@ -345,7 +345,7 @@ Error: `GLIBC_X.XX not found`
 ## Cost Optimization
 
 - **App Runner**: Scales to zero when idle (pay per request)
-- **Batch**: Uses spot instances (c7i.xlarge ~$0.05/hr spot)
+- **Batch**: Fargate (4 vCPU/8GB ~$0.18/hr, only runs during analysis)
 - **RDS**: Consider reserved instances for production
 - **Amplify**: Free tier covers most usage
 
