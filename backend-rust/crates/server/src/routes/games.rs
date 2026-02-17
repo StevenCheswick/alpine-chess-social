@@ -169,11 +169,40 @@ pub async fn sync_games(
         }
         all_pairs
     } else {
-        tracing::info!("Re-sync for {} — fetching current month", chess_com_username);
-        client
-            .fetch_user_games(&chess_com_username, Some(now.year()), Some(now.month()), true)
-            .await
-            .unwrap_or_default()
+        // Re-sync: fetch all months since last sync (not just current month)
+        let last = last_synced.unwrap(); // safe: is_first_sync is false
+        let since_year = last.year();
+        let since_month = last.month();
+        tracing::info!(
+            "Re-sync for {} — fetching archives from {}/{:02} to {}/{:02}",
+            chess_com_username, since_year, since_month, now.year(), now.month()
+        );
+
+        let archive_months = client.fetch_archives(&chess_com_username).await.unwrap_or_default();
+        let mut all_pairs = Vec::new();
+
+        for (year, month) in &archive_months {
+            // Skip months before last sync
+            if (*year, *month) < (since_year, since_month) {
+                continue;
+            }
+            match client.fetch_user_games(&chess_com_username, Some(*year), Some(*month), true).await {
+                Ok(pairs) => {
+                    if !pairs.is_empty() {
+                        tracing::info!("  {}/{:02}: {} games", year, month, pairs.len());
+                        all_pairs.extend(pairs);
+                        if all_pairs.len() >= max_games {
+                            all_pairs.truncate(max_games);
+                            break;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("  {}/{:02}: Error - {}", year, month, e);
+                }
+            }
+        }
+        all_pairs
     };
 
     let synced_count = if !pgn_tcn_pairs.is_empty() {
