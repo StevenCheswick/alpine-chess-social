@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AnalyzableChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { analyzeGame } from '../services/analysisService';
 import { analyzeGameProxy } from '../services/analysisProxy';
 import type { GameAnalysis, FullAnalysis } from '../types/analysis';
 import AnalyzeButton from '../components/chess/AnalyzeButton';
@@ -35,6 +34,7 @@ export default function GamePage() {
   const [analysis, setAnalysis] = useState<GameAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   
   // Move navigation state
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
@@ -140,29 +140,21 @@ export default function GamePage() {
 
     setAnalyzing(true);
     setAnalysisProgress(0);
+    setAnalysisError(null);
 
     try {
-      let result: GameAnalysis;
-
-      // Try WebSocket proxy first (includes puzzles + endgame analysis)
-      try {
-        result = await analyzeGameProxy(
-          gameId!,
-          game.moves,
-          100000,
-          (progress) => setAnalysisProgress(progress),
-        );
-      } catch {
-        // Fallback to client-side analysis
-        result = await analyzeGame(game.moves, game.userColor, {
-          onProgress: (progress) => setAnalysisProgress(progress),
-        });
-      }
+      const result = await analyzeGameProxy(
+        gameId!,
+        game.moves,
+        100000,
+        (progress) => setAnalysisProgress(progress),
+      );
 
       setAnalysis(result);
       await saveAnalysis(result);
     } catch (err) {
       console.error('Analysis failed:', err);
+      setAnalysisError('Analysis unavailable — please try again later.');
     } finally {
       setAnalyzing(false);
       setAnalysisProgress(0);
@@ -219,12 +211,17 @@ export default function GamePage() {
           Back to Games
         </button>
 
-        <AnalyzeButton
-          onClick={handleAnalyze}
-          isAnalyzing={analyzing}
-          isAnalyzed={!!analysis}
-          progress={analyzing ? analysisProgress : undefined}
-        />
+        <div className="flex items-center gap-3">
+          {analysisError && (
+            <span className="text-red-400 text-sm">{analysisError}</span>
+          )}
+          <AnalyzeButton
+            onClick={handleAnalyze}
+            isAnalyzing={analyzing}
+            isAnalyzed={!!analysis}
+            progress={analyzing ? analysisProgress : undefined}
+          />
+        </div>
       </div>
 
       {/* Main content: Board and Analysis side by side */}

@@ -8,12 +8,7 @@
  */
 
 import { ANALYSIS_WS_URL } from '../config/api';
-import type {
-  FullAnalysis,
-  BatchProgress,
-  BatchGameResult,
-  BatchGameInput,
-} from '../types/analysis';
+import type { FullAnalysis } from '../types/analysis';
 import { getStockfishPath } from './stockfishEngine';
 
 interface StockfishWorker {
@@ -284,90 +279,3 @@ export async function analyzeGameProxy(
   }
 }
 
-/**
- * Analyze multiple games via parallel WebSocket connections.
- * Each game gets its own WS connection + Stockfish worker.
- */
-export async function analyzeGamesBatchProxy(
-  games: BatchGameInput[],
-  options: {
-    nodes?: number;
-    onProgress?: (progress: BatchProgress) => void;
-    onGameComplete?: (result: BatchGameResult) => void;
-    signal?: AbortSignal;
-  } = {},
-): Promise<BatchGameResult[]> {
-  const { nodes = 100000, onProgress, onGameComplete, signal } = options;
-  if (games.length === 0) return [];
-
-  // Limit to 1 concurrent WebSocket - App Runner may not support multiple concurrent WS connections
-  const workerCount = 1;
-
-  let gamesCompleted = 0;
-  let gamesSucceeded = 0;
-  let gamesFailed = 0;
-  let activeWorkers = 0;
-  const results: BatchGameResult[] = [];
-  let nextGameIndex = 0;
-
-  function claimNext(): BatchGameInput | null {
-    if (nextGameIndex >= games.length) return null;
-    return games[nextGameIndex++];
-  }
-
-  function reportProgress() {
-    onProgress?.({
-      gamesCompleted,
-      gamesTotal: games.length,
-      gamesSucceeded,
-      gamesFailed,
-      activeWorkers,
-    });
-  }
-
-  async function workerLoop(): Promise<void> {
-    activeWorkers++;
-    reportProgress();
-
-    while (true) {
-      if (signal?.aborted) break;
-      const game = claimNext();
-      if (!game) break;
-
-      let result: BatchGameResult;
-      try {
-        const analysis = await analyzeGameProxy(game.id, game.moves, nodes);
-        result = { gameId: game.id, analysis, error: null };
-        gamesSucceeded++;
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') break;
-        result = {
-          gameId: game.id,
-          analysis: null,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        };
-        gamesFailed++;
-      }
-
-      gamesCompleted++;
-      results.push(result);
-      onGameComplete?.(result);
-      reportProgress();
-    }
-
-    activeWorkers--;
-    reportProgress();
-  }
-
-  const workers: Promise<void>[] = [];
-  for (let i = 0; i < workerCount; i++) {
-    // Stagger worker starts to avoid rate limiting on WebSocket connections
-    workers.push(
-      new Promise(resolve => setTimeout(resolve, i * 200)).then(() => workerLoop())
-    );
-  }
-  await Promise.all(workers);
-  reportProgress();
-
-  return results;
-}

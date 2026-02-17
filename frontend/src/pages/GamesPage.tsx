@@ -1,12 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { gameService, type AnalyzeServerResponse } from '../services/gameService';
-import { analyzeGamesBatch } from '../services/analysisService';
-import { analyzeGamesBatchProxy } from '../services/analysisProxy';
-import type { BatchProgress, FullAnalysis } from '../types/analysis';
 import { tagDisplayName } from '../utils/tagDisplay';
 
 const API_BASE = API_BASE_URL;
@@ -141,12 +138,8 @@ export default function GamesPage() {
   };
   const [allTags, setAllTags] = useState<Map<string, number>>(new Map());
 
-  // Bulk analysis state
-  const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<BatchProgress | null>(null);
   const [totalUnanalyzed, setTotalUnanalyzed] = useState(0);
   const [totalAnalyzed, setTotalAnalyzed] = useState(0);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Server-side analysis state
   const [serverAnalyzing, setServerAnalyzing] = useState(false);
@@ -308,131 +301,6 @@ export default function GamesPage() {
     loadAllTags([]);
   };
 
-  // Save analysis result (with tags extraction for proxy results)
-  const saveGameAnalysis = async (gameId: string, analysisData: FullAnalysis | import('../types/analysis').GameAnalysis) => {
-    const fullAnalysis = analysisData as FullAnalysis;
-    const tags = new Set<string>();
-
-    if (fullAnalysis.puzzles) {
-      for (const puzzle of fullAnalysis.puzzles) {
-        for (const theme of puzzle.themes) tags.add(theme);
-      }
-    }
-    if (fullAnalysis.endgame_segments) {
-      for (const seg of fullAnalysis.endgame_segments) {
-        tags.add(seg.endgame_type);
-      }
-    }
-
-    const payload = tags.size > 0
-      ? { ...analysisData, tags: [...tags] }
-      : analysisData;
-
-    await fetch(`${API_BASE}/api/games/${gameId}/analysis`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-  };
-
-  // Bulk analyze unanalyzed games (limit=0 means all)
-  const bulkAnalyzeGames = async (limit: number = 100) => {
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    setBulkAnalyzing(true);
-
-    try {
-      // Fetch unanalyzed games from the backend
-      const response = await fetch(
-        `${API_BASE}/api/games/stored?limit=${limit}&analyzed=false`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!response.ok) throw new Error('Failed to fetch unanalyzed games');
-      const data = await response.json();
-      const unanalyzedGames: Game[] = data.games || [];
-
-      if (unanalyzedGames.length === 0) {
-        setTotalUnanalyzed(0);
-        return;
-      }
-
-      setBulkProgress({
-        gamesCompleted: 0,
-        gamesTotal: unanalyzedGames.length,
-        gamesSucceeded: 0,
-        gamesFailed: 0,
-        activeWorkers: 0,
-      });
-
-      const gameInputs = unanalyzedGames.map(g => ({ id: g.id, moves: g.moves, userColor: g.userColor }));
-
-      const onGameComplete = async (result: import('../types/analysis').BatchGameResult) => {
-        if (result.analysis) {
-          try {
-            await saveGameAnalysis(result.gameId, result.analysis);
-            // Update current page games if the completed game is visible
-            setGames(prev => prev.map(g =>
-              g.id === result.gameId
-                ? {
-                    ...g,
-                    hasAnalysis: true,
-                    whiteAccuracy: result.analysis!.white_accuracy,
-                    blackAccuracy: result.analysis!.black_accuracy,
-                  }
-                : g
-            ));
-          } catch (err) {
-            console.error(`Failed to save analysis for game ${result.gameId}:`, err);
-          }
-        } else {
-          console.error(`Analysis failed for game ${result.gameId}:`, result.error);
-        }
-      };
-
-      // Try WebSocket proxy first (includes puzzles + endgame + tags)
-      try {
-        await analyzeGamesBatchProxy(gameInputs, {
-          nodes: 100000,
-          signal: abortController.signal,
-          onProgress: (progress) => setBulkProgress(progress),
-          onGameComplete,
-        });
-      } catch (proxyErr) {
-        // Fallback to client-side analysis if proxy unavailable
-        if (proxyErr instanceof DOMException && proxyErr.name === 'AbortError') throw proxyErr;
-        console.log('WebSocket proxy unavailable, falling back to client-side analysis');
-        await analyzeGamesBatch(gameInputs, {
-          nodes: 100000,
-          signal: abortController.signal,
-          onProgress: (progress) => setBulkProgress(progress),
-          onGameComplete,
-        });
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        // User cancelled — completed games are already saved
-      } else {
-        console.error('Batch analysis error:', err);
-      }
-    } finally {
-      setBulkAnalyzing(false);
-      setBulkProgress(null);
-      abortControllerRef.current = null;
-      // Refresh counts and current page
-      loadUnanalyzedCount();
-      loadAnalyzedCount();
-      loadStoredGames(currentPage, selectedTagsArray);
-    }
-  };
-
-  const cancelBulkAnalysis = () => {
-    abortControllerRef.current?.abort();
-  };
-
   // Queue all unanalyzed games for server-side analysis (AWS Batch)
   const serverAnalyzeGames = async () => {
     setServerAnalyzing(true);
@@ -552,75 +420,26 @@ export default function GamesPage() {
               )}
             </p>
             {totalUnanalyzed > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Client-side analysis buttons */}
-                <button
-                  onClick={() => bulkAnalyzeGames(100)}
-                  disabled={bulkAnalyzing || syncing || loading}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-                >
-                  {bulkAnalyzing && bulkProgress ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      {bulkProgress.gamesCompleted}/{bulkProgress.gamesTotal} games
-                      {bulkProgress.activeWorkers > 0 && (
-                        <span className="text-purple-200 text-xs">({bulkProgress.activeWorkers} workers)</span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      Analyze {totalUnanalyzed > 100 ? '100' : totalUnanalyzed}
-                    </>
-                  )}
-                </button>
-                {totalUnanalyzed > 100 && !bulkAnalyzing && (
-                  <button
-                    onClick={() => bulkAnalyzeGames(0)}
-                    disabled={bulkAnalyzing || syncing || loading}
-                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
-                  >
+              <button
+                onClick={serverAnalyzeGames}
+                disabled={serverAnalyzing || syncing || loading}
+                title="Queue for server analysis - no need to keep tab open"
+                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+              >
+                {serverAnalyzing ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Queueing...
+                  </>
+                ) : (
+                  <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
                     </svg>
-                    Analyze All ({totalUnanalyzed})
-                  </button>
+                    Server Analyze ({totalUnanalyzed})
+                  </>
                 )}
-                {bulkAnalyzing && (
-                  <button
-                    onClick={cancelBulkAnalysis}
-                    className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg font-medium transition-colors text-sm"
-                  >
-                    Cancel
-                  </button>
-                )}
-
-                {/* Server-side analysis button */}
-                {!bulkAnalyzing && (
-                  <button
-                    onClick={serverAnalyzeGames}
-                    disabled={serverAnalyzing || bulkAnalyzing || syncing || loading}
-                    title="Queue for server analysis - no need to keep tab open"
-                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
-                  >
-                    {serverAnalyzing ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                        Queueing...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                        </svg>
-                        Server Analyze
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+              </button>
             )}
 
             {/* Server analysis feedback */}
