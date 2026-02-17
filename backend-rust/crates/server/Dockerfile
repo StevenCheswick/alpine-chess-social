@@ -1,24 +1,18 @@
-# Multi-stage build for server
-# Use rust:bookworm to match runtime glibc version (bookworm = Debian 12)
-FROM rust:bookworm AS builder
+# Multi-stage build with cargo-chef for faster rebuilds
+# Dependencies are cached separately — only source code recompiles on changes
 
+FROM rust:bookworm AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy workspace Cargo.toml
+# Stage 1: Generate dependency recipe
+FROM chef AS planner
 COPY Cargo.toml ./
-
-# Copy only the crates needed for server
 COPY crates/chess-core ./crates/chess-core
 COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
 
-# Create a clean workspace Cargo.toml (remove package, dev-deps, and analysis-worker)
+# Create clean workspace Cargo.toml
 RUN echo '[workspace]' > Cargo.toml.new && \
     echo 'resolver = "2"' >> Cargo.toml.new && \
     echo 'members = ["crates/server", "crates/chess-core", "crates/chess-puzzler"]' >> Cargo.toml.new && \
@@ -26,7 +20,25 @@ RUN echo '[workspace]' > Cargo.toml.new && \
     grep -A1000 '^\[workspace.dependencies\]' Cargo.toml >> Cargo.toml.new && \
     mv Cargo.toml.new Cargo.toml
 
-# Build release binary
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 2: Build dependencies (CACHED unless Cargo.toml/lock changes)
+FROM chef AS builder
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=planner /app/recipe.json recipe.json
+COPY --from=planner /app/Cargo.toml Cargo.toml
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Stage 3: Build source (only this layer rebuilds on code changes)
+COPY crates/chess-core ./crates/chess-core
+COPY crates/chess-puzzler ./crates/chess-puzzler
+COPY crates/server ./crates/server
+
 RUN cargo build --release -p server
 
 # Runtime image
