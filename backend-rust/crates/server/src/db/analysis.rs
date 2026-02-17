@@ -234,6 +234,49 @@ pub async fn get_user_game_stats(
         .collect())
 }
 
+/// Backfill `first_inaccuracy_move` JSONB for games missing the `_mistake`/`_blunder` keys.
+/// Reads the `moves` column to recompute, then updates in place.
+pub async fn backfill_first_bad_moves(pool: &PgPool) -> Result<u64, AppError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"SELECT game_id, moves, first_inaccuracy_move
+           FROM game_analysis
+           WHERE first_inaccuracy_move IS NOT NULL
+             AND NOT first_inaccuracy_move ? 'white_mistake'"#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let total = rows.len() as u64;
+    if total == 0 {
+        return Ok(0);
+    }
+
+    for row in &rows {
+        let game_id: i64 = row.try_get("game_id").unwrap_or(0);
+        let moves: JsonValue = row.try_get("moves").unwrap_or(JsonValue::Null);
+        let mut fi: JsonValue = row.try_get("first_inaccuracy_move").unwrap_or(JsonValue::Null);
+
+        if let Some(obj) = fi.as_object_mut() {
+            obj.insert("white_mistake".to_string(), serde_json::json!(first_bad_move(&moves, true, &["mistake", "blunder"])));
+            obj.insert("black_mistake".to_string(), serde_json::json!(first_bad_move(&moves, false, &["mistake", "blunder"])));
+            obj.insert("white_blunder".to_string(), serde_json::json!(first_bad_move(&moves, true, &["blunder"])));
+            obj.insert("black_blunder".to_string(), serde_json::json!(first_bad_move(&moves, false, &["blunder"])));
+        }
+
+        sqlx::query("UPDATE game_analysis SET first_inaccuracy_move = $1 WHERE game_id = $2")
+            .bind(&fi)
+            .bind(game_id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Sqlx)?;
+    }
+
+    Ok(total)
+}
+
 // ---- Pre-computed stats helpers ----
 
 fn phase_accuracy(moves: &JsonValue, is_white: bool) -> JsonValue {

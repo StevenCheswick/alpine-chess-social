@@ -58,6 +58,18 @@ async fn main() {
         });
     }
 
+    // Backfill first_inaccuracy_move with mistake/blunder keys for old games
+    tokio::spawn({
+        let pool = pool.clone();
+        async move {
+            match db::analysis::backfill_first_bad_moves(&pool).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!("Backfilled first_bad_move data for {} games", n),
+                Err(e) => tracing::warn!("Failed to backfill first_bad_moves: {}", e),
+            }
+        }
+    });
+
     // CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
