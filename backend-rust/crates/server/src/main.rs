@@ -94,6 +94,8 @@ async fn main() {
         .route("/api/games/stored", get(routes::games::get_stored_games))
         .route("/api/games/tags", get(routes::games::get_game_tags))
         .route("/api/games/analyze-server", post(routes::games::analyze_server))
+        .route("/api/games/backfill", post(routes::games::backfill_games))
+        .route("/api/games/backfill/status", get(routes::games::backfill_status))
         .route("/api/games/stats", get(routes::dashboard::get_game_stats))
         .route("/api/games/endgame-stats", get(routes::endgame::get_endgame_stats))
         .route("/api/games/{game_id}", get(routes::games::get_game_by_id))

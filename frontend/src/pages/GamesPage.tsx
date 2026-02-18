@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { gameService, type AnalyzeServerResponse } from '../services/gameService';
+import { gameService, type AnalyzeServerResponse, type BackfillResponse } from '../services/gameService';
 import { tagDisplayName, isVisibleTag } from '../utils/tagDisplay';
 
 const API_BASE = API_BASE_URL;
@@ -145,6 +145,11 @@ export default function GamesPage() {
   const [serverAnalyzing, setServerAnalyzing] = useState(false);
   const [serverResult, setServerResult] = useState<AnalyzeServerResponse | null>(null);
 
+  // Backfill (load more history) state
+  const [backfilling, setBackfilling] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<BackfillResponse | null>(null);
+
   const hasAnyLinkedAccount = !!chessComUsername;
 
   // Load unanalyzed count
@@ -173,12 +178,21 @@ export default function GamesPage() {
     } catch { /* ignore */ }
   };
 
+  // Check backfill status
+  const checkBackfillStatus = async () => {
+    try {
+      const status = await gameService.getBackfillStatus();
+      setHasMoreHistory(status.hasMoreHistory);
+    } catch { /* ignore */ }
+  };
+
   // Load tags and counts on mount
   useEffect(() => {
     if (hasAnyLinkedAccount) {
       loadAllTags([]);
       loadUnanalyzedCount();
       loadAnalyzedCount();
+      checkBackfillStatus();
     }
   }, [hasAnyLinkedAccount]);
 
@@ -248,7 +262,10 @@ export default function GamesPage() {
     try {
       // Sync Chess.com games
       if (chessComUsername) {
-        await gameService.syncGames();
+        const syncResult = await gameService.syncGames();
+        if (syncResult.hasMoreHistory !== undefined) {
+          setHasMoreHistory(syncResult.hasMoreHistory);
+        }
       }
 
       // Reload games after sync
@@ -320,6 +337,31 @@ export default function GamesPage() {
   };
 
 
+  // Load more history (backfill older games)
+  const loadMoreHistory = async () => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const result = await gameService.backfillGames();
+      setBackfillResult(result);
+      setHasMoreHistory(result.hasMoreHistory);
+
+      // Reload games list and counts
+      await loadStoredGames(currentPage, selectedTagsArray);
+      await loadAllTags(selectedTagsArray);
+      await loadUnanalyzedCount();
+      await loadAnalyzedCount();
+
+      // Clear result message after 10 seconds
+      setTimeout(() => setBackfillResult(null), 10000);
+    } catch (err) {
+      setBackfillResult({ synced: 0, total: 0, oldestSyncedMonth: '', hasMoreHistory: false, message: err instanceof Error ? err.message : 'Failed to load history' });
+      setTimeout(() => setBackfillResult(null), 5000);
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   // Show link account prompt if no accounts linked at all
   if (!hasAnyLinkedAccount) {
     return (
@@ -389,6 +431,62 @@ export default function GamesPage() {
             )}
           </button>
         </div>
+
+        {/* Load More History / All history loaded */}
+        {chessComUsername && totalGames > 0 && (
+          <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
+            {hasMoreHistory ? (
+              <button
+                onClick={loadMoreHistory}
+                disabled={backfilling || syncing || loading}
+                className="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-400 hover:to-purple-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+              >
+                {backfilling ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Loading older games...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Load More History
+                  </>
+                )}
+              </button>
+            ) : (
+              totalGames > 0 && (
+                <span className="flex items-center gap-2 text-sm text-slate-500">
+                  <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  All history loaded
+                </span>
+              )
+            )}
+            {backfillResult && (
+              <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
+                backfillResult.synced > 0
+                  ? 'bg-violet-500/20 border border-violet-500/30 text-violet-300'
+                  : backfillResult.message
+                  ? 'bg-red-500/20 border border-red-500/30 text-red-300'
+                  : 'bg-slate-500/20 border border-slate-500/30 text-slate-300'
+              }`}>
+                {backfillResult.synced > 0 ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Loaded {backfillResult.synced} older games
+                  </>
+                ) : (
+                  backfillResult.message || 'No additional games found'
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Link account prompt */}
         {!chessComUsername && (

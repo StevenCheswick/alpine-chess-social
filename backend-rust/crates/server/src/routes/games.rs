@@ -142,6 +142,10 @@ pub async fn sync_games(
     let now = chrono::Utc::now();
     let max_games: usize = 1000;
 
+    // Track the last archive month we processed (for backfill cursor)
+    let mut stopped_at_month: Option<(i32, u32)> = None;
+    let mut all_archives_consumed = false;
+
     let pgn_tcn_pairs = if is_first_sync {
         tracing::info!("First sync for {} — fetching up to {} games", chess_com_username, max_games);
         let mut all_pairs = Vec::new();
@@ -150,7 +154,8 @@ pub async fn sync_games(
         let archive_months = client.fetch_archives(&chess_com_username).await.unwrap_or_default();
         tracing::info!("  Found {} monthly archives", archive_months.len());
 
-        for (year, month) in &archive_months {
+        let mut hit_limit = false;
+        for (i, (year, month)) in archive_months.iter().enumerate() {
             match client.fetch_user_games(&chess_com_username, Some(*year), Some(*month), true).await {
                 Ok(pairs) => {
                     if !pairs.is_empty() {
@@ -158,6 +163,8 @@ pub async fn sync_games(
                         all_pairs.extend(pairs);
                         if all_pairs.len() >= max_games {
                             all_pairs.truncate(max_games);
+                            stopped_at_month = Some((*year, *month));
+                            hit_limit = true;
                             break;
                         }
                     }
@@ -166,6 +173,13 @@ pub async fn sync_games(
                     tracing::warn!("  {}/{:02}: Error - {}", year, month, e);
                 }
             }
+            // If this is the last archive and we didn't hit the limit
+            if i == archive_months.len() - 1 {
+                all_archives_consumed = true;
+            }
+        }
+        if !hit_limit && archive_months.is_empty() {
+            all_archives_consumed = true;
         }
         all_pairs
     } else {
@@ -235,6 +249,26 @@ pub async fn sync_games(
     };
 
     users::update_last_synced(&pool, account_id, "chess_com").await?;
+
+    // Set backfill cursor on first sync
+    let (oldest_synced_month, has_more_history) = if is_first_sync {
+        if all_archives_consumed {
+            users::update_oldest_synced_month(&pool, account_id, "complete").await?;
+            (Some("complete".to_string()), false)
+        } else if let Some((y, m)) = stopped_at_month {
+            let cursor = format!("{}-{:02}", y, m);
+            users::update_oldest_synced_month(&pool, account_id, &cursor).await?;
+            (Some(cursor), true)
+        } else {
+            (None, false)
+        }
+    } else {
+        // For re-syncs, read existing cursor
+        let cursor = users::get_oldest_synced_month(&pool, account_id).await?;
+        let more = cursor.as_deref().map(|c| c != "complete").unwrap_or(false);
+        (cursor, more)
+    };
+
     let total_games = games::get_user_games_count(&pool, account_id, None).await?;
 
     Ok(Json(serde_json::json!({
@@ -243,6 +277,8 @@ pub async fn sync_games(
         "total": total_games,
         "lastSyncedAt": users::get_last_synced(&pool, account_id, "chess_com").await?.map(|t| t.to_rfc3339()),
         "isFirstSync": is_first_sync,
+        "oldestSyncedMonth": oldest_synced_month,
+        "hasMoreHistory": has_more_history,
     })))
 }
 
@@ -384,6 +420,202 @@ pub async fn get_my_games(
 #[derive(Deserialize)]
 pub struct LimitQuery {
     pub limit: Option<i64>,
+}
+
+/// GET /api/games/backfill/status
+/// Returns whether the user has more history to load and the current cursor.
+pub async fn backfill_status(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+) -> Result<Json<JsonValue>, AppError> {
+    let account_id = user.id;
+    let cursor = users::get_oldest_synced_month(&pool, account_id).await?;
+
+    // For legacy users who synced before this feature, infer from earliest game
+    let (oldest_synced_month, has_more_history) = match cursor {
+        Some(ref c) if c == "complete" => (Some("complete".to_string()), false),
+        Some(ref c) => (Some(c.clone()), true),
+        None => {
+            // Check if user has any games (i.e. they synced before this feature)
+            let last_synced = users::get_last_synced(&pool, account_id, "chess_com").await?;
+            if last_synced.is_some() {
+                // Legacy user: infer cursor from earliest game date
+                let earliest = games::get_earliest_game_date(&pool, account_id, "chess_com").await?;
+                match earliest {
+                    Some(month) => (Some(month), true),
+                    None => (None, false),
+                }
+            } else {
+                (None, false)
+            }
+        }
+    };
+
+    Ok(Json(serde_json::json!({
+        "oldestSyncedMonth": oldest_synced_month,
+        "hasMoreHistory": has_more_history,
+    })))
+}
+
+/// POST /api/games/backfill
+/// Fetch the next batch of older games, working backwards through Chess.com archives.
+pub async fn backfill_games(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+) -> Result<Json<JsonValue>, AppError> {
+    let chess_com_username = user
+        .chess_com_username
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or(AppError::BadRequest(
+            "No Chess.com username linked to account".into(),
+        ))?
+        .to_string();
+
+    let account_id = user.id;
+    let max_games: usize = 1000;
+
+    // Determine the cursor — which month to start before
+    let cursor = users::get_oldest_synced_month(&pool, account_id).await?;
+
+    let cursor_month: Option<String> = match cursor {
+        Some(ref c) if c == "complete" => {
+            return Ok(Json(serde_json::json!({
+                "synced": 0,
+                "total": games::get_user_games_count(&pool, account_id, None).await?,
+                "oldestSyncedMonth": "complete",
+                "hasMoreHistory": false,
+                "message": "All history already loaded",
+            })));
+        }
+        Some(c) => Some(c),
+        None => {
+            // Legacy user: infer from earliest game
+            let earliest = games::get_earliest_game_date(&pool, account_id, "chess_com").await?;
+            earliest
+        }
+    };
+
+    let client = clients::chess_com::ChessComClient::new();
+    let archive_months = client.fetch_archives(&chess_com_username).await.map_err(|e| {
+        AppError::Internal(e.into())
+    })?;
+
+    // Filter archives to only months strictly older than the cursor
+    let older_archives: Vec<&(i32, u32)> = if let Some(ref cursor_str) = cursor_month {
+        // Parse "YYYY-MM" into (year, month)
+        let parts: Vec<&str> = cursor_str.split('-').collect();
+        if parts.len() >= 2 {
+            let cy: i32 = parts[0].parse().unwrap_or(9999);
+            let cm: u32 = parts[1].parse().unwrap_or(12);
+            archive_months
+                .iter()
+                .filter(|(y, m)| (*y, *m) < (cy, cm))
+                .collect()
+        } else {
+            archive_months.iter().collect()
+        }
+    } else {
+        // No cursor at all — fetch everything (shouldn't normally happen)
+        archive_months.iter().collect()
+    };
+
+    tracing::info!(
+        "Backfill for {} — {} older archives to process (cursor: {:?})",
+        chess_com_username,
+        older_archives.len(),
+        cursor_month
+    );
+
+    if older_archives.is_empty() {
+        // No more archives — mark complete
+        users::update_oldest_synced_month(&pool, account_id, "complete").await?;
+        return Ok(Json(serde_json::json!({
+            "synced": 0,
+            "total": games::get_user_games_count(&pool, account_id, None).await?,
+            "oldestSyncedMonth": "complete",
+            "hasMoreHistory": false,
+            "message": "All history loaded",
+        })));
+    }
+
+    let mut all_pairs = Vec::new();
+    let mut last_processed_month: Option<(i32, u32)> = None;
+    let mut all_consumed = false;
+
+    for (i, &&(year, month)) in older_archives.iter().enumerate() {
+        match client.fetch_user_games(&chess_com_username, Some(year), Some(month), true).await {
+            Ok(pairs) => {
+                if !pairs.is_empty() {
+                    tracing::info!("  backfill {}/{:02}: {} games", year, month, pairs.len());
+                    all_pairs.extend(pairs);
+                    if all_pairs.len() >= max_games {
+                        all_pairs.truncate(max_games);
+                        last_processed_month = Some((year, month));
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("  backfill {}/{:02}: Error - {}", year, month, e);
+            }
+        }
+        if i == older_archives.len() - 1 {
+            all_consumed = true;
+        }
+    }
+
+    let synced_count = if !all_pairs.is_empty() {
+        let game_records = build_game_records(&all_pairs, &chess_com_username);
+        let count = games::upsert_games(&pool, account_id, &game_records, "chess_com").await?;
+
+        // Incrementally populate opening stats
+        opening_moves::populate_opening_stats(&pool, account_id).await?;
+
+        // Tag titled opponents
+        let source_ids: Vec<String> = game_records
+            .iter()
+            .filter_map(|g| g["id"].as_str().map(|s| s.to_string()))
+            .collect();
+        let db_games = games::get_game_ids_and_opponents(&pool, account_id, "chess_com", &source_ids).await?;
+        let title_pairs: Vec<(i64, String)> = db_games
+            .iter()
+            .filter_map(|(db_id, _source_id, opponent)| {
+                titled_players::lookup(opponent).map(|title| (*db_id, title))
+            })
+            .collect();
+        if !title_pairs.is_empty() {
+            let tagged = titled_players::insert_title_tags(&pool, &title_pairs).await?;
+            tracing::info!("Backfill: tagged {} games with titled opponent tags", tagged);
+        }
+
+        count
+    } else {
+        0
+    };
+
+    // Update cursor
+    let (new_cursor, has_more) = if all_consumed {
+        users::update_oldest_synced_month(&pool, account_id, "complete").await?;
+        ("complete".to_string(), false)
+    } else if let Some((y, m)) = last_processed_month {
+        let c = format!("{}-{:02}", y, m);
+        users::update_oldest_synced_month(&pool, account_id, &c).await?;
+        (c, true)
+    } else {
+        // All archives had errors or empty — mark complete
+        users::update_oldest_synced_month(&pool, account_id, "complete").await?;
+        ("complete".to_string(), false)
+    };
+
+    let total_games = games::get_user_games_count(&pool, account_id, None).await?;
+
+    Ok(Json(serde_json::json!({
+        "synced": synced_count,
+        "total": total_games,
+        "oldestSyncedMonth": new_cursor,
+        "hasMoreHistory": has_more,
+    })))
 }
 
 // ---- Internal helpers ----

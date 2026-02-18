@@ -29,6 +29,21 @@ export interface SyncResponse {
   total: number;
   lastSyncedAt: string | null;
   isFirstSync: boolean;
+  oldestSyncedMonth?: string | null;
+  hasMoreHistory?: boolean;
+}
+
+export interface BackfillResponse {
+  synced: number;
+  total: number;
+  oldestSyncedMonth: string;
+  hasMoreHistory: boolean;
+  message?: string;
+}
+
+export interface BackfillStatusResponse {
+  oldestSyncedMonth: string | null;
+  hasMoreHistory: boolean;
 }
 
 export interface AnalyzeResponse {
@@ -84,6 +99,20 @@ export const gameService = {
       all_unanalyzed: true,
       limit: limit ?? 100,
     });
+  },
+
+  /**
+   * Get backfill status — whether more history is available to load.
+   */
+  async getBackfillStatus(): Promise<BackfillStatusResponse> {
+    return api.get<BackfillStatusResponse>('/api/games/backfill/status');
+  },
+
+  /**
+   * Load older games from Chess.com history (backfill).
+   */
+  async backfillGames(): Promise<BackfillResponse> {
+    return api.post<BackfillResponse>('/api/games/backfill', {});
   },
 };
 

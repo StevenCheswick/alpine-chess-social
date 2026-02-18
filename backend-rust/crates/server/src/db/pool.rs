@@ -101,6 +101,13 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- Track how far back we've synced Chess.com history
+-- NULL = never synced, "YYYY-MM" = oldest month fetched, "complete" = all history fetched
+DO $$ BEGIN
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS chess_com_oldest_synced_month TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- Titled players lookup (Chess.com usernames → title)
 CREATE TABLE IF NOT EXISTS titled_players (
     username TEXT PRIMARY KEY,

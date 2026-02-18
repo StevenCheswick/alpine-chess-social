@@ -724,6 +724,33 @@ pub async fn get_unanalyzed_game_ids(
     Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
+/// Get the earliest game date for a user on a given source.
+/// Used to infer the backfill cursor for legacy users who synced before the feature existed.
+/// Returns the date as "YYYY-MM" (e.g. "2023-06"), or None if no games.
+pub async fn get_earliest_game_date(
+    pool: &PgPool,
+    user_id: i64,
+    source: &str,
+) -> Result<Option<String>, AppError> {
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT MIN(date) FROM user_games WHERE user_id = $1 AND source = $2",
+    )
+    .bind(user_id)
+    .bind(source)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    // date is stored as "YYYY-MM-DD", extract "YYYY-MM"
+    Ok(row.and_then(|r| r.0).and_then(|d| {
+        if d.len() >= 7 {
+            Some(d[..7].to_string())
+        } else {
+            None
+        }
+    }))
+}
+
 /// Get games by Chess.com username (for user profile /users/me/games).
 pub async fn get_games_by_chess_com_username(
     pool: &PgPool,
