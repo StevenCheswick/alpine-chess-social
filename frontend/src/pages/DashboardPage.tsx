@@ -181,7 +181,7 @@ export default function DashboardPage() {
                   axisLine={{ stroke: '#475569' }}
                 />
                 <YAxis
-                  domain={[0, 100]}
+                  domain={[50, 100]}
                   tick={{ fill: '#94a3b8', fontSize: 12 }}
                   tickLine={{ stroke: '#475569' }}
                   axisLine={{ stroke: '#475569' }}
@@ -216,7 +216,7 @@ export default function DashboardPage() {
                   axisLine={{ stroke: '#475569' }}
                 />
                 <YAxis
-                  domain={[0, 100]}
+                  domain={[50, 100]}
                   tick={{ fill: '#94a3b8', fontSize: 12 }}
                   tickLine={{ stroke: '#475569' }}
                   axisLine={{ stroke: '#475569' }}
