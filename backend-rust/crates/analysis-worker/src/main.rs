@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create database pool
     let pool = sqlx::postgres::PgPoolOptions::new()
+        .min_connections(5)
         .max_connections(5)
         .connect(&config.database_url)
         .await?;
