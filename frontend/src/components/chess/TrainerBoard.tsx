@@ -253,18 +253,17 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), unvisited=${unvisited.length}/${computed.length}, result.type=${moveData.result!.type}`);
 
     setTimeout(() => {
-      setGame(prev => {
-        const copy = new Chess(prev.fen());
-        const move = uciToMove(uci);
-        console.log(`[Trainer] applying opponent move: ${uci} on fen=${copy.fen()}`);
-        try {
-          const result = copy.move({ from: move.from as Square, to: move.to as Square, promotion: move.promotion });
-          console.log(`[Trainer] opponent move applied: ${result.san}, new fen=${copy.fen()}`);
-        } catch (err) {
-          console.error(`[Trainer] FAILED to apply opponent move ${uci}:`, err, `fen=${copy.fen()}`);
-        }
-        return copy;
-      });
+      const curGame = gameRef.current;
+      const copy = new Chess(curGame.fen());
+      const move = uciToMove(uci);
+      console.log(`[Trainer] applying opponent move: ${uci} on fen=${copy.fen()}`);
+      try {
+        const applied = copy.move({ from: move.from as Square, to: move.to as Square, promotion: move.promotion });
+        console.log(`[Trainer] opponent move applied: ${applied.san}, new fen=${copy.fen()}`);
+      } catch (err) {
+        console.error(`[Trainer] FAILED to apply opponent move ${uci}:`, err, `fen=${copy.fen()}`);
+      }
+      setGame(copy);
 
       setLastMove(uciToMove(uci));
       addMove(moveData.san, 'opponent');

@@ -4,8 +4,8 @@ import { Chessboard } from 'react-chessboard';
 import { PuzzleBoard, type PuzzleStatus } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { tagDisplayName } from '../utils/tagDisplay';
-import { getPuzzleStats, type PuzzleStats, type PositionStats } from '../services/puzzleStatsService';
+import { tagDisplayName, isVisibleTag } from '../utils/tagDisplay';
+import { getPuzzleStats, type PuzzleStats, type PositionStats, type ThemeStats } from '../services/puzzleStatsService';
 import type { PuzzleWithContext } from '../types/analysis';
 
 const API_BASE = API_BASE_URL;
@@ -301,6 +301,11 @@ export default function PuzzlesPage() {
           {stats.byPosition && stats.byPosition.length > 0 && (
             <PositionBreakdown positions={stats.byPosition} />
           )}
+
+          {/* Theme breakdown */}
+          {stats.byTheme && stats.byTheme.length > 0 && (
+            <ThemeBreakdown themes={stats.byTheme} />
+          )}
         </div>
       )}
 
@@ -529,6 +534,59 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
                   <td className="py-2 px-3 text-right text-slate-300">{p.user.total}</td>
                   <td className="py-2 px-3 text-right text-emerald-400">{p.user.rate}%</td>
                   <td className="py-2 px-3 text-right text-indigo-400">{p.opponent.rate}%</td>
+                  <td className={`py-2 pl-3 text-right font-medium ${getEdgeColor(edge)}`}>
+                    {edge > 0 ? '+' : ''}{edge.toFixed(1)}%
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Theme breakdown - compare find rates by puzzle theme */
+function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
+  // Only show visible themes with enough data, sorted by total puzzles
+  const filtered = themes
+    .filter(t => isVisibleTag(t.theme) && t.user.total + t.opponent.total >= 2)
+    .sort((a, b) => (b.user.total + b.opponent.total) - (a.user.total + a.opponent.total));
+
+  if (filtered.length === 0) return null;
+
+  const getEdgeColor = (edge: number) =>
+    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-400';
+
+  return (
+    <div className="mt-4 pt-4 border-t border-slate-700">
+      <h3 className="text-sm font-medium text-slate-400 mb-3">Find Rate by Theme</h3>
+      <p className="text-xs text-slate-500 mb-3">
+        How well you find tactics by puzzle type.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-700">
+              <th className="text-left py-2 pr-4">Theme</th>
+              <th className="text-right py-2 px-3">Your Puzzles</th>
+              <th className="text-right py-2 px-3">Your Rate</th>
+              <th className="text-right py-2 px-3">Opp Rate</th>
+              <th className="text-right py-2 pl-3">Edge</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((t) => {
+              const edge = t.user.rate - t.opponent.rate;
+              return (
+                <tr key={t.theme} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <td className="py-2 pr-4">
+                    <span className="font-medium text-amber-400">{tagDisplayName(t.theme)}</span>
+                  </td>
+                  <td className="py-2 px-3 text-right text-slate-300">{t.user.total}</td>
+                  <td className="py-2 px-3 text-right text-emerald-400">{t.user.rate}%</td>
+                  <td className="py-2 px-3 text-right text-indigo-400">{t.opponent.rate}%</td>
                   <td className={`py-2 pl-3 text-right font-medium ${getEdgeColor(edge)}`}>
                     {edge > 0 ? '+' : ''}{edge.toFixed(1)}%
                   </td>
