@@ -273,7 +273,7 @@ function TrainerDrill({
     onEvalUpdate,
   });
 
-  const { board, phase, statusMessage, start, showHint, solverColor, fen, variationsCompleted, totalLeaves } = trainer;
+  const { board, phase, statusMessage, start, showHint, solverColor, fen, variationsCompleted, totalLeaves, drillMode, hasDeepVariations, deepVariationCount, startDeepDrill } = trainer;
   const allVariationsDone = variationsCompleted >= totalLeaves;
 
   // Auto-start on mount
@@ -282,13 +282,13 @@ function TrainerDrill({
     return () => clearTimeout(timer);
   }, [start]);
 
-  // Fire completion callback when all variations done
+  // Fire completion callback when main line done (not deep drill)
   useEffect(() => {
-    if (phase === 'done' && allVariationsDone && !completedRef.current) {
+    if (phase === 'done' && allVariationsDone && drillMode === 'main' && !completedRef.current) {
       completedRef.current = true;
       onComplete(puzzle.id);
     }
-  }, [phase, allVariationsDone, onComplete, puzzle.id]);
+  }, [phase, allVariationsDone, drillMode, onComplete, puzzle.id]);
 
   const rootEvalDisplay = puzzle.root_eval >= 10000
     ? 'Mate'
@@ -319,8 +319,11 @@ function TrainerDrill({
         {/* Puzzle counter + variation progress */}
         <div className="flex items-center gap-4 text-sm text-slate-400">
           <span>Puzzle <span className="text-emerald-400 font-semibold">{puzzleIndex + 1}</span> / {totalPuzzles}</span>
-          {totalLeaves > 1 && (
-            <span>Variation <span className="text-emerald-400 font-semibold">{Math.min(variationsCompleted + (phase !== 'done' && phase !== 'idle' ? 1 : 0), totalLeaves)}</span> / {totalLeaves}</span>
+          {drillMode === 'deep' && totalLeaves > 1 && (
+            <span>Variation <span className="text-amber-400 font-semibold">{Math.min(variationsCompleted + (phase !== 'done' && phase !== 'idle' ? 1 : 0), totalLeaves)}</span> / {totalLeaves}</span>
+          )}
+          {drillMode === 'main' && (
+            <span className="text-slate-500 text-xs">Main line</span>
           )}
         </div>
 
@@ -415,6 +418,14 @@ function TrainerDrill({
               className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors text-sm"
             >
               Retry Puzzle
+            </button>
+          )}
+          {phase === 'done' && allVariationsDone && drillMode === 'main' && hasDeepVariations && (
+            <button
+              onClick={() => { startDeepDrill(); setTimeout(() => start(), 300); }}
+              className="px-4 py-2 bg-slate-800 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-slate-700 hover:border-amber-500/50 transition-colors text-sm"
+            >
+              Drill Deeper ({deepVariationCount} variations)
             </button>
           )}
           {phase === 'done' && allVariationsDone && hasNext && (

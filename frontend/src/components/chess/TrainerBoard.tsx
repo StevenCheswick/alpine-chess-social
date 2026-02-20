@@ -31,6 +31,49 @@ function countLeaves(node: TrainerPuzzleTree): number {
   return best || 1;
 }
 
+/** Count variations following only the main line (best opponent move at each node) */
+function countMainLineLeaves(node: TrainerPuzzleTree): number {
+  if (node.type === 'cutoff' || node.type === 'terminal') return 1;
+  if (!node.moves) return 1;
+  const entries = Object.values(node.moves);
+  if (entries.length === 0) return 1;
+  if (node.type === 'opponent') {
+    // Only follow the best move (highest games count)
+    const computed = entries.filter(m => m.result);
+    if (computed.length === 0) return 1;
+    const best = computed.reduce((a, b) => ((a.games ?? 0) >= (b.games ?? 0) ? a : b));
+    return best.result ? countMainLineLeaves(best.result) : 1;
+  }
+  // Solver node: same as full count — user picks one, take the richest
+  let best = 0;
+  for (const m of entries) {
+    if (!m.accepted) continue;
+    const n = m.result ? countMainLineLeaves(m.result) : 1;
+    if (n > best) best = n;
+  }
+  return best || 1;
+}
+
+/** Check if tree has opponent nodes with more than one computed move (deep variations exist) */
+function treeHasDeepVariations(node: TrainerPuzzleTree): boolean {
+  if (node.type === 'cutoff' || node.type === 'terminal' || !node.moves) return false;
+  const entries = Object.entries(node.moves);
+  if (node.type === 'opponent') {
+    const computed = entries.filter(([, m]) => m.result);
+    if (computed.length > 1) return true;
+    for (const [, m] of computed) {
+      if (m.result && treeHasDeepVariations(m.result)) return true;
+    }
+    return false;
+  }
+  // Solver node: check all accepted children
+  for (const [, m] of entries) {
+    if (!m.accepted) continue;
+    if (m.result && treeHasDeepVariations(m.result)) return true;
+  }
+  return false;
+}
+
 /** Check if a subtree has any unvisited leaf nodes */
 function hasUnvisitedLeaves(node: TrainerPuzzleTree, visited: Set<TrainerPuzzleTree>): boolean {
   if (node.type === 'cutoff' || node.type === 'terminal' || !node.moves) {
@@ -102,7 +145,9 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   // Subvariation drilling state
   const [visitedLeaves] = useState(() => new Set<TrainerPuzzleTree>());
   const visitedLeavesRef = useRef(visitedLeaves);
-  const [totalLeaves, setTotalLeaves] = useState(() => countLeaves(puzzle.tree));
+  const [drillMode, setDrillMode] = useState<'main' | 'deep'>('main');
+  const drillModeRef = useRef<'main' | 'deep'>('main');
+  const [totalLeaves, setTotalLeaves] = useState(() => countMainLineLeaves(puzzle.tree));
   const [variationsCompleted, setVariationsCompleted] = useState(0);
   const isFirstAttemptRef = useRef(true);
   const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -117,6 +162,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   // Keep refs in sync with state so callbacks always read latest values
   useEffect(() => { currentNodeRef.current = currentNode; }, [currentNode]);
   useEffect(() => { gameRef.current = game; }, [game]);
+  useEffect(() => { drillModeRef.current = drillMode; }, [drillMode]);
 
   const updatePhase = useCallback((p: TrainerPhase) => {
     const prev = phaseRef.current;
@@ -153,7 +199,9 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     movePendingRef.current = false;
     opponentOrderRef.current.clear();
     visitedLeaves.clear();
-    setTotalLeaves(countLeaves(puzzle.tree));
+    setDrillMode('main');
+    drillModeRef.current = 'main';
+    setTotalLeaves(countMainLineLeaves(puzzle.tree));
     setVariationsCompleted(0);
     isFirstAttemptRef.current = true;
   }, [puzzle, retryKey]);
@@ -250,27 +298,34 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       return;
     }
 
-    // Get or create a shuffled move order for this node (Fisher-Yates)
-    let order = opponentOrderRef.current.get(oppNode);
-    if (!order) {
-      order = Object.keys(oppNode.moves).slice();
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
+    let pick: [string, (typeof oppNode.moves)[string]];
+
+    if (drillModeRef.current === 'main') {
+      // Main line: always pick the most popular move (highest games count)
+      pick = computed.reduce((a, b) => ((a[1].games ?? 0) >= (b[1].games ?? 0) ? a : b));
+    } else {
+      // Deep mode: shuffled order, never repeat
+      let order = opponentOrderRef.current.get(oppNode);
+      if (!order) {
+        order = Object.keys(oppNode.moves).slice();
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        opponentOrderRef.current.set(oppNode, order);
       }
-      opponentOrderRef.current.set(oppNode, order);
+
+      const visited = visitedLeavesRef.current;
+      const computedSet = new Set(computed.map(([u]) => u));
+      pick = order
+        .filter(u => computedSet.has(u))
+        .map(u => [u, oppNode.moves![u]] as [string, (typeof oppNode.moves)[string]])
+        .find(([, m]) => hasUnvisitedLeaves(m.result!, visited))
+        ?? computed[0];
     }
 
-    // Walk the shuffled order: first move with a computed result and unvisited leaves
-    const visited = visitedLeavesRef.current;
-    const computedSet = new Set(computed.map(([u]) => u));
-    const pick = order
-      .filter(u => computedSet.has(u))
-      .map(u => [u, oppNode.moves![u]] as [string, (typeof oppNode.moves)[string]])
-      .find(([, m]) => hasUnvisitedLeaves(m.result!, visited))
-      ?? computed[0]; // fallback if all visited
     const [uci, moveData] = pick;
-    console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), computed=${computed.length}, result.type=${moveData.result!.type}`);
+    console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), mode=${drillModeRef.current}, computed=${computed.length}, result.type=${moveData.result!.type}`);
 
     setTimeout(() => {
       const curGame = gameRef.current;
@@ -567,6 +622,21 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     }
   }, [currentNode]);
 
+  const hasDeepVariations = useMemo(() => treeHasDeepVariations(puzzle.tree), [puzzle]);
+  const deepVariationCount = useMemo(() => countLeaves(puzzle.tree), [puzzle]);
+
+  const startDeepDrill = useCallback(() => {
+    visitedLeaves.clear();
+    opponentOrderRef.current.clear();
+    movePendingRef.current = false;
+    setDrillMode('deep');
+    drillModeRef.current = 'deep';
+    setTotalLeaves(deepVariationCount);
+    setVariationsCompleted(0);
+    isFirstAttemptRef.current = true;
+    // Will be started by the parent via start()
+  }, [visitedLeaves, deepVariationCount]);
+
   // Build square styles
   const squareStyles: Record<string, React.CSSProperties> = {};
 
@@ -619,5 +689,9 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     fen: game.fen(),
     variationsCompleted,
     totalLeaves,
+    drillMode,
+    hasDeepVariations,
+    deepVariationCount,
+    startDeepDrill,
   };
 }
