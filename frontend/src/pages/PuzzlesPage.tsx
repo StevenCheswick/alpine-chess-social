@@ -551,7 +551,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
 function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   // Only show visible themes with enough data, sorted by total puzzles
   const filtered = themes
-    .filter(t => isVisibleTag(t.theme) && t.user.total + t.opponent.total >= 2)
+    .filter(t => isVisibleTag(t.theme) && t.user.total >= 50)
     .sort((a, b) => (b.user.total + b.opponent.total) - (a.user.total + a.opponent.total));
 
   if (filtered.length === 0) return null;
