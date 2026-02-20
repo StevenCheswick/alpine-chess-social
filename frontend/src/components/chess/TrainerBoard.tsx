@@ -107,6 +107,8 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   const isFirstAttemptRef = useRef(true);
   const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const movePendingRef = useRef(false);
+  // Per-node shuffled move order so opponent never repeats the same branch
+  const opponentOrderRef = useRef(new Map<TrainerPuzzleTree, string[]>());
 
   const solverColor = useMemo((): 'white' | 'black' => {
     return puzzle.solver_color === 'w' ? 'white' : 'black';
@@ -149,6 +151,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     // Reset subvariation state
     clearTimeout(restartTimer.current);
     movePendingRef.current = false;
+    opponentOrderRef.current.clear();
     visitedLeaves.clear();
     setTotalLeaves(countLeaves(puzzle.tree));
     setVariationsCompleted(0);
@@ -247,11 +250,25 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       return;
     }
 
-    // Prefer moves whose subtree has unvisited leaves
+    // Get or create a shuffled move order for this node (Fisher-Yates)
+    let order = opponentOrderRef.current.get(oppNode);
+    if (!order) {
+      order = Object.keys(oppNode.moves).slice();
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      opponentOrderRef.current.set(oppNode, order);
+    }
+
+    // Walk the shuffled order: first move with a computed result and unvisited leaves
     const visited = visitedLeavesRef.current;
-    const unvisited = computed.filter(([, m]) => hasUnvisitedLeaves(m.result!, visited));
-    const candidates = unvisited.length > 0 ? unvisited : computed;
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    const computedSet = new Set(computed.map(([u]) => u));
+    const pick = order
+      .filter(u => computedSet.has(u))
+      .map(u => [u, oppNode.moves![u]] as [string, (typeof oppNode.moves)[string]])
+      .find(([, m]) => hasUnvisitedLeaves(m.result!, visited))
+      ?? computed[0]; // fallback if all visited
     const [uci, moveData] = pick;
     console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), unvisited=${unvisited.length}/${computed.length}, result.type=${moveData.result!.type}`);
 
