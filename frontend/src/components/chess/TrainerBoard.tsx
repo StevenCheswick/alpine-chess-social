@@ -270,7 +270,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       .find(([, m]) => hasUnvisitedLeaves(m.result!, visited))
       ?? computed[0]; // fallback if all visited
     const [uci, moveData] = pick;
-    console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), unvisited=${unvisited.length}/${computed.length}, result.type=${moveData.result!.type}`);
+    console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), computed=${computed.length}, result.type=${moveData.result!.type}`);
 
     setTimeout(() => {
       const curGame = gameRef.current;
