@@ -148,6 +148,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   const [drillMode, setDrillMode] = useState<'main' | 'deep'>('main');
   const drillModeRef = useRef<'main' | 'deep'>('main');
   const [totalLeaves, setTotalLeaves] = useState(() => countMainLineLeaves(puzzle.tree));
+  const totalLeavesRef = useRef(totalLeaves);
   const [variationsCompleted, setVariationsCompleted] = useState(0);
   const isFirstAttemptRef = useRef(true);
   const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -163,6 +164,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   useEffect(() => { currentNodeRef.current = currentNode; }, [currentNode]);
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { drillModeRef.current = drillMode; }, [drillMode]);
+  useEffect(() => { totalLeavesRef.current = totalLeaves; }, [totalLeaves]);
 
   const updatePhase = useCallback((p: TrainerPhase) => {
     const prev = phaseRef.current;
@@ -261,16 +263,17 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     // Mark this leaf as visited
     if (leaf) visitedLeavesRef.current.add(leaf);
     const completed = visitedLeavesRef.current.size;
-    const total = countLeaves(puzzle.tree);
+    const total = totalLeavesRef.current;
     // Clamp in case sibling marking pushed visited count past max-based total
     const clamped = Math.min(completed, total);
     setVariationsCompleted(clamped);
-    console.log(`[Trainer] puzzleComplete: ${message} — variation ${clamped}/${total} (raw visited=${completed})`);
+    console.log(`[Trainer] puzzleComplete: ${message} — variation ${clamped}/${total} (mode=${drillModeRef.current}, raw visited=${completed})`);
 
     if (clamped >= total) {
-      // All variations done
+      // All variations done (for current drill mode)
       updatePhase('done');
-      setStatusMessage({ title: 'All variations trained!', msg: `Completed all ${total} variation${total !== 1 ? 's' : ''}.`, type: 'success' });
+      const doneMsg = drillModeRef.current === 'main' ? 'Main line complete!' : `Completed all ${total} variation${total !== 1 ? 's' : ''}.`;
+      setStatusMessage({ title: doneMsg, msg: message, type: 'success' });
     } else {
       // More variations remain — show status, then auto-restart
       setStatusMessage({ title: `Variation ${clamped}/${total} complete!`, msg: message, type: 'success' });
@@ -278,7 +281,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       clearTimeout(restartTimer.current);
       restartTimer.current = setTimeout(() => start(true), 1500);
     }
-  }, [puzzle, updatePhase, start]);
+  }, [updatePhase, start]);
 
   const playOpponentMove = useCallback((oppNode: TrainerPuzzleTree) => {
     console.log(`[Trainer] playOpponentMove() — node type=${oppNode.type}, fen=${oppNode.fen}, moves=${Object.keys(oppNode.moves || {}).length}`);
