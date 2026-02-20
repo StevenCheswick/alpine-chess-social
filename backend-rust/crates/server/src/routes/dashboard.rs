@@ -29,7 +29,7 @@ pub fn invalidate_stats_cache() {
     }
 }
 
-const ROLLING_WINDOW: usize = 100;
+const ROLLING_WINDOW: usize = 30;
 const MAX_CHART_POINTS: usize = 50;
 
 /// GET /api/games/stats
@@ -119,10 +119,8 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     let smoothed_mistake = rolling_avg(&raw_mistake);
     let smoothed_blunder = rolling_avg(&raw_blunder);
 
-    // Skip the warm-up period where the rolling window is less than half full.
-    // This avoids the first chart point being a raw single-game value that looks
-    // like a spike before the smoothing kicks in.
-    let skip = if raw_accuracy.len() > ROLLING_WINDOW { ROLLING_WINDOW / 2 } else { 0 };
+    // Skip a small warm-up so the first chart point isn't a raw single-game value.
+    let skip = if raw_accuracy.len() > ROLLING_WINDOW { 10 } else { 0 };
 
     let mut accuracy_over_time = accuracy_over_time.split_off(skip);
     let mut first_inaccuracy_over_time = first_inaccuracy_over_time.split_off(skip);
