@@ -1,7 +1,7 @@
-//! Stockfish engine wrapper using UCI protocol
+//! Stockfish engine wrapper using UCI protocol (async I/O)
 
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use tracing::debug;
 
@@ -38,11 +38,11 @@ pub struct StockfishEngine {
 
 impl StockfishEngine {
     /// Spawn a new Stockfish process and initialize UCI
-    pub fn new(path: &str) -> Result<Self, WorkerError> {
+    pub async fn new(path: &str) -> Result<Self, WorkerError> {
         let mut process = Command::new(path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| WorkerError::Stockfish(format!("Failed to spawn Stockfish: {e}")))?;
 
@@ -56,37 +56,41 @@ impl StockfishEngine {
         };
 
         // Initialize UCI
-        engine.send("uci")?;
-        engine.wait_for("uciok")?;
+        engine.send("uci").await?;
+        engine.wait_for("uciok").await?;
 
         // Configure for analysis
-        engine.send("setoption name Threads value 1")?;
-        engine.send("setoption name Hash value 256")?;  // Increased from 64MB
-        engine.send("setoption name UCI_AnalyseMode value true")?;
-        engine.send("isready")?;
-        engine.wait_for("readyok")?;
+        engine.send("setoption name Threads value 1").await?;
+        engine.send("setoption name Hash value 256").await?;
+        engine.send("setoption name UCI_AnalyseMode value true").await?;
+        engine.send("isready").await?;
+        engine.wait_for("readyok").await?;
 
         Ok(engine)
     }
 
     /// Send a command to Stockfish
-    fn send(&mut self, cmd: &str) -> Result<(), WorkerError> {
+    async fn send(&mut self, cmd: &str) -> Result<(), WorkerError> {
         debug!(cmd, "SF <");
-        writeln!(self.stdin, "{cmd}")
+        self.stdin
+            .write_all(format!("{cmd}\n").as_bytes())
+            .await
             .map_err(|e| WorkerError::Stockfish(format!("Failed to write to Stockfish: {e}")))?;
         self.stdin
             .flush()
+            .await
             .map_err(|e| WorkerError::Stockfish(format!("Failed to flush stdin: {e}")))?;
         Ok(())
     }
 
     /// Wait for a specific response line
-    fn wait_for(&mut self, expected: &str) -> Result<(), WorkerError> {
+    async fn wait_for(&mut self, expected: &str) -> Result<(), WorkerError> {
         let mut line = String::new();
         loop {
             line.clear();
             self.stdout
                 .read_line(&mut line)
+                .await
                 .map_err(|e| WorkerError::Stockfish(format!("Failed to read from Stockfish: {e}")))?;
             let trimmed = line.trim();
             debug!(line = trimmed, "SF >");
@@ -97,9 +101,9 @@ impl StockfishEngine {
     }
 
     /// Evaluate a position and get the best move with score
-    pub fn evaluate(&mut self, fen: &str, nodes: u32) -> Result<EvalResult, WorkerError> {
-        self.send(&format!("position fen {fen}"))?;
-        self.send(&format!("go nodes {nodes}"))?;
+    pub async fn evaluate(&mut self, fen: &str, nodes: u32) -> Result<EvalResult, WorkerError> {
+        self.send(&format!("position fen {fen}")).await?;
+        self.send(&format!("go nodes {nodes}")).await?;
 
         let mut result = EvalResult {
             cp: None,
@@ -112,6 +116,7 @@ impl StockfishEngine {
             line.clear();
             self.stdout
                 .read_line(&mut line)
+                .await
                 .map_err(|e| WorkerError::Stockfish(format!("Failed to read from Stockfish: {e}")))?;
             let trimmed = line.trim();
 
@@ -139,15 +144,15 @@ impl StockfishEngine {
     }
 
     /// Evaluate a position with multiple PV lines (for puzzle extension)
-    pub fn evaluate_multipv(
+    pub async fn evaluate_multipv(
         &mut self,
         fen: &str,
         nodes: u32,
         multipv: u32,
     ) -> Result<Vec<PvLine>, WorkerError> {
-        self.send(&format!("setoption name MultiPV value {multipv}"))?;
-        self.send(&format!("position fen {fen}"))?;
-        self.send(&format!("go nodes {nodes}"))?;
+        self.send(&format!("setoption name MultiPV value {multipv}")).await?;
+        self.send(&format!("position fen {fen}")).await?;
+        self.send(&format!("go nodes {nodes}")).await?;
 
         let mut lines: Vec<PvLine> = vec![
             PvLine {
@@ -163,6 +168,7 @@ impl StockfishEngine {
             line.clear();
             self.stdout
                 .read_line(&mut line)
+                .await
                 .map_err(|e| WorkerError::Stockfish(format!("Failed to read from Stockfish: {e}")))?;
             let trimmed = line.trim();
 
@@ -181,22 +187,22 @@ impl StockfishEngine {
         }
 
         // Reset MultiPV to 1
-        self.send("setoption name MultiPV value 1")?;
+        self.send("setoption name MultiPV value 1").await?;
 
         Ok(lines)
     }
 
     /// Send quit command and wait for process to exit
-    pub fn quit(&mut self) {
-        let _ = self.send("quit");
-        let _ = self.process.wait();
+    pub async fn quit(&mut self) {
+        let _ = self.send("quit").await;
+        let _ = self.process.wait().await;
     }
 }
 
 impl Drop for StockfishEngine {
     fn drop(&mut self) {
-        let _ = self.send("quit");
-        let _ = self.process.kill();
+        // Best-effort synchronous kill in drop
+        let _ = self.process.start_kill();
     }
 }
 

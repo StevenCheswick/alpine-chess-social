@@ -42,26 +42,29 @@ async fn main() -> anyhow::Result<()> {
         "Worker config loaded"
     );
 
-    // Create database pool
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .min_connections(5)
-        .max_connections(5)
-        .connect(&config.database_url)
-        .await?;
-    info!("Database connection established");
-
     // Create engine pool (one Stockfish process per CPU)
     let num_workers = num_cpus::get();
+
+    // Create database pool scaled to worker count
+    let pool_size = (num_workers + 2) as u32; // headroom for overlapping saves
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .min_connections(pool_size)
+        .max_connections(pool_size)
+        .acquire_timeout(std::time::Duration::from_secs(10))
+        .idle_timeout(std::time::Duration::from_secs(300))
+        .connect(&config.database_url)
+        .await?;
+    info!(pool_size, "Database connection pool established");
     info!(num_workers, "Creating Stockfish engine pool");
 
-    let engines: Vec<Arc<Mutex<StockfishEngine>>> = (0..num_workers)
-        .map(|i| {
-            let engine = StockfishEngine::new(&config.stockfish_path)
-                .expect("Failed to spawn Stockfish");
-            info!(engine_id = i, "Stockfish engine ready");
-            Arc::new(Mutex::new(engine))
-        })
-        .collect();
+    let mut engines: Vec<Arc<Mutex<StockfishEngine>>> = Vec::with_capacity(num_workers);
+    for i in 0..num_workers {
+        let engine = StockfishEngine::new(&config.stockfish_path)
+            .await
+            .expect("Failed to spawn Stockfish");
+        info!(engine_id = i, "Stockfish engine ready");
+        engines.push(Arc::new(Mutex::new(engine)));
+    }
 
     // Create SQS client
     let sqs = SqsClient::new(&config).await?;
@@ -247,7 +250,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Shutting down Stockfish engines");
     for engine in engines {
         let mut engine = engine.lock().await;
-        engine.quit();
+        engine.quit().await;
     }
 
     Ok(())

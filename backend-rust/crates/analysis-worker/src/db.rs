@@ -57,6 +57,14 @@ pub async fn save_game_analysis(
         .cloned()
         .unwrap_or(JsonValue::Null);
 
+    let tags = analysis.get("tags").and_then(|t| t.as_array());
+    let tags_json = tags
+        .map(|t| serde_json::to_value(t).unwrap_or_default())
+        .unwrap_or(JsonValue::Null);
+
+    let mut tx = pool.begin().await?;
+
+    // 1. Upsert game_analysis
     sqlx::query(
         r#"INSERT INTO game_analysis (
             game_id, white_accuracy, black_accuracy,
@@ -100,43 +108,38 @@ pub async fn save_game_analysis(
     .bind(&first_inacc)
     .bind(&puzzles)
     .bind(&endgame_segments)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    // Mark game as analyzed
-    sqlx::query("UPDATE user_games SET analyzed_at = NOW() WHERE id = $1")
+    // 2. Mark game as analyzed + update denormalized tags (single UPDATE)
+    sqlx::query("UPDATE user_games SET analyzed_at = NOW(), tags = $2 WHERE id = $1")
         .bind(game_id)
-        .execute(pool)
+        .bind(&tags_json)
+        .execute(&mut *tx)
         .await?;
 
-    // Save tags from puzzle themes
-    if let Some(tags) = analysis.get("tags").and_then(|t| t.as_array()) {
-        // Delete old tags
+    // 3. Replace tags: delete old + batch insert new (2 queries instead of N+1)
+    if let Some(tags) = tags {
         sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
             .bind(game_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
 
-        // Insert new tags
-        for tag in tags {
-            if let Some(tag_str) = tag.as_str() {
-                sqlx::query(
-                    "INSERT INTO game_tags (game_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                )
-                .bind(game_id)
-                .bind(tag_str)
-                .execute(pool)
-                .await?;
-            }
-        }
-
-        // Update denormalized tags JSON in user_games
-        sqlx::query("UPDATE user_games SET tags = $2 WHERE id = $1")
+        let tag_strings: Vec<&str> = tags.iter().filter_map(|t| t.as_str()).collect();
+        if !tag_strings.is_empty() {
+            sqlx::query(
+                "INSERT INTO game_tags (game_id, tag)
+                 SELECT $1, UNNEST($2::text[])
+                 ON CONFLICT DO NOTHING",
+            )
             .bind(game_id)
-            .bind(serde_json::to_value(tags).unwrap_or_default())
-            .execute(pool)
+            .bind(&tag_strings)
+            .execute(&mut *tx)
             .await?;
+        }
     }
+
+    tx.commit().await?;
 
     Ok(())
 }

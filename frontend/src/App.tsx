@@ -17,6 +17,7 @@ import DashboardPage from './pages/DashboardPage';
 import OpeningLinePage from './pages/OpeningLinePage';
 import PuzzlesPage from './pages/PuzzlesPage';
 import EndgameAnalyticsPage from './pages/EndgameAnalyticsPage';
+import TrainerPage from './pages/TrainerPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Protected route wrapper
@@ -83,6 +84,7 @@ function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/endgames" element={<EndgameAnalyticsPage />} />
           <Route path="/opening-line" element={<OpeningLinePage />} />
+          <Route path="/trainer" element={<TrainerPage />} />
         </Route>
 
         {/* 404 */}

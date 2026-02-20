@@ -9,3 +9,4 @@ pub mod opening_tree;
 pub mod profile;
 pub mod puzzles;
 pub mod titled_players;
+pub mod trainer;

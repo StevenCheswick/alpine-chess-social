@@ -28,6 +28,11 @@ AWS_CREDENTIALS.md
 
 # Database
 *.db
+*.duckdb
+*.parquet
+*.jsonl
+*.jsonl.zst
+*.pgn.zst
 backend/data/
 
 # Temp files

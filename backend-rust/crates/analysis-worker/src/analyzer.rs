@@ -124,7 +124,7 @@ pub async fn analyze_game(
     let mut best_moves: Vec<String> = Vec::with_capacity(positions.len() + 1);
 
     // Evaluate starting position
-    let start_result = engine.evaluate(&start_fen, nodes)?;
+    let start_result = engine.evaluate(&start_fen, nodes).await?;
     evals.push(eval_to_white_cp(start_result.cp, start_result.mate, true));
     best_moves.push(start_result.best_move);
 
@@ -132,7 +132,7 @@ pub async fn analyze_game(
     for (i, (_, _, board_after)) in positions.iter().enumerate() {
         let fen = board_after.to_string();
         let is_white = (i + 1) % 2 == 0; // After move i, it's the other side's turn
-        let result = engine.evaluate(&fen, nodes)?;
+        let result = engine.evaluate(&fen, nodes).await?;
         evals.push(eval_to_white_cp(result.cp, result.mate, is_white));
         best_moves.push(result.best_move);
     }
@@ -272,7 +272,7 @@ pub async fn analyze_game(
         let uci_move = &positions[blunder_i].1;
 
         let puzzle_result =
-            extend_puzzle_line(engine, &board_after, nodes, solver_color)?;
+            extend_puzzle_line(engine, &board_after, nodes, solver_color).await?;
 
         if let Some((mainline_moves, cp)) = puzzle_result {
             if mainline_moves.len() < MIN_PUZZLE_LENGTH || cp.abs() < MIN_PUZZLE_CP {
@@ -436,10 +436,10 @@ pub async fn analyze_game(
             let null_fen = null_move_fen(&fen);
 
             // Evaluate normal position
-            let normal_result = engine.evaluate(&fen, nodes.min(50_000))?;
+            let normal_result = engine.evaluate(&fen, nodes.min(50_000)).await?;
 
             // Evaluate null-move position
-            let null_result = engine.evaluate(&null_fen, nodes.min(50_000))?;
+            let null_result = engine.evaluate(&null_fen, nodes.min(50_000)).await?;
 
             zug_evals.push(ZugzwangEval {
                 cp: normal_result.cp.unwrap_or(0),
@@ -568,7 +568,7 @@ fn null_move_fen(fen: &str) -> String {
 }
 
 /// Extend a puzzle line using multi-PV analysis
-fn extend_puzzle_line(
+async fn extend_puzzle_line(
     engine: &mut StockfishEngine,
     board: &Board,
     nodes: u32,
@@ -584,7 +584,7 @@ fn extend_puzzle_line(
         let is_solver_turn = current_board.side_to_move() == solver_color;
 
         if is_solver_turn {
-            let lines = engine.evaluate_multipv(&fen, nodes, 2)?;
+            let lines = engine.evaluate_multipv(&fen, nodes, 2).await?;
 
             if lines.is_empty() || lines[0].pv.is_empty() {
                 break;
@@ -625,7 +625,7 @@ fn extend_puzzle_line(
                 break;
             }
         } else {
-            let lines = engine.evaluate_multipv(&fen, nodes, 1)?;
+            let lines = engine.evaluate_multipv(&fen, nodes, 1).await?;
 
             if lines.is_empty() || lines[0].pv.is_empty() {
                 break;
