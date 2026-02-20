@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { EvalBar } from '../components/chess';
-import { TrainerBoard, type TrainerPhase } from '../components/chess/TrainerBoard';
+import { TrainerBoard } from '../components/chess/TrainerBoard';
 import { trainerService, type TrainerOpening, type TrainerPuzzle } from '../services/trainerService';
 
 export default function TrainerPage() {

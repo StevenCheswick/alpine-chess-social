@@ -447,7 +447,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   );
 
   const canDragPiece = useCallback(
-    ({ piece, square }: { isSparePiece: boolean; piece: { pieceType: string }; square: string | null }) => {
+    ({ piece }: { isSparePiece: boolean; piece: { pieceType: string }; square: string | null }) => {
       const curPhase = phaseRef.current;
       if (curPhase !== 'solver_turn') return false;
       const isWhitePiece = piece.pieceType[0] === 'w';
@@ -492,7 +492,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   );
 
   const handleSquareClick = useCallback(
-    ({ piece, square }: { piece: { pieceType: string } | null; square: string }) => {
+    ({ square }: { piece: { pieceType: string } | null; square: string }) => {
       if (phaseRef.current !== 'solver_turn' || !selectedSquare) return;
       if (square === selectedSquare) {
         setSelectedSquare(null);
