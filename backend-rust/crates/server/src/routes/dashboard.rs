@@ -310,9 +310,13 @@ fn rolling_avg_optional(values: &[Option<f64>]) -> Vec<Option<f64>> {
             if window.len() > ROLLING_WINDOW {
                 running -= window.pop_front().unwrap();
             }
-            result.push(Some((running / window.len() as f64 * 10.0).round() / 10.0));
-        } else {
+        }
+        // Emit the current rolling average even for games without this phase,
+        // so the line doesn't gap out at the start/end of the chart.
+        if window.is_empty() {
             result.push(None);
+        } else {
+            result.push(Some((running / window.len() as f64 * 10.0).round() / 10.0));
         }
     }
 
