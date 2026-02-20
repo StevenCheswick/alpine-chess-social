@@ -119,18 +119,27 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     let smoothed_mistake = rolling_avg(&raw_mistake);
     let smoothed_blunder = rolling_avg(&raw_blunder);
 
+    // Skip the warm-up period where the rolling window is less than half full.
+    // This avoids the first chart point being a raw single-game value that looks
+    // like a spike before the smoothing kicks in.
+    let skip = if raw_accuracy.len() > ROLLING_WINDOW { ROLLING_WINDOW / 2 } else { 0 };
+
+    let mut accuracy_over_time = accuracy_over_time.split_off(skip);
+    let mut first_inaccuracy_over_time = first_inaccuracy_over_time.split_off(skip);
+
     for i in 0..accuracy_over_time.len() {
-        accuracy_over_time[i]["accuracy"] = serde_json::json!(smoothed_acc[i]);
-        first_inaccuracy_over_time[i]["moveNumber"] = serde_json::json!(smoothed_inacc[i]);
-        first_inaccuracy_over_time[i]["mistakeMoveNumber"] = serde_json::json!(smoothed_mistake[i]);
-        first_inaccuracy_over_time[i]["blunderMoveNumber"] = serde_json::json!(smoothed_blunder[i]);
+        accuracy_over_time[i]["accuracy"] = serde_json::json!(smoothed_acc[i + skip]);
+        first_inaccuracy_over_time[i]["moveNumber"] = serde_json::json!(smoothed_inacc[i + skip]);
+        first_inaccuracy_over_time[i]["mistakeMoveNumber"] = serde_json::json!(smoothed_mistake[i + skip]);
+        first_inaccuracy_over_time[i]["blunderMoveNumber"] = serde_json::json!(smoothed_blunder[i + skip]);
     }
 
     // Phase accuracy rolling average
+    let mut phase_accuracy_over_time = phase_accuracy_over_time.split_off(skip);
     for (key, raw_vals) in [("opening", &raw_opening), ("middlegame", &raw_middlegame), ("endgame", &raw_endgame)] {
         let filled = rolling_avg_optional(raw_vals);
         for i in 0..phase_accuracy_over_time.len() {
-            phase_accuracy_over_time[i][key] = match filled[i] {
+            phase_accuracy_over_time[i][key] = match filled[i + skip] {
                 Some(v) => serde_json::json!(v),
                 None => JsonValue::Null,
             };

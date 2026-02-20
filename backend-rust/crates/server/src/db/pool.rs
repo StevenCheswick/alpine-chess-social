@@ -165,4 +165,30 @@ CREATE TABLE IF NOT EXISTS opening_book (
     PRIMARY KEY (parent_fen, move_san)
 );
 CREATE INDEX IF NOT EXISTS idx_opening_book_parent_fen ON opening_book (parent_fen);
+
+-- Opening trainer puzzles (generated from common mistakes)
+CREATE TABLE IF NOT EXISTS trainer_puzzles (
+    id              TEXT PRIMARY KEY,
+    eco             TEXT NOT NULL,
+    opening_name    TEXT NOT NULL,
+    mistake_san     TEXT NOT NULL,
+    mistake_uci     TEXT NOT NULL,
+    pre_mistake_fen TEXT NOT NULL,
+    solver_color    TEXT NOT NULL,
+    root_eval       INTEGER NOT NULL,
+    cp_loss         INTEGER NOT NULL,
+    games           INTEGER NOT NULL DEFAULT 0,
+    tree            JSONB NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trainer_puzzles_opening_name ON trainer_puzzles (opening_name);
+
+-- Per-user puzzle completion tracking
+CREATE TABLE IF NOT EXISTS trainer_progress (
+    user_id     BIGINT NOT NULL REFERENCES accounts(id),
+    puzzle_id   TEXT NOT NULL REFERENCES trainer_puzzles(id) ON DELETE CASCADE,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, puzzle_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trainer_progress_user ON trainer_progress (user_id);
 "#;

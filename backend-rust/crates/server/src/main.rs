@@ -114,6 +114,11 @@ async fn main() {
         .route("/api/opening-tree", get(routes::opening_tree::get_opening_tree))
         // Opening book (master games)
         .route("/api/opening-book/check", get(routes::opening_book::check_book_move))
+        // Trainer
+        .route("/api/trainer/openings", get(routes::trainer::list_openings))
+        .route("/api/trainer/puzzles", get(routes::trainer::get_puzzles))
+        .route("/api/trainer/progress", post(routes::trainer::mark_complete))
+        .route("/api/admin/trainer/upload", post(routes::trainer::upload_puzzles))
         // User profile (parameterized — must be last)
         .route("/api/users/{username}", get(routes::profile::get_user_profile))
         // Shared state
