@@ -106,6 +106,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   const [variationsCompleted, setVariationsCompleted] = useState(0);
   const isFirstAttemptRef = useRef(true);
   const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const movePendingRef = useRef(false);
 
   const solverColor = useMemo((): 'white' | 'black' => {
     return puzzle.solver_color === 'w' ? 'white' : 'black';
@@ -147,6 +148,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     onEvalUpdate?.(0);
     // Reset subvariation state
     clearTimeout(restartTimer.current);
+    movePendingRef.current = false;
     visitedLeaves.clear();
     setTotalLeaves(countLeaves(puzzle.tree));
     setVariationsCompleted(0);
@@ -248,7 +250,8 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     // Prefer moves whose subtree has unvisited leaves
     const visited = visitedLeavesRef.current;
     const unvisited = computed.filter(([, m]) => hasUnvisitedLeaves(m.result!, visited));
-    const pick = unvisited.length > 0 ? unvisited[0] : computed[0];
+    const candidates = unvisited.length > 0 ? unvisited : computed;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
     const [uci, moveData] = pick;
     console.log(`[Trainer] opponent picks: ${uci} (${moveData.san}), unvisited=${unvisited.length}/${computed.length}, result.type=${moveData.result!.type}`);
 
@@ -303,10 +306,18 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
 
       console.log(`[Trainer] tryMove(${sourceSquare}→${targetSquare}, piece=${pieceType}) phase=${curPhase}, hasNode=${!!curNode}, hasMoves=${!!curNode?.moves}`);
 
+      // Prevent double-fire from click+drop both triggering
+      if (movePendingRef.current) {
+        console.warn(`[Trainer] tryMove BLOCKED — move already pending`);
+        return false;
+      }
+
       if (curPhase !== 'solver_turn' || !curNode?.moves) {
         console.warn(`[Trainer] tryMove BLOCKED — phase=${curPhase}, currentNode=${!!curNode}, moves=${!!curNode?.moves}`);
         return false;
       }
+
+      movePendingRef.current = true;
 
       // Build UCI string
       let uci = sourceSquare + targetSquare;
@@ -328,6 +339,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       if (!moveData || !moveData.accepted) {
         // Wrong move — red flash, then show the best move and restart
         console.log(`[Trainer] wrong move ${uci} — ${!moveData ? 'not in book' : 'not accepted'}`);
+        movePendingRef.current = false;
         setFeedbackSquare({ square: targetSquare, color: 'rgba(220, 38, 38, 0.5)' });
         setSelectedSquare(null);
         clearTimeout(feedbackTimeout.current);
@@ -385,6 +397,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
         console.log(`[Trainer] solver move applied: ${applied.san}, new fen=${copy.fen()}`);
       } catch (err) {
         console.error(`[Trainer] FAILED to apply solver move ${uci}:`, err, `fen=${curGame.fen()}`);
+        movePendingRef.current = false;
         return false;
       }
 
@@ -411,6 +424,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       const result = moveData.result;
       if (!result || result.type === 'cutoff') {
         console.log(`[Trainer] solver result=${result?.type ?? 'none'} → puzzle complete`);
+        movePendingRef.current = false;
         // Mark all sibling cutoff/terminal leaves so we don't revisit this solver node
         markSiblingLeaves(curNode, visitedLeavesRef.current);
         setTimeout(() => puzzleComplete(result ?? curNode, 'Position won! Advantage secured.'), 500);
@@ -418,6 +432,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       }
       if (result.type === 'terminal') {
         console.log(`[Trainer] solver result=terminal → puzzle complete`);
+        movePendingRef.current = false;
         markSiblingLeaves(curNode, visitedLeavesRef.current);
         setTimeout(() => puzzleComplete(result, 'Checkmate! Brilliant!'), 500);
         return true;
@@ -425,6 +440,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
 
       // Opponent's turn
       console.log(`[Trainer] → opponent_thinking`);
+      movePendingRef.current = false;
       updatePhase('opponent_thinking');
       playOpponentMove(result);
 
