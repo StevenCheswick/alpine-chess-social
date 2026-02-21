@@ -36,6 +36,13 @@ export const profileService = {
   async updateProfile(data: UpdateProfileData): Promise<Profile> {
     return api.put<Profile>('/api/users/me', data);
   },
+
+  /**
+   * Delete the current user's account.
+   */
+  async deleteAccount(): Promise<void> {
+    await api.delete('/api/users/me');
+  },
 };
 
 export default profileService;

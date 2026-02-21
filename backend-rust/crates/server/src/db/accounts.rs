@@ -123,6 +123,32 @@ pub async fn update_password_hash(
     Ok(())
 }
 
+pub async fn delete_account(pool: &PgPool, account_id: i64) -> Result<(), AppError> {
+    let mut tx = pool.begin().await.map_err(AppError::Sqlx)?;
+
+    sqlx::query("DELETE FROM user_opening_moves WHERE user_id = $1")
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Sqlx)?;
+
+    sqlx::query("DELETE FROM trainer_progress WHERE user_id = $1")
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Sqlx)?;
+
+    // Deleting the account cascades to user_games -> game_tags, game_analysis
+    sqlx::query("DELETE FROM accounts WHERE id = $1")
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Sqlx)?;
+
+    tx.commit().await.map_err(AppError::Sqlx)?;
+    Ok(())
+}
+
 pub async fn get_public_profile(
     pool: &PgPool,
     username: &str,

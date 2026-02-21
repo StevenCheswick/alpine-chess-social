@@ -6,14 +6,17 @@ interface EditProfileModalProps {
   profile: Profile;
   onClose: () => void;
   onSave: (updatedProfile: Profile) => void;
+  onDelete: () => void;
 }
 
-export default function EditProfileModal({ profile, onClose, onSave }: EditProfileModalProps) {
+export default function EditProfileModal({ profile, onClose, onSave, onDelete }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio || '');
   const [chessComUsername, setChessComUsername] = useState(profile.chessComUsername || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,19 +174,64 @@ export default function EditProfileModal({ profile, onClose, onSave }: EditProfi
               type="button"
               onClick={onClose}
               className="btn btn-secondary flex-1"
-              disabled={loading}
+              disabled={loading || deleting}
             >
               Cancel
             </button>
             <button
               type="submit"
               className="btn btn-primary flex-1"
-              disabled={loading}
+              disabled={loading || deleting}
             >
               {loading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
+
+        {/* Danger Zone */}
+        <div className="mt-6 pt-6 border-t border-red-500/30">
+          <h3 className="text-sm font-medium text-red-400 mb-3">Danger Zone</h3>
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 bg-red-500/10 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors text-sm"
+              disabled={loading || deleting}
+            >
+              Delete Account
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-red-400">
+                This will permanently delete your account and all associated data. This cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="btn btn-secondary text-sm"
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setDeleting(true);
+                    setError(null);
+                    try {
+                      await profileService.deleteAccount();
+                      onDelete();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Failed to delete account');
+                      setDeleting(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+              </div>
+            </div>
+          )}
       </div>
     </div>
   );

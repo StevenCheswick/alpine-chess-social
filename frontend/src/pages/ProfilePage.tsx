@@ -1,4 +1,4 @@
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { profileService, type Profile } from '../services/profileService';
@@ -7,7 +7,8 @@ import EditProfileModal from '../components/EditProfileModal';
 export default function ProfilePage() {
   const { username } = useParams<{ username: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, updateUser } = useAuthStore();
+  const navigate = useNavigate();
+  const { user, updateUser, logout } = useAuthStore();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +167,10 @@ export default function ProfilePage() {
             }
           }}
           onSave={handleProfileUpdate}
+          onDelete={() => {
+            logout();
+            navigate('/login');
+          }}
         />
       )}
     </div>

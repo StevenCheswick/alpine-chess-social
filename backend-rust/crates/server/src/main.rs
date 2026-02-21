@@ -5,7 +5,7 @@ use server::db;
 use server::error;
 use server::routes;
 
-use axum::{routing::{get, post, put}, Extension, Router};
+use axum::{routing::{delete, get, post, put}, Extension, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
@@ -87,7 +87,7 @@ async fn main() {
         .route("/api/auth/login", post(routes::auth::login))
         .route("/api/auth/me", get(routes::auth::me))
         // Profile — must be before /api/users/{username}
-        .route("/api/users/me", put(routes::profile::update_profile))
+        .route("/api/users/me", put(routes::profile::update_profile).delete(routes::profile::delete_account))
         .route("/api/users/me/games", get(routes::games::get_my_games))
         // Games — order matters: specific routes before parameterized
         .route("/api/games/sync", post(routes::games::sync_games))

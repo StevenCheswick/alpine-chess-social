@@ -7,6 +7,21 @@ use crate::db::{accounts, games};
 use crate::error::AppError;
 
 #[derive(Serialize)]
+pub struct MessageResponse {
+    pub message: String,
+}
+
+pub async fn delete_account(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+) -> Result<Json<MessageResponse>, AppError> {
+    accounts::delete_account(&pool, user.id).await?;
+    Ok(Json(MessageResponse {
+        message: "Account deleted".into(),
+    }))
+}
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileResponse {
     pub id: i64,
