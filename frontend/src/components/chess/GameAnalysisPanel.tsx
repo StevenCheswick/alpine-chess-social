@@ -172,7 +172,7 @@ function ColorCodedPGN({
   };
 
   return (
-    <div className="max-h-48 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+    <div className="max-h-48 xl:max-h-none xl:flex-1 xl:min-h-0 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm font-mono">
         {movePairs.map(({ number, white, black }) => (
           <span key={number} className="flex items-center gap-1">
@@ -209,7 +209,7 @@ export default function GameAnalysisPanel({ analysis, userColor, moves, onMoveCl
   const opponentClassifications = userColor === 'white' ? analysis.black_classifications : analysis.white_classifications;
 
   return (
-    <div className="bg-slate-800/50 rounded-lg p-4 space-y-4">
+    <div className="bg-slate-800/50 rounded-lg p-4 flex flex-col gap-4 xl:h-full">
       {/* Accuracy Section */}
       <div className="flex justify-around items-center py-2">
         <AccuracyCircle accuracy={userAccuracy} label="Your Accuracy" isUser={true} />
@@ -239,8 +239,8 @@ export default function GameAnalysisPanel({ analysis, userColor, moves, onMoveCl
       {moves && moves.length > 0 && (
         <>
           <div className="border-t border-slate-700" />
-          <div>
-            <h4 className="text-sm font-medium text-white mb-2">Moves</h4>
+          <div className="xl:flex-1 xl:min-h-0 xl:flex xl:flex-col">
+            <h4 className="text-sm font-medium text-white mb-2 xl:flex-shrink-0">Moves</h4>
             <ColorCodedPGN moves={moves} analysis={analysis} userColor={userColor} onMoveClick={onMoveClick} currentMoveIndex={currentMoveIndex} />
           </div>
         </>
