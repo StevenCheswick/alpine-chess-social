@@ -40,8 +40,6 @@ interface ChessBoardProps {
   gameResult?: 'W' | 'L' | 'D';
   /** External control of move index - when set, navigates to this move */
   externalMoveIndex?: number;
-  /** Callback with the board square's pixel size when it changes */
-  onBoardResize?: (size: number) => void;
 }
 
 export default function ChessBoard({
@@ -57,7 +55,6 @@ export default function ChessBoard({
   className = '',
   gameResult: _gameResult,
   externalMoveIndex,
-  onBoardResize,
 }: ChessBoardProps) {
   // Clean moves once - removes move numbers, annotations, and result strings
   const cleanedMoves = useMemo(() => {
@@ -120,7 +117,6 @@ export default function ChessBoard({
       const width = container.offsetWidth;
       if (width > 0) {
         setBoardWidth(width);
-        onBoardResize?.(width);
         if (!dimensionsSet) {
           dimensionsSet = true;
           // Wait for browser to paint before showing board
@@ -191,6 +187,7 @@ export default function ChessBoard({
       [lastMove.from]: { backgroundColor: highlightColor },
       [lastMove.to]: { backgroundColor: highlightColor },
     };
+    console.log('Square styles:', styles, 'lastMove:', lastMove);
     return styles;
   }, [lastMove]);
 

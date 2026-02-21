@@ -39,9 +39,6 @@ export default function GamePage() {
   // Move navigation state
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
 
-  // Board square size reported by ChessBoard's ResizeObserver
-  const [boardSize, setBoardSize] = useState<number | null>(null);
-
   const displayUsername = user?.chessComUsername;
 
   // Handle position changes from the board
@@ -228,9 +225,9 @@ export default function GamePage() {
       </div>
 
       {/* Main content: Board and Analysis side by side */}
-      <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0 xl:overflow-hidden">
+      <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0">
         {/* Chess Board - constrained to available height */}
-        <div className="xl:max-w-[min(450px,calc(100vh-20rem))] flex-shrink-0">
+        <div className="xl:max-w-[min(520px,calc(100vh-12rem))] flex-shrink-0">
           <AnalyzableChessBoard
             moves={game.moves}
             orientation={game.userColor}
@@ -246,16 +243,12 @@ export default function GamePage() {
             analysis={analysis || undefined}
             externalMoveIndex={currentMoveIndex}
             onPositionChange={handlePositionChange}
-            onBoardResize={setBoardSize}
           />
         </div>
 
         {/* Analysis Panel - Side (offset to align with board, below engine lines) */}
         {analysis && (
-          <div
-            className="flex-1 min-w-0 overflow-hidden"
-            style={boardSize ? { maxHeight: boardSize } : undefined}
-          >
+          <div className="flex-1 min-w-0">
             <GameAnalysisPanel
               analysis={analysis}
               userColor={game.userColor}

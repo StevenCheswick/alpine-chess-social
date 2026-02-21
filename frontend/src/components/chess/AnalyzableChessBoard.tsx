@@ -47,8 +47,6 @@ interface AnalyzableChessBoardProps {
   analysis?: GameAnalysis;
   /** External control of move index - navigate to this move when set */
   externalMoveIndex?: number;
-  /** Callback with the board square's pixel size when it changes */
-  onBoardResize?: (size: number) => void;
 }
 
 const DEFAULT_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -70,7 +68,6 @@ export default function AnalyzableChessBoard({
   analysisDepth = 20,
   analysis,
   externalMoveIndex,
-  onBoardResize,
 }: AnalyzableChessBoardProps) {
   const [currentFen, setCurrentFen] = useState<string>(fen || DEFAULT_FEN);
   const [currentMoveIndex, setCurrentMoveIndex] = useState(startIndex);
@@ -162,7 +159,6 @@ export default function AnalyzableChessBoard({
             onPositionChange={handlePositionChange}
             gameResult={gameResult}
             externalMoveIndex={externalMoveIndex}
-            onBoardResize={onBoardResize}
           />
         </div>
       </div>
