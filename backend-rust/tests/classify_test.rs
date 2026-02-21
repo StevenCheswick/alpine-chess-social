@@ -927,7 +927,22 @@ fn test_sacrifice() {
         LichessPuzzle { id: "d6b4o", fen: "4r1k1/1b1q1p1p/1p4p1/3p1n2/1P1B1P2/P2P3B/5P1P/1R2Q1K1 w - - 1 24", moves: "e1d2 f5d4 h3d7 d4f3 g1g2 f3d2", themes: &["advantage", "fork", "long", "middlegame", "sacrifice"] },
         LichessPuzzle { id: "DZLd8", fen: "4r1k1/p2q2p1/1p3r1p/2p1b3/3p4/N2P2P1/PPPQ1P1P/R3R1K1 w - - 2 19", moves: "f2f4 e5f4 e1e8 d7e8 g3f4 f6g6", themes: &["advantage", "long", "middlegame", "sacrifice"] },
     ];
-    assert_theme_detected_with_engine(&mut sf, &puzzles, TagKind::Sacrifice, nodes);
+    let sac_piece_tags = [
+        TagKind::QueenSacrifice, TagKind::RookSacrifice,
+        TagKind::BishopSacrifice, TagKind::KnightSacrifice,
+    ];
+    let mut failures = Vec::new();
+    for (idx, p) in puzzles.iter().enumerate() {
+        let tags = cook_with_engine(&mut sf, p, nodes);
+        let piece_tags: Vec<_> = tags.iter().filter(|t| sac_piece_tags.contains(t)).collect();
+        if tags.contains(&TagKind::Sacrifice) && !piece_tags.is_empty() {
+            eprintln!("  [{}/{}] {} ... ok  {:?}", idx + 1, puzzles.len(), p.id, piece_tags);
+        } else {
+            eprintln!("  [{}/{}] {} ... MISS (piece tags: {:?}, all: {:?})", idx + 1, puzzles.len(), p.id, piece_tags, tags);
+            failures.push(p.id);
+        }
+    }
+    assert!(failures.is_empty(), "Sacrifice piece sub-tag missing for: {:?}", failures);
 }
 
 // ===========================================================================

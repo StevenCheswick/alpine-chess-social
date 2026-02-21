@@ -48,8 +48,8 @@ export const TAG_DISPLAY: Record<string, string> = {
   'Queen + Piece vs Queen': 'Queen+Piece vs Queen',
 };
 
-/** Tags that are kept for internal/backend use but hidden from users */
-const HIDDEN_TAGS = new Set([
+/** Tags hidden on ALL pages */
+const ALWAYS_HIDDEN = new Set([
   // Evaluation
   'mate', 'crushing', 'advantage', 'equality',
   // Puzzle length
@@ -59,8 +59,26 @@ const HIDDEN_TAGS = new Set([
   'rookEndgame', 'queenEndgame', 'queenRookEndgame',
 ]);
 
+/** Tags only shown on the games page (hidden on puzzles page) */
+const GAMES_ONLY_TAGS = new Set([
+  'knightSacrifice', 'bishopSacrifice', 'rookSacrifice', 'queenSacrifice',
+]);
+
+/** Tags only shown on the puzzles page (hidden on games page) */
+const PUZZLES_ONLY_TAGS = new Set([
+  'sacrifice',
+]);
+
 export function isVisibleTag(tag: string): boolean {
-  return !HIDDEN_TAGS.has(tag);
+  return !ALWAYS_HIDDEN.has(tag) && !GAMES_ONLY_TAGS.has(tag) && !PUZZLES_ONLY_TAGS.has(tag);
+}
+
+export function isVisibleOnGamesPage(tag: string): boolean {
+  return !ALWAYS_HIDDEN.has(tag) && !PUZZLES_ONLY_TAGS.has(tag);
+}
+
+export function isVisibleOnPuzzlesPage(tag: string): boolean {
+  return !ALWAYS_HIDDEN.has(tag) && !GAMES_ONLY_TAGS.has(tag);
 }
 
 export function tagDisplayName(tag: string): string {

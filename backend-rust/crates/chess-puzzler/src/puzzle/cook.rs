@@ -62,8 +62,15 @@ pub fn cook(puzzle: &Puzzle) -> Vec<TagKind> {
         tags.push(TagKind::DefensiveMove);
     }
 
-    if tactics::material::sacrifice(puzzle) {
+    if let Some(piece) = tactics::material::sacrifice(puzzle) {
         tags.push(TagKind::Sacrifice);
+        match piece {
+            chess::Piece::Queen => tags.push(TagKind::QueenSacrifice),
+            chess::Piece::Rook => tags.push(TagKind::RookSacrifice),
+            chess::Piece::Bishop => tags.push(TagKind::BishopSacrifice),
+            chess::Piece::Knight => tags.push(TagKind::KnightSacrifice),
+            _ => {}
+        }
     }
 
     if tactics::line_geometry::x_ray(puzzle) {

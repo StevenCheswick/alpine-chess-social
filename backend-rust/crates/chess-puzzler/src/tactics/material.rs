@@ -3,11 +3,12 @@
 
 use chess::{Color, Piece, Square, Rank, File};
 
-use crate::board_utils::{material_diff, king_square};
+use crate::board_utils::{material_diff, piece_value, king_square};
 use crate::puzzle::Puzzle;
 
-/// Sacrifice: solver goes down in material during the puzzle
-pub fn sacrifice(puzzle: &Puzzle) -> bool {
+/// Sacrifice: solver goes down in material during the puzzle.
+/// Returns the highest-value piece the solver sacrificed, or None if no sacrifice.
+pub fn sacrifice(puzzle: &Puzzle) -> Option<Piece> {
     let initial = material_diff(&puzzle.mainline[0].board_after, puzzle.pov);
 
     // Get material diffs after each solver move
@@ -23,18 +24,46 @@ pub fn sacrifice(puzzle: &Puzzle) -> bool {
         &solver_diffs[..]
     };
 
+    let mut is_sacrifice = false;
     for &d in check_diffs {
         if d - initial <= -2 {
             // Not a sacrifice if it involves a promotion (check opponent moves)
             // Python: puzzle.mainline[::2][1:] = opponent moves, skipping first
             let has_promotion = puzzle.mainline.iter()
                 .enumerate()
-                .filter(|(i, _)| i % 2 == 0 && *i > 0) // even indices > 0 = opponent moves after first
+                .filter(|(i, _)| i % 2 == 0 && *i > 0)
                 .any(|(_, n)| n.chess_move.get_promotion().is_some());
-            return !has_promotion;
+            if !has_promotion {
+                is_sacrifice = true;
+            }
+            break;
         }
     }
-    false
+
+    if !is_sacrifice {
+        return None;
+    }
+
+    // Find the highest-value solver piece captured by opponent moves
+    let mut best_piece: Option<Piece> = None;
+    let mut best_value = 0;
+
+    for node in puzzle.mainline.iter().skip(2).step_by(2) {
+        let dest = node.chess_move.get_dest();
+        if let Some(piece) = node.board_before.piece_on(dest) {
+            if node.board_before.color_on(dest) == Some(puzzle.pov) {
+                let val = piece_value(piece);
+                if val > best_value {
+                    best_value = val;
+                    best_piece = Some(piece);
+                }
+            }
+        }
+    }
+
+    // Return the sacrificed piece, or Pawn as fallback (sacrifice detected but
+    // no explicit capture found — e.g. piece left en prise)
+    Some(best_piece.unwrap_or(Piece::Pawn))
 }
 
 /// Exposed king: opponent's king has no pawn cover and gets checked

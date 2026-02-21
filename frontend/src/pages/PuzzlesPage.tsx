@@ -4,7 +4,7 @@ import { Chessboard } from 'react-chessboard';
 import { PuzzleBoard, type PuzzleStatus } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { tagDisplayName, isVisibleTag } from '../utils/tagDisplay';
+import { tagDisplayName, isVisibleOnPuzzlesPage } from '../utils/tagDisplay';
 import { getPuzzleStats, type PuzzleStats, type PositionStats, type ThemeStats } from '../services/puzzleStatsService';
 import type { PuzzleWithContext } from '../types/analysis';
 
@@ -551,7 +551,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
 function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   // Only show visible themes with enough data, sorted by total puzzles
   const filtered = themes
-    .filter(t => isVisibleTag(t.theme) && t.user.total >= 50)
+    .filter(t => isVisibleOnPuzzlesPage(t.theme) && t.user.total >= 50)
     .sort((a, b) => (b.user.total + b.opponent.total) - (a.user.total + a.opponent.total));
 
   if (filtered.length === 0) return null;
