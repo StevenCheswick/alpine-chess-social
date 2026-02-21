@@ -477,10 +477,22 @@ pub async fn analyze_game(
 
     let endgame_segments = eg_tracker.finish();
 
-    // Collect unique tags from all puzzles
+    // Collect unique tags from all puzzles.
+    // Piece sacrifice sub-tags only count when the user played the sacrifice.
+    let user_is_white = game.user_color.eq_ignore_ascii_case("white");
+    let piece_sac_tags: &[&str] = &["queenSacrifice", "rookSacrifice", "bishopSacrifice", "knightSacrifice"];
     let mut all_tags: Vec<String> = puzzles
         .iter()
-        .flat_map(|p| p.themes.clone())
+        .flat_map(|p| {
+            p.themes.iter().filter(|t| {
+                if piece_sac_tags.contains(&t.as_str()) {
+                    // Only include if user was the solver (user played the sacrifice)
+                    p.solver_is_white == user_is_white
+                } else {
+                    true
+                }
+            }).cloned().collect::<Vec<_>>()
+        })
         .collect();
     all_tags.sort();
     all_tags.dedup();
