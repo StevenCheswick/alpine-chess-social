@@ -90,7 +90,7 @@ export default function EditProfileModal({ profile, onClose, onSave, onDelete }:
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="card p-6 w-full max-w-md mx-4">
+      <div className="card p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">Edit Profile</h2>
           <button
