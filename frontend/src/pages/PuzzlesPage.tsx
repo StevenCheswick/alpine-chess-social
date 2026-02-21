@@ -155,7 +155,7 @@ export default function PuzzlesPage() {
             <div className="card p-4">
               <h3 className="text-sm font-medium text-slate-400 mb-2">Themes</h3>
               <div className="flex flex-wrap gap-2">
-                {activePuzzle.themes.map(theme => (
+                {activePuzzle.themes.filter(isVisibleOnPuzzlesPage).map(theme => (
                   <span
                     key={theme}
                     className="px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-xs font-medium text-amber-400"
@@ -427,7 +427,7 @@ export default function PuzzlesPage() {
 
                   {/* Theme badges */}
                   <div className="flex flex-wrap gap-1.5">
-                    {puzzle.themes.slice(0, 3).map(theme => (
+                    {puzzle.themes.filter(isVisibleOnPuzzlesPage).slice(0, 3).map(theme => (
                       <span
                         key={theme}
                         className="px-2 py-0.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-[10px] font-medium text-amber-400"
@@ -435,9 +435,9 @@ export default function PuzzlesPage() {
                         {tagDisplayName(theme)}
                       </span>
                     ))}
-                    {puzzle.themes.length > 3 && (
+                    {puzzle.themes.filter(isVisibleOnPuzzlesPage).length > 3 && (
                       <span className="px-2 py-0.5 text-[10px] text-slate-500">
-                        +{puzzle.themes.length - 3}
+                        +{puzzle.themes.filter(isVisibleOnPuzzlesPage).length - 3}
                       </span>
                     )}
                   </div>
