@@ -3,9 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AnalyzableChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { analyzeGameProxy } from '../services/analysisProxy';
-import type { GameAnalysis, FullAnalysis } from '../types/analysis';
-import AnalyzeButton from '../components/chess/AnalyzeButton';
+import type { GameAnalysis } from '../types/analysis';
 import GameAnalysisPanel from '../components/chess/GameAnalysisPanel';
 
 interface Game {
@@ -32,9 +30,6 @@ export default function GamePage() {
 
   // Analysis state
   const [analysis, setAnalysis] = useState<GameAnalysis | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
   
   // Move navigation state
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
@@ -116,66 +111,6 @@ export default function GamePage() {
     }
   };
 
-  const saveAnalysis = async (analysisData: GameAnalysis | FullAnalysis) => {
-    try {
-      // Extract theme tags from puzzles + endgame segments if present
-      const fullAnalysis = analysisData as FullAnalysis;
-      const tags = new Set<string>();
-
-      if (fullAnalysis.puzzles) {
-        for (const puzzle of fullAnalysis.puzzles) {
-          for (const theme of puzzle.themes) tags.add(theme);
-        }
-      }
-      if (fullAnalysis.endgame_segments) {
-        for (const seg of fullAnalysis.endgame_segments) {
-          tags.add(seg.endgame_type);
-        }
-      }
-
-      const payload = tags.size > 0
-        ? { ...analysisData, tags: [...tags] }
-        : analysisData;
-
-      await fetch(`${API_BASE_URL}/api/games/${gameId}/analysis`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      console.error('Failed to save analysis:', err);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    if (!game || analyzing) return;
-
-    setAnalyzing(true);
-    setAnalysisProgress(0);
-    setAnalysisError(null);
-
-    try {
-      const result = await analyzeGameProxy(
-        gameId!,
-        game.moves,
-        100000,
-        (progress) => setAnalysisProgress(progress),
-      );
-
-      setAnalysis(result);
-      await saveAnalysis(result);
-    } catch (err) {
-      console.error('Analysis failed:', err);
-      setAnalysisError('Analysis unavailable — please try again later.');
-    } finally {
-      setAnalyzing(false);
-      setAnalysisProgress(0);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -215,7 +150,7 @@ export default function GamePage() {
   return (
     <div className="h-[calc(100vh-5.5rem)] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3 flex-shrink-0">
+      <div className="mb-3 flex-shrink-0">
         <button
           onClick={() => navigate(-1)}
           className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
@@ -225,18 +160,6 @@ export default function GamePage() {
           </svg>
           Back to Games
         </button>
-
-        <div className="flex items-center gap-3">
-          {analysisError && (
-            <span className="text-red-400 text-sm">{analysisError}</span>
-          )}
-          <AnalyzeButton
-            onClick={handleAnalyze}
-            isAnalyzing={analyzing}
-            isAnalyzed={!!analysis}
-            progress={analyzing ? analysisProgress : undefined}
-          />
-        </div>
       </div>
 
       {/* Main content: Board and Analysis side by side */}

@@ -402,165 +402,147 @@ export default function GamesPage() {
         </p>
       </div>
 
-      {/* Sync Section */}
-      <div className="card p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-white font-medium">Sync your games</p>
-            <p className="text-slate-500 text-xs mt-1">
-              Download and analyze games from your linked accounts
-            </p>
-          </div>
+      {/* Action buttons + stats */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={syncAllGames}
+          disabled={syncing || loading}
+          className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+        >
+          {syncing ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              Syncing...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Sync Games
+            </>
+          )}
+        </button>
+
+        {chessComUsername && totalGames > 0 && hasMoreHistory && (
           <button
-            onClick={syncAllGames}
-            disabled={syncing || loading}
-            className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+            onClick={loadMoreHistory}
+            disabled={backfilling || syncing || loading}
+            className="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-400 hover:to-purple-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
           >
-            {syncing ? (
+            {backfilling ? (
               <>
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                Syncing...
+                Loading older games...
               </>
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Sync Games
+                Load More History
               </>
             )}
           </button>
-        </div>
+        )}
 
-        {/* Load More History / All history loaded */}
-        {chessComUsername && totalGames > 0 && (
-          <div className="border-t border-slate-800 pt-4 flex items-center justify-between">
-            {hasMoreHistory ? (
-              <button
-                onClick={loadMoreHistory}
-                disabled={backfilling || syncing || loading}
-                className="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-400 hover:to-purple-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-              >
-                {backfilling ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    Loading older games...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Load More History
-                  </>
-                )}
-              </button>
+        {totalUnanalyzed > 0 && (
+          <button
+            onClick={serverAnalyzeGames}
+            disabled={serverAnalyzing || syncing || loading}
+            title="Queue for server analysis - no need to keep tab open"
+            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+          >
+            {serverAnalyzing ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                Queueing...
+              </>
             ) : (
-              totalGames > 0 && (
-                <span className="flex items-center gap-2 text-sm text-slate-500">
-                  <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  All history loaded
-                </span>
-              )
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                </svg>
+                Analyze ({totalUnanalyzed})
+              </>
             )}
-            {backfillResult && (
-              <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
-                backfillResult.synced > 0
-                  ? 'bg-violet-500/20 border border-violet-500/30 text-violet-300'
-                  : backfillResult.message
-                  ? 'bg-red-500/20 border border-red-500/30 text-red-300'
-                  : 'bg-slate-500/20 border border-slate-500/30 text-slate-300'
-              }`}>
-                {backfillResult.synced > 0 ? (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Loaded {backfillResult.synced} older games
-                  </>
-                ) : (
-                  backfillResult.message || 'No additional games found'
-                )}
-              </div>
-            )}
-          </div>
+          </button>
         )}
 
-        {/* Link account prompt */}
+        {chessComUsername && totalGames > 0 && !hasMoreHistory && (
+          <span className="flex items-center gap-2 text-sm text-slate-500">
+            <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            All history loaded
+          </span>
+        )}
+
         {!chessComUsername && (
-          <div className="border-t border-slate-800 pt-4">
-            <Link
-              to={user ? `/u/${user.username}?settings=true` : '/'}
-              className="text-sm text-emerald-400 hover:text-emerald-300"
-            >
-              + Link Chess.com account
-            </Link>
-          </div>
-        )}
-
-        {error && (
-          <p className="text-red-500 text-sm mt-2">{error}</p>
+          <Link
+            to={user ? `/u/${user.username}?settings=true` : '/'}
+            className="text-sm text-emerald-400 hover:text-emerald-300"
+          >
+            + Link Chess.com account
+          </Link>
         )}
       </div>
+
+      {/* Feedback messages */}
+      {error && (
+        <p className="text-red-500 text-sm">{error}</p>
+      )}
+      {backfillResult && (
+        <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
+          backfillResult.synced > 0
+            ? 'bg-violet-500/20 border border-violet-500/30 text-violet-300'
+            : backfillResult.message
+            ? 'bg-red-500/20 border border-red-500/30 text-red-300'
+            : 'bg-slate-500/20 border border-slate-500/30 text-slate-300'
+        }`}>
+          {backfillResult.synced > 0 ? (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Loaded {backfillResult.synced} older games
+            </>
+          ) : (
+            backfillResult.message || 'No additional games found'
+          )}
+        </div>
+      )}
+      {serverResult && (
+        <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
+          serverResult.queued > 0
+            ? 'bg-cyan-500/20 border border-cyan-500/30 text-cyan-300'
+            : 'bg-red-500/20 border border-red-500/30 text-red-300'
+        }`}>
+          {serverResult.queued > 0 ? (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Queued {serverResult.queued} games for analysis. Results will appear automatically.
+            </>
+          ) : (
+            serverResult.message
+          )}
+        </div>
+      )}
 
       {/* Games Content */}
       {(games.length > 0 || totalGames > 0) && (
         <>
-          {/* Stats + Analyze Button */}
-          <div className="flex items-center justify-between">
-            <p className="text-slate-400 text-sm">
-              {totalGames} {totalGames === 1 ? 'game' : 'games'}
-              {totalAnalyzed > 0 && (
-                <span className="ml-2 text-emerald-400">
-                  ({totalAnalyzed} analyzed)
-                </span>
-              )}
-            </p>
-            {totalUnanalyzed > 0 && (
-              <button
-                onClick={serverAnalyzeGames}
-                disabled={serverAnalyzing || syncing || loading}
-                title="Queue for server analysis - no need to keep tab open"
-                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
-              >
-                {serverAnalyzing ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    Queueing...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                    </svg>
-                    Server Analyze ({totalUnanalyzed})
-                  </>
-                )}
-              </button>
+          {/* Stats */}
+          <p className="text-slate-400 text-sm">
+            {totalGames} {totalGames === 1 ? 'game' : 'games'}
+            {totalAnalyzed > 0 && (
+              <span className="ml-2 text-emerald-400">
+                ({totalAnalyzed} analyzed)
+              </span>
             )}
-
-            {/* Server analysis feedback */}
-            {serverResult && (
-              <div className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
-                serverResult.queued > 0
-                  ? 'bg-cyan-500/20 border border-cyan-500/30 text-cyan-300'
-                  : 'bg-red-500/20 border border-red-500/30 text-red-300'
-              }`}>
-                {serverResult.queued > 0 ? (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Queued {serverResult.queued} games for server analysis. Results will appear automatically.
-                  </>
-                ) : (
-                  serverResult.message
-                )}
-              </div>
-            )}
-          </div>
+          </p>
 
           {/* Tag Filter */}
           {sortedTags.length > 0 && (
