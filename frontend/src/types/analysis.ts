@@ -65,15 +65,6 @@ export interface GameAnalysis {
 /**
  * Classification thresholds (centipawn loss) - Chess.com-style
  */
-export const CLASSIFICATION_THRESHOLDS = {
-  best: 0,
-  excellent: 10,
-  good: 50,
-  inaccuracy: 100,
-  mistake: 200,
-  blunder: Infinity,
-} as const;
-
 /**
  * Colors for each classification type
  */
@@ -86,17 +77,6 @@ export const CLASSIFICATION_COLORS: Record<MoveClassification, string> = {
   mistake: 'text-orange-400',
   blunder: 'text-red-400',
   forced: 'text-slate-400',
-};
-
-export const CLASSIFICATION_BG_COLORS: Record<MoveClassification, string> = {
-  book: 'bg-yellow-800/20',
-  best: 'bg-emerald-500/20',
-  excellent: 'bg-green-500/20',
-  good: 'bg-green-500/10',
-  inaccuracy: 'bg-yellow-500/20',
-  mistake: 'bg-orange-500/20',
-  blunder: 'bg-red-500/20',
-  forced: 'bg-slate-500/20',
 };
 
 /** Progress state for batch game analysis */

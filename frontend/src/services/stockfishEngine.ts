@@ -23,9 +23,6 @@ export function getStockfishPath(): string {
   return caps.supportsThreads ? STOCKFISH_PATH_MT : STOCKFISH_PATH_ST;
 }
 
-// Legacy export for backwards compatibility
-export const STOCKFISH_PATH = STOCKFISH_PATH_MT;
-
 // Default configuration
 const DEFAULT_HASH_MB = 64;
 const DEFAULT_MULTI_PV = 1;

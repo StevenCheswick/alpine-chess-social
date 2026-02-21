@@ -69,10 +69,6 @@ const PUZZLES_ONLY_TAGS = new Set([
   'sacrifice',
 ]);
 
-export function isVisibleTag(tag: string): boolean {
-  return !ALWAYS_HIDDEN.has(tag) && !GAMES_ONLY_TAGS.has(tag) && !PUZZLES_ONLY_TAGS.has(tag);
-}
-
 export function isVisibleOnGamesPage(tag: string): boolean {
   return !ALWAYS_HIDDEN.has(tag) && !PUZZLES_ONLY_TAGS.has(tag);
 }
