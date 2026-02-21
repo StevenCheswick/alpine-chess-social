@@ -225,9 +225,9 @@ export default function GamePage() {
       </div>
 
       {/* Main content: Board and Analysis side by side */}
-      <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0">
+      <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0 xl:overflow-hidden">
         {/* Chess Board - constrained to available height */}
-        <div className="xl:max-w-[min(520px,calc(100vh-12rem))] flex-shrink-0">
+        <div className="xl:max-w-[min(494px,calc(100vh-16rem))] flex-shrink-0">
           <AnalyzableChessBoard
             moves={game.moves}
             orientation={game.userColor}
@@ -248,7 +248,7 @@ export default function GamePage() {
 
         {/* Analysis Panel - Side (offset to align with board, below engine lines) */}
         {analysis && (
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 xl:overflow-y-auto">
             <GameAnalysisPanel
               analysis={analysis}
               userColor={game.userColor}
