@@ -306,17 +306,15 @@ export function PuzzleBoard({ fen, solutionMoves, onStatusChange, showSolution, 
     };
   }
 
-  // Show solution arrows
+  // Show solution arrow for the next move only
   const arrows: { startSquare: string; endSquare: string; color: string }[] = [];
   if (showSolution && moveIndex < solutionMoves.length) {
-    for (let i = moveIndex; i < solutionMoves.length; i++) {
-      const m = uciToMove(solutionMoves[i]);
-      arrows.push({
-        startSquare: m.from,
-        endSquare: m.to,
-        color: i === moveIndex ? 'rgb(0, 200, 83)' : 'rgba(0, 200, 83, 0.4)',
-      });
-    }
+    const m = uciToMove(solutionMoves[moveIndex]);
+    arrows.push({
+      startSquare: m.from,
+      endSquare: m.to,
+      color: 'rgb(0, 200, 83)',
+    });
   }
 
   const movesRemaining = Math.ceil((solutionMoves.length - moveIndex) / 2);
