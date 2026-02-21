@@ -486,8 +486,8 @@ pub async fn analyze_game(
         .flat_map(|p| {
             p.themes.iter().filter(|t| {
                 if piece_sac_tags.contains(&t.as_str()) {
-                    // Only include if user was the solver (user played the sacrifice)
-                    p.solver_is_white == user_is_white
+                    // Only include if user was the solver AND actually played it
+                    p.solver_is_white == user_is_white && p.found
                 } else {
                     true
                 }
