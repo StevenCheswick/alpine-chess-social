@@ -78,6 +78,24 @@ pub struct UploadBody {
     pub puzzles: Vec<JsonValue>,
 }
 
+#[derive(Deserialize)]
+pub struct DeleteBody {
+    pub opening_name: String,
+}
+
+/// POST /api/admin/trainer/delete
+/// Delete all puzzles for an opening.
+pub async fn delete_opening(
+    Extension(pool): Extension<PgPool>,
+    Json(body): Json<DeleteBody>,
+) -> Result<Json<JsonValue>, AppError> {
+    let deleted = trainer::delete_by_opening(&pool, &body.opening_name).await?;
+    Ok(Json(serde_json::json!({
+        "deleted": deleted,
+        "opening_name": body.opening_name,
+    })))
+}
+
 /// POST /api/admin/trainer/upload
 /// Upsert puzzle batch.
 pub async fn upload_puzzles(

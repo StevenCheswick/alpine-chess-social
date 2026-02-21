@@ -124,6 +124,19 @@ pub async fn get_completed_puzzle_ids(
     Ok(rows)
 }
 
+pub async fn delete_by_opening(
+    pool: &PgPool,
+    opening_name: &str,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "DELETE FROM trainer_puzzles WHERE opening_name = $1",
+    )
+    .bind(opening_name)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 pub async fn upsert_puzzles(
     pool: &PgPool,
     opening_name: &str,

@@ -119,6 +119,7 @@ async fn main() {
         .route("/api/trainer/puzzles", get(routes::trainer::get_puzzles))
         .route("/api/trainer/progress", post(routes::trainer::mark_complete))
         .route("/api/admin/trainer/upload", post(routes::trainer::upload_puzzles))
+        .route("/api/admin/trainer/delete", post(routes::trainer::delete_opening))
         // User profile (parameterized — must be last)
         .route("/api/users/{username}", get(routes::profile::get_user_profile))
         // Shared state
