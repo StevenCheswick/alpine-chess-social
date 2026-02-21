@@ -138,7 +138,13 @@ pub async fn delete_account(pool: &PgPool, account_id: i64) -> Result<(), AppErr
         .await
         .map_err(AppError::Sqlx)?;
 
-    // Deleting the account cascades to user_games -> game_tags, game_analysis
+    // user_games -> game_tags, game_analysis cascade, but user_games itself doesn't cascade from accounts
+    sqlx::query("DELETE FROM user_games WHERE user_id = $1")
+        .bind(account_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Sqlx)?;
+
     sqlx::query("DELETE FROM accounts WHERE id = $1")
         .bind(account_id)
         .execute(&mut *tx)
