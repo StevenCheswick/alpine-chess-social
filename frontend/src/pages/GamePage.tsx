@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AnalyzableChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
@@ -39,6 +39,10 @@ export default function GamePage() {
   // Move navigation state
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
 
+  // Board height tracking for panel sync
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [boardHeight, setBoardHeight] = useState<number | null>(null);
+
   const displayUsername = user?.chessComUsername;
 
   // Handle position changes from the board
@@ -50,6 +54,17 @@ export default function GamePage() {
   const handleMoveClick = (moveIndex: number) => {
     setCurrentMoveIndex(moveIndex);
   };
+
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const h = el.offsetHeight;
+      if (h > 0) setBoardHeight(h);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     if (gameId) {
@@ -227,7 +242,7 @@ export default function GamePage() {
       {/* Main content: Board and Analysis side by side */}
       <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0">
         {/* Chess Board - constrained to available height */}
-        <div className="xl:max-w-[min(520px,calc(100vh-12rem))] flex-shrink-0">
+        <div ref={boardRef} className="xl:max-w-[min(520px,calc(100vh-12rem))] flex-shrink-0">
           <AnalyzableChessBoard
             moves={game.moves}
             orientation={game.userColor}
@@ -248,7 +263,10 @@ export default function GamePage() {
 
         {/* Analysis Panel - Side (offset to align with board, below engine lines) */}
         {analysis && (
-          <div className="flex-1 min-w-0">
+          <div
+            className="flex-1 min-w-0 min-h-0 overflow-hidden"
+            style={boardHeight ? { maxHeight: boardHeight } : undefined}
+          >
             <GameAnalysisPanel
               analysis={analysis}
               userColor={game.userColor}
