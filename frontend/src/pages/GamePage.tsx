@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AnalyzableChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
@@ -39,17 +39,8 @@ export default function GamePage() {
   // Move navigation state
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
 
-  // Measure board height so analysis panel can match
-  const boardRef = useRef<HTMLDivElement>(null);
-  const [boardHeight, setBoardHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    const el = boardRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setBoardHeight(el.offsetHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  // Board square size reported by ChessBoard's ResizeObserver
+  const [boardSize, setBoardSize] = useState<number | null>(null);
 
   const displayUsername = user?.chessComUsername;
 
@@ -239,7 +230,7 @@ export default function GamePage() {
       {/* Main content: Board and Analysis side by side */}
       <div className="flex flex-col xl:flex-row gap-4 flex-1 min-h-0 xl:overflow-hidden">
         {/* Chess Board - constrained to available height */}
-        <div ref={boardRef} className="xl:max-w-[min(494px,calc(100vh-17rem))] flex-shrink-0">
+        <div className="xl:max-w-[min(494px,calc(100vh-17rem))] flex-shrink-0">
           <AnalyzableChessBoard
             moves={game.moves}
             orientation={game.userColor}
@@ -255,6 +246,7 @@ export default function GamePage() {
             analysis={analysis || undefined}
             externalMoveIndex={currentMoveIndex}
             onPositionChange={handlePositionChange}
+            onBoardResize={setBoardSize}
           />
         </div>
 
@@ -262,7 +254,7 @@ export default function GamePage() {
         {analysis && (
           <div
             className="flex-1 min-w-0 overflow-hidden"
-            style={boardHeight ? { maxHeight: boardHeight } : undefined}
+            style={boardSize ? { maxHeight: boardSize } : undefined}
           >
             <GameAnalysisPanel
               analysis={analysis}
