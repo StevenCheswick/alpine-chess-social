@@ -232,6 +232,7 @@ export default function EditProfileModal({ profile, onClose, onSave, onDelete }:
               </div>
             </div>
           )}
+        </div>
       </div>
     </div>
   );
