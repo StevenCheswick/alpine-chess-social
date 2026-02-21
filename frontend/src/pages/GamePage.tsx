@@ -248,7 +248,7 @@ export default function GamePage() {
 
         {/* Analysis Panel - Side (offset to align with board, below engine lines) */}
         {analysis && (
-          <div className="flex-1 min-w-0 xl:max-h-[min(670px,calc(100vh-6rem))] xl:overflow-hidden">
+          <div className="flex-1 min-w-0 xl:h-[664px] xl:overflow-hidden">
             <GameAnalysisPanel
               analysis={analysis}
               userColor={game.userColor}
