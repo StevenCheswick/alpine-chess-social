@@ -677,8 +677,6 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
             canDragPiece,
             squareStyles,
             animationDurationInMs: 200,
-            darkSquareStyle: { backgroundColor: '#779952' },
-            lightSquareStyle: { backgroundColor: '#edeed1' },
           }}
         />
       </div>

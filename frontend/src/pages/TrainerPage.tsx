@@ -192,8 +192,6 @@ export default function TrainerPage() {
                       position: opening.sample_fen,
                       boardOrientation: 'white',
                       allowDragging: false,
-                      darkSquareStyle: { backgroundColor: '#779952' },
-                      lightSquareStyle: { backgroundColor: '#edeed1' },
                     }}
                   />
                 </div>

@@ -335,8 +335,6 @@ export function PuzzleBoard({ fen, solutionMoves, onStatusChange, showSolution, 
             squareStyles,
             arrows,
             animationDurationInMs: 200,
-            darkSquareStyle: { backgroundColor: '#779952' },
-            lightSquareStyle: { backgroundColor: '#edeed1' },
           }}
         />
       </div>

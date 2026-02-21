@@ -609,8 +609,6 @@ function PuzzleMiniBoard({ fen, orientation }: { fen: string; orientation: 'whit
           position: fen,
           boardOrientation: orientation,
           allowDragging: false,
-          darkSquareStyle: { backgroundColor: '#779952' },
-          lightSquareStyle: { backgroundColor: '#edeed1' },
         }}
       />
     </div>

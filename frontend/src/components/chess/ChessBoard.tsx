@@ -187,7 +187,6 @@ export default function ChessBoard({
       [lastMove.from]: { backgroundColor: highlightColor },
       [lastMove.to]: { backgroundColor: highlightColor },
     };
-    console.log('Square styles:', styles, 'lastMove:', lastMove);
     return styles;
   }, [lastMove]);
 
