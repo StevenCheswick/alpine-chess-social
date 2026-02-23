@@ -9,7 +9,6 @@ import AuthLayout from './components/layout/AuthLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
-import AchievementsPage from './pages/AchievementsPage';
 import GamesPage from './pages/GamesPage';
 import GamePage from './pages/GamePage';
 import OpeningTreePage from './pages/OpeningTreePage';
@@ -76,7 +75,6 @@ function App() {
         >
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/u/:username" element={<ProfilePage />} />
-          <Route path="/achievements" element={<AchievementsPage />} />
           <Route path="/games" element={<GamesPage />} />
           <Route path="/games/:gameId" element={<GamePage />} />
           <Route path="/puzzles" element={<PuzzlesPage />} />

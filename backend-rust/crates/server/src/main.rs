@@ -78,8 +78,6 @@ async fn main() {
 
     // Build router — same paths as Python FastAPI
     let app = Router::new()
-        // Analysis WebSocket
-        .route("/api/ws/analyze", get(routes::analysis_ws::ws_handler))
         // Health
         .route("/health", get(routes::health::health_check))
         // Auth

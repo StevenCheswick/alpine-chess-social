@@ -2,7 +2,6 @@
 // For now, we'll use mock data. When backend is ready, update this.
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-export const ANALYSIS_WS_URL = import.meta.env.VITE_ANALYSIS_WS_URL || 'ws://localhost:8000';
 
 export const API_ENDPOINTS = {
   // Auth
@@ -17,11 +16,6 @@ export const API_ENDPOINTS = {
     me: '/api/users/me',
     profile: (username: string) => `/api/users/${username}`,
     linkAccount: '/api/users/me/link-account',
-  },
-  // Achievements
-  achievements: {
-    user: (username: string) => `/api/users/${username}/achievements`,
-    sync: '/api/achievements/sync',
   },
   // Games
   games: {

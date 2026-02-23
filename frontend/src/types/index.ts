@@ -50,53 +50,6 @@ export interface GameData {
   allMoves?: string[];
 }
 
-// Achievement types
-export type AchievementType =
-  | 'smothered_mate'
-  | 'castle_mate'
-  | 'queen_sacrifice'
-  | 'rook_sacrifice'
-  | 'knight_fork'
-  | 'back_rank_mate'
-  | 'en_passant_mate'
-  | 'pawn_mate'
-  | 'king_mate'
-  | 'windmill'
-  | 'biggest_comeback'
-  | 'longest_game'
-  | 'king_walk';
-
-export interface AchievementData {
-  type: AchievementType;
-  displayName: string;
-  description: string;
-  gameData?: GameData;
-  value?: number; // e.g., material deficit for comeback
-}
-
-export interface UserAchievement {
-  id: string;
-  type: AchievementType;
-  displayName: string;
-  count: number;
-  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
-  bestGame: GameData | null;
-  firstAchievedAt: string;
-  lastAchievedAt: string;
-}
-
-// Notification types
-export type NotificationType = 'achievement';
-
-export interface Notification {
-  id: string;
-  type: NotificationType;
-  isRead: boolean;
-  createdAt: string;
-  actor?: User;
-  achievement?: AchievementData;
-}
-
 // API types
 export interface PaginatedResponse<T> {
   data: T[];

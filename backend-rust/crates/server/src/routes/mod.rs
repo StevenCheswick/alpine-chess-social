@@ -1,4 +1,3 @@
-pub mod analysis_ws;
 pub mod auth;
 pub mod dashboard;
 pub mod endgame;

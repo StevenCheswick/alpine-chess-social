@@ -20,12 +20,12 @@ export default function AuthLayout() {
           </h1>
           <p className="text-lg text-slate-400">
             Connect your Chess.com account, showcase your best games,
-            and celebrate achievements with a community of players.
+            and improve with a community of players.
           </p>
           <div className="flex gap-8 text-slate-400">
             <div>
-              <div className="text-3xl font-bold text-white">26+</div>
-              <div className="text-sm">Achievement Types</div>
+              <div className="text-3xl font-bold text-white">50+</div>
+              <div className="text-sm">Opening Lines</div>
             </div>
             <div>
               <div className="text-3xl font-bold text-white">2</div>
