@@ -9,9 +9,9 @@ APP_RUNNER_ARN="arn:aws:apprunner:us-east-1:019304715762:service/alpine-chess-ap
 # Ensure code is committed and pushed before deploying
 echo "==> Checking git status..."
 cd "$(git rev-parse --show-toplevel)"
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain -uno)" ]; then
     echo "ERROR: Uncommitted changes detected. Commit and push before deploying."
-    git status --short
+    git status --short -uno
     exit 1
 fi
 if [ -n "$(git log @{u}..HEAD 2>/dev/null)" ]; then
