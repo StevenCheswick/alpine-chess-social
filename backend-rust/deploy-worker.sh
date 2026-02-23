@@ -5,6 +5,22 @@ set -e
 
 ECR_REPO="019304715762.dkr.ecr.us-east-1.amazonaws.com/alpine-chess-analysis-worker"
 
+# Ensure code is committed and pushed before deploying
+echo "==> Checking git status..."
+cd "$(git rev-parse --show-toplevel)"
+if [ -n "$(git status --porcelain)" ]; then
+    echo "ERROR: Uncommitted changes detected. Commit and push before deploying."
+    git status --short
+    exit 1
+fi
+if [ -n "$(git log @{u}..HEAD 2>/dev/null)" ]; then
+    echo "ERROR: Unpushed commits. Run 'git push' before deploying."
+    git log --oneline @{u}..HEAD
+    exit 1
+fi
+echo "    Git is clean and up to date with remote."
+cd - > /dev/null
+
 echo "==> Logging into ECR..."
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 019304715762.dkr.ecr.us-east-1.amazonaws.com
 
