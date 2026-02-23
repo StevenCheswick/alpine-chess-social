@@ -1,10 +1,8 @@
 # Multi-stage build for analysis-worker
-# Target: ARM64 (AWS Graviton) for cost efficiency
 
 # ============================================
 # Stage 1: Build Rust binary
 # ============================================
-# Use rust:bookworm to match runtime glibc version
 FROM rust:bookworm AS builder
 
 WORKDIR /app
@@ -15,12 +13,14 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy crates
-COPY crates/chess-core ./crates/chess-core
-COPY crates/chess-puzzler ./crates/chess-puzzler
-COPY crates/analysis-worker ./crates/analysis-worker
+# --- Dependency caching layer ---
+# Copy only Cargo manifests first so dependency compilation is cached
+# and doesn't re-run when only source code changes.
+COPY crates/chess-core/Cargo.toml ./crates/chess-core/Cargo.toml
+COPY crates/chess-puzzler/Cargo.toml ./crates/chess-puzzler/Cargo.toml
+COPY crates/analysis-worker/Cargo.toml ./crates/analysis-worker/Cargo.toml
 
-# Create minimal workspace Cargo.toml for Docker build
+# Create minimal workspace Cargo.toml
 RUN echo '[workspace]\n\
 resolver = "2"\n\
 members = [\n\
@@ -47,7 +47,21 @@ aws-sdk-secretsmanager = "1"\n\
 num_cpus = "1.16"\n\
 bincode = "1"\n' > Cargo.toml
 
-# Build release binary
+# Create dummy source files to compile dependencies only
+RUN mkdir -p crates/chess-core/src && echo "" > crates/chess-core/src/lib.rs && \
+    mkdir -p crates/chess-puzzler/src && echo "" > crates/chess-puzzler/src/lib.rs && \
+    mkdir -p crates/analysis-worker/src && echo "fn main(){}" > crates/analysis-worker/src/main.rs
+
+# Build dependencies (this layer is cached until Cargo.toml files change)
+RUN cargo build --release -p analysis-worker
+
+# --- Source build layer ---
+# Now copy real source code
+COPY crates/chess-core ./crates/chess-core
+COPY crates/chess-puzzler ./crates/chess-puzzler
+COPY crates/analysis-worker ./crates/analysis-worker
+
+# Rebuild — only the project crates recompile, deps are cached
 RUN cargo build --release -p analysis-worker
 
 # ============================================
@@ -60,7 +74,6 @@ RUN apt-get update && apt-get install -y curl unzip && rm -rf /var/lib/apt/lists
 WORKDIR /stockfish
 
 # Download Stockfish 18 for the target architecture
-# Linux builds use .tar format; ARM64 uses android-armv8 (works on Linux ARM64)
 ARG TARGETARCH
 RUN set -ex && \
     mkdir -p /tmp/sf && cd /tmp/sf && \
@@ -78,7 +91,6 @@ RUN set -ex && \
 # ============================================
 # Stage 3: Runtime image
 # ============================================
-# Use Debian Bookworm (same as rust:bookworm) to match glibc version
 FROM debian:bookworm-slim AS runtime
 
 # Install runtime dependencies (SSL for AWS SDK)

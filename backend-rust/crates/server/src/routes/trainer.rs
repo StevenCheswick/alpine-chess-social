@@ -1,12 +1,29 @@
-use axum::{extract::Query, Extension, Json};
+use axum::{extract::Query, http::HeaderMap, Extension, Json};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 use std::collections::HashMap;
 
 use crate::auth::middleware::AuthUser;
+use crate::config::Config;
 use crate::db::trainer;
 use crate::error::AppError;
+
+/// Verify the X-Admin-Secret header matches the configured ADMIN_SECRET.
+fn check_admin_secret(headers: &HeaderMap, config: &Config) -> Result<(), AppError> {
+    let secret = config
+        .admin_secret
+        .as_deref()
+        .ok_or_else(|| AppError::Internal("ADMIN_SECRET not configured".to_string()))?;
+    let provided = headers
+        .get("x-admin-secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if provided != secret {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(())
+}
 
 /// GET /api/trainer/openings
 /// List available openings with puzzle counts + per-user progress.
@@ -83,12 +100,32 @@ pub struct DeleteBody {
     pub opening_name: String,
 }
 
-/// POST /api/admin/trainer/delete
-/// Delete all puzzles for an opening.
-pub async fn delete_opening(
+/// GET /api/admin/trainer/list
+pub async fn admin_list_openings(
+    headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
+) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
+    let openings = trainer::list_openings(&pool).await?;
+    let result: Vec<JsonValue> = openings
+        .into_iter()
+        .map(|o| serde_json::json!({
+            "opening_name": o.opening_name,
+            "puzzle_count": o.puzzle_count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!(result)))
+}
+
+/// POST /api/admin/trainer/delete
+pub async fn delete_opening(
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
     Json(body): Json<DeleteBody>,
 ) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
     let deleted = trainer::delete_by_opening(&pool, &body.opening_name).await?;
     Ok(Json(serde_json::json!({
         "deleted": deleted,
@@ -97,11 +134,13 @@ pub async fn delete_opening(
 }
 
 /// POST /api/admin/trainer/upload
-/// Upsert puzzle batch.
 pub async fn upload_puzzles(
+    headers: HeaderMap,
     Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
     Json(body): Json<UploadBody>,
 ) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
     let count = trainer::upsert_puzzles(&pool, &body.opening_name, &body.puzzles).await?;
     Ok(Json(serde_json::json!({
         "uploaded": count,

@@ -1,4 +1,4 @@
-//! Core game analysis logic
+//! Core game analysis logic — puzzle tags disabled pending found-flag fix
 //!
 //! Ported from server/src/routes/analysis_ws.rs but uses local Stockfish
 //! instead of delegating to client-side WASM.
@@ -477,25 +477,11 @@ pub async fn analyze_game(
 
     let endgame_segments = eg_tracker.finish();
 
-    // Collect unique tags from all puzzles.
-    // Piece sacrifice sub-tags only count when the user played the sacrifice.
-    let user_is_white = game.user_color.eq_ignore_ascii_case("white");
-    let piece_sac_tags: &[&str] = &["queenSacrifice", "rookSacrifice", "bishopSacrifice", "knightSacrifice"];
-    let mut all_tags: Vec<String> = puzzles
-        .iter()
-        .flat_map(|p| {
-            p.themes.iter().filter(|t| {
-                if piece_sac_tags.contains(&t.as_str()) {
-                    // Only include if user was the solver AND actually played it
-                    p.solver_is_white == user_is_white && p.found
-                } else {
-                    true
-                }
-            }).cloned().collect::<Vec<_>>()
-        })
-        .collect();
-    all_tags.sort();
-    all_tags.dedup();
+    // Puzzle tags disabled: the `found` flag only checks the first solver move,
+    // so sacrifice/tactic tags can be attributed to the user even when the key
+    // move was never played in the actual game.  Until we verify the full
+    // mainline against game moves, send an empty tags list.
+    let all_tags: Vec<String> = Vec::new();
 
     // Build final analysis JSON
     let analysis = serde_json::json!({

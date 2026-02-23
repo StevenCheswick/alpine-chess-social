@@ -32,3 +32,10 @@
   - Basic rook endgames (rook + pawn vs rook)
   - Queen vs Rook
   - Opposite-color bishop endgames
+
+## Opening Mistake Trainer
+- [ ] Deduplicate puzzles: if puzzle A's post-mistake FEN appears as a node inside puzzle B's tree, drop puzzle A (it's a subset)
+- [ ] Phase 1 eval writeback: write found evals back to move_tree.duckdb so lookups don't repeat
+
+## Chess Sounds
+- [ ] Implement move/game sounds using `frontend/src/utils/chessSounds.ts` (already stubbed out, just needs to be wired up)

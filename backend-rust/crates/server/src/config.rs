@@ -15,6 +15,8 @@ pub struct Config {
     pub batch_job_queue: Option<String>,
     /// AWS Batch job definition name
     pub batch_job_definition: Option<String>,
+    /// Secret for admin endpoints (X-Admin-Secret header)
+    pub admin_secret: Option<String>,
 }
 
 impl Config {
@@ -37,6 +39,7 @@ impl Config {
             sqs_endpoint_url: env::var("SQS_ENDPOINT_URL").ok(),
             batch_job_queue: env::var("BATCH_JOB_QUEUE").ok(),
             batch_job_definition: env::var("BATCH_JOB_DEFINITION").ok(),
+            admin_secret: env::var("ADMIN_SECRET").ok(),
         }
     }
 }

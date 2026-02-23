@@ -209,7 +209,7 @@ export default function GameAnalysisPanel({ analysis, userColor, moves, onMoveCl
   const opponentClassifications = userColor === 'white' ? analysis.black_classifications : analysis.white_classifications;
 
   return (
-    <div className="bg-slate-800/50 rounded-lg p-4 space-y-4">
+    <div className="bg-slate-800/50 rounded-lg p-4 space-y-4 h-full overflow-y-auto">
       {/* Accuracy Section */}
       <div className="flex justify-around items-center py-2">
         <AccuracyCircle accuracy={userAccuracy} label="Your Accuracy" isUser={true} />

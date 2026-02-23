@@ -5,7 +5,7 @@
 //!
 //! Puzzle data sourced from: https://huggingface.co/datasets/Lichess/chess-puzzles
 
-use chess::{Board, Color};
+use chess::{Board, Color, MoveGen, Piece, Square, Rank, File};
 use chess_puzzler::puzzle::cook::{cook, cook_zugzwang};
 use chess_puzzler::puzzle::extraction::parse_uci_move;
 use chess_puzzler::puzzle::{Puzzle, PuzzleNode, TagKind};
@@ -1220,4 +1220,264 @@ fn bulk_validate_lichess_10k() {
     eprintln!("{}", "-".repeat(72));
     eprintln!("{:<22} {:>5} {:>5} {:>5} {:>7.1} {:>7.1} {:>5.1}",
         "TOTAL", total_tp, total_fp, total_fn, total_prec, total_recall, total_f1);
+}
+
+// ===========================================================================
+// Ad-hoc game analysis: replay a game, find blunders, classify puzzles
+// ===========================================================================
+
+/// Minimal SAN parser: find the legal move matching a SAN string.
+fn resolve_san(board: &Board, san: &str) -> chess::ChessMove {
+    let clean = san.trim_end_matches(|c: char| c == '+' || c == '#' || c == '!' || c == '?');
+    let legal: Vec<chess::ChessMove> = MoveGen::new_legal(board).collect();
+
+    // Castling
+    if clean == "O-O" || clean == "0-0" {
+        return *legal.iter().find(|m| {
+            board.piece_on(m.get_source()) == Some(Piece::King)
+                && m.get_dest().get_file().to_index() > m.get_source().get_file().to_index()
+                && m.get_dest().get_file().to_index() - m.get_source().get_file().to_index() == 2
+        }).expect("no kingside castling found");
+    }
+    if clean == "O-O-O" || clean == "0-0-0" {
+        return *legal.iter().find(|m| {
+            board.piece_on(m.get_source()) == Some(Piece::King)
+                && m.get_source().get_file().to_index() > m.get_dest().get_file().to_index()
+                && m.get_source().get_file().to_index() - m.get_dest().get_file().to_index() == 2
+        }).expect("no queenside castling found");
+    }
+
+    let bytes = clean.as_bytes();
+    let (piece, rest) = if bytes[0].is_ascii_uppercase() {
+        let p = match bytes[0] {
+            b'K' => Piece::King, b'Q' => Piece::Queen, b'R' => Piece::Rook,
+            b'B' => Piece::Bishop, b'N' => Piece::Knight, _ => panic!("unknown piece"),
+        };
+        (p, &clean[1..])
+    } else {
+        (Piece::Pawn, clean)
+    };
+
+    let (rest, promotion) = if let Some(eq) = rest.find('=') {
+        let promo = match rest.as_bytes().get(eq + 1) {
+            Some(b'Q') => Some(Piece::Queen), Some(b'R') => Some(Piece::Rook),
+            Some(b'B') => Some(Piece::Bishop), Some(b'N') => Some(Piece::Knight),
+            _ => None,
+        };
+        (&rest[..eq], promo)
+    } else {
+        (rest, None)
+    };
+
+    let rest = rest.replace('x', "");
+    let rb = rest.as_bytes();
+    let dest_file = rb[rb.len() - 2];
+    let dest_rank = rb[rb.len() - 1];
+    let dest = Square::make_square(
+        Rank::from_index((dest_rank - b'1') as usize),
+        File::from_index((dest_file - b'a') as usize),
+    );
+    let disambig = &rest[..rest.len() - 2];
+
+    let mut candidates: Vec<chess::ChessMove> = legal.into_iter().filter(|m| {
+        m.get_dest() == dest
+            && board.piece_on(m.get_source()) == Some(piece)
+            && m.get_promotion() == promotion
+    }).collect();
+
+    if candidates.len() > 1 && !disambig.is_empty() {
+        let db = disambig.as_bytes();
+        candidates.retain(|m| {
+            let src = m.get_source();
+            for &b in db {
+                if (b'a'..=b'h').contains(&b) && src.get_file().to_index() != (b - b'a') as usize { return false; }
+                if (b'1'..=b'8').contains(&b) && src.get_rank().to_index() != (b - b'1') as usize { return false; }
+            }
+            true
+        });
+    }
+
+    assert_eq!(candidates.len(), 1, "expected 1 match for SAN '{}', got {}", san, candidates.len());
+    candidates[0]
+}
+
+/// Evaluate and also return the bestmove UCI string.
+fn evaluate_with_bestmove(sf: &mut StockfishProcess, fen: &str, nodes: u32) -> (i32, Option<i32>, String) {
+    sf.send("isready");
+    sf.wait_for("readyok");
+    sf.send(&format!("position fen {}", fen));
+    sf.send(&format!("go nodes {}", nodes));
+
+    let mut cp = 0i32;
+    let mut mate: Option<i32> = None;
+    let mut bestmove = String::new();
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        let bytes = sf.reader.read_line(&mut line).unwrap();
+        if bytes == 0 { panic!("Stockfish EOF"); }
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("info") && trimmed.contains(" pv ") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if let Some(idx) = parts.iter().position(|&p| p == "score") {
+                if idx + 2 < parts.len() {
+                    match parts[idx + 1] {
+                        "cp" => { cp = parts[idx + 2].parse().unwrap_or(0); mate = None; }
+                        "mate" => { mate = parts[idx + 2].parse().ok(); cp = 0; }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if trimmed.starts_with("bestmove") {
+            bestmove = trimmed.split_whitespace().nth(1).unwrap_or("").to_string();
+            break;
+        }
+    }
+    (cp, mate, bestmove)
+}
+
+/// Replay a game from SAN moves, find blunders, extract puzzles, run cook().
+///
+/// Run with: cargo test --test classify_test analyze_game -- --ignored --nocapture
+#[test]
+#[ignore]
+fn analyze_game() {
+    let sf_path = match find_stockfish() {
+        Some(p) => p,
+        None => { eprintln!("SKIPPING: Stockfish not found"); return; }
+    };
+    let mut sf = StockfishProcess::new(&sf_path);
+    let nodes = 100_000u32;
+
+    let san_moves = [
+        "e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "b4", "Bxb4",
+        "c3", "Ba5", "d4", "Qf6", "O-O", "exd4", "cxd4", "Bb6",
+        "e5", "Qg6", "d5", "Na5", "Bd3", "f5", "exf6", "Qxf6",
+        "Re1", "Ne7", "Bg5", "Qxa1",
+    ];
+
+    // Replay game, collect (board_before, chess_move, board_after, uci) for each ply
+    let mut board = Board::default();
+    let mut positions: Vec<(Board, chess::ChessMove, Board, String)> = Vec::new();
+
+    for san in &san_moves {
+        let chess_move = resolve_san(&board, san);
+        let uci = format!("{}{}", chess_move.get_source(), chess_move.get_dest());
+        let board_after = board.make_move_new(chess_move);
+        positions.push((board, chess_move, board_after, uci));
+        board = board_after;
+    }
+
+    // Evaluate every position (before each move + final position)
+    eprintln!("\n=== Evaluating {} positions with Stockfish ({} nodes) ===\n", positions.len() + 1, nodes);
+
+    let mut evals: Vec<i32> = Vec::new();
+
+    // Starting position eval
+    let (cp0, mate0, _) = evaluate_with_bestmove(&mut sf, &Board::default().to_string(), nodes);
+    evals.push(if let Some(m) = mate0 { if m > 0 { 10000 } else { -10000 } } else { cp0 });
+
+    // After each move
+    for (i, (_, _, board_after, _)) in positions.iter().enumerate() {
+        let fen = board_after.to_string();
+        let is_white_to_move = board_after.side_to_move() == Color::White;
+        let (cp, mate, _) = evaluate_with_bestmove(&mut sf, &fen, nodes);
+
+        // Convert to white's perspective
+        let white_cp = if let Some(m) = mate {
+            let stm_cp = if m > 0 { 10000 } else { -10000 };
+            if is_white_to_move { stm_cp } else { -stm_cp }
+        } else {
+            if is_white_to_move { cp } else { -cp }
+        };
+        evals.push(white_cp);
+
+        let move_num = (i / 2) + 1;
+        let side = if i % 2 == 0 { "W" } else { "B" };
+        eprintln!("  {}.{} {:<6} eval={:>6}", move_num, side, san_moves[i], white_cp);
+    }
+
+    // Find blunders (cp_loss >= 200)
+    eprintln!("\n=== Blunders (cp_loss >= 200) ===\n");
+    let mut blunder_count = 0;
+
+    for (i, (_board_before, _chess_move, _board_after, _uci)) in positions.iter().enumerate() {
+        let is_white = i % 2 == 0;
+        let eval_before = evals[i];
+        let eval_after = evals[i + 1];
+
+        // CP loss from the mover's perspective
+        let cp_loss = if is_white {
+            eval_before - eval_after  // white wants eval to stay high
+        } else {
+            eval_after - eval_before  // black wants eval to stay low (negative)
+        };
+
+        if cp_loss >= 200 {
+            blunder_count += 1;
+            let move_num = (i / 2) + 1;
+            let side = if is_white { "W" } else { "B" };
+            eprintln!("  BLUNDER {}.{} {} (cp_loss={})", move_num, side, san_moves[i], cp_loss);
+
+            // Get the refutation (bestmove after the blunder)
+            let fen_after = positions[i].2.to_string();
+            let (ref_cp, ref_mate, bestmove_uci) = evaluate_with_bestmove(&mut sf, &fen_after, nodes);
+            eprintln!("    Refutation: {} (eval: cp={} mate={:?})", bestmove_uci, ref_cp, ref_mate);
+
+            // Build a puzzle: blunder move + refutation
+            // For cook(), we need at least the blunder (ply 0) + solver response (ply 1)
+            if !bestmove_uci.is_empty() {
+                let blunder_board_before = positions[i].0;
+                let blunder_move = positions[i].1;
+                let board_after_blunder = positions[i].2;
+
+                let refutation = parse_uci_move(&board_after_blunder, &bestmove_uci)
+                    .expect("invalid refutation UCI");
+                let board_after_refutation = board_after_blunder.make_move_new(refutation);
+
+                let solver_color = if is_white { Color::Black } else { Color::White };
+
+                // Compute CP from solver's perspective
+                let solver_cp = if let Some(m) = ref_mate {
+                    let stm_cp: i32 = if m > 0 { 10000 } else { -10000 };
+                    // ref_cp is from side-to-move after blunder, which IS the solver
+                    stm_cp.abs()
+                } else {
+                    ref_cp.abs()
+                };
+
+                let puzzle = Puzzle {
+                    id: format!("game_m{}", i),
+                    mainline: vec![
+                        PuzzleNode {
+                            board_before: blunder_board_before,
+                            board_after: board_after_blunder,
+                            chess_move: blunder_move,
+                            ply: 0,
+                        },
+                        PuzzleNode {
+                            board_before: board_after_blunder,
+                            board_after: board_after_refutation,
+                            chess_move: refutation,
+                            ply: 1,
+                        },
+                    ],
+                    pov: solver_color,
+                    cp: solver_cp,
+                };
+
+                let tags = cook(&puzzle);
+                eprintln!("    Tags: {:?}\n", tags);
+            }
+        }
+    }
+
+    if blunder_count == 0 {
+        eprintln!("  No blunders found in this game.");
+    }
+
+    eprintln!("\n=== Done ===");
 }

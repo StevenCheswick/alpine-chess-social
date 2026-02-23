@@ -55,6 +55,10 @@ tasklist | findstr -i "stockfish cargo"
 taskkill //PID <pid> //F
 ```
 
+## Docker Builds
+
+**NEVER use `--no-cache` on Docker builds.** COPY layers already detect source file changes and invalidate automatically. Using `--no-cache` forces a full rebuild of the Rust toolchain and all dependencies from scratch (~15+ minutes). If a COPY layer isn't invalidating, the fix is to check `.dockerignore` or the build context — not to nuke the entire cache. If you genuinely believe `--no-cache` is needed, ask the user first before running it.
+
 ## Production Deployment
 
 After pushing changes to `main`:
