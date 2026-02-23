@@ -29,12 +29,7 @@ pub async fn get_stored_games(
     Query(q): Query<StoredGamesQuery>,
     user: AuthUser,
 ) -> Result<Json<JsonValue>, AppError> {
-    // limit=0 means no limit (for bulk analysis), otherwise cap at 10000
-    let limit = match q.limit {
-        Some(0) => 10000,  // "all" - practical max
-        Some(n) => n.min(10000),
-        None => 50,
-    };
+    let raw_limit = q.limit.unwrap_or(50);
     let offset = q.offset.unwrap_or(0).max(0);
     let account_id = user.id;
 
@@ -46,6 +41,30 @@ pub async fn get_stored_games(
             .filter(|s| !s.is_empty())
             .collect()
     });
+
+    // limit=0 means "just give me the count" — skip fetching/decoding rows
+    if raw_limit == 0 {
+        let total = games::get_user_games_count_filtered(
+            &pool,
+            account_id,
+            tags_list.as_deref(),
+            source,
+            q.analyzed,
+        )
+        .await?;
+
+        return Ok(Json(serde_json::json!({
+            "platform": q.platform,
+            "games": [],
+            "total": total,
+            "limit": 0,
+            "offset": offset,
+            "tags": tags_list,
+            "hasMore": false,
+        })));
+    }
+
+    let limit = raw_limit.min(10000);
 
     let games_list = games::get_user_games_paginated(
         &pool,

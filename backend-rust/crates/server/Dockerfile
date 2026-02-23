@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Stage 1: Generate dependency recipe
 FROM chef AS planner
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY crates/chess-core ./crates/chess-core
 COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=planner /app/recipe.json recipe.json
 COPY --from=planner /app/Cargo.toml Cargo.toml
+COPY --from=planner /app/Cargo.lock Cargo.lock
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Stage 3: Build source (only this layer rebuilds on code changes)
