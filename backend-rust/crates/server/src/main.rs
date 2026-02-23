@@ -1,11 +1,9 @@
-use server::auth;
 use server::clients;
 use server::config;
 use server::db;
-use server::error;
 use server::routes;
 
-use axum::{routing::{delete, get, post, put}, Extension, Router};
+use axum::{routing::{get, post, put}, Extension, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
