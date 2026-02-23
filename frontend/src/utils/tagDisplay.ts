@@ -6,9 +6,7 @@ export const TAG_DISPLAY: Record<string, string> = {
   clearance: 'Clearance', discoveredAttack: 'Discovered Attack',
   discoveredCheck: 'Discovered Check', doubleCheck: 'Double Check',
   xRayAttack: 'X-Ray Attack', windmill: 'Windmill',
-  sacrifice: 'Sacrifice', knightSacrifice: 'Knight Sacrifice',
-  bishopSacrifice: 'Bishop Sacrifice', rookSacrifice: 'Rook Sacrifice',
-  queenSacrifice: 'Queen Sacrifice', capturingDefender: 'Capturing Defender',
+  sacrifice: 'Sacrifice', capturingDefender: 'Capturing Defender',
   hangingPiece: 'Hanging Piece', trappedPiece: 'Trapped Piece',
   overloading: 'Overloading', exposedKing: 'Exposed King',
   kingsideAttack: 'Kingside Attack', queensideAttack: 'Queenside Attack',
@@ -48,8 +46,8 @@ export const TAG_DISPLAY: Record<string, string> = {
   'Queen + Piece vs Queen': 'Queen+Piece vs Queen',
 };
 
-/** Tags hidden on ALL pages */
-const ALWAYS_HIDDEN = new Set([
+/** Tags that are never shown in the UI */
+const HIDDEN_TAGS = new Set([
   // Evaluation
   'mate', 'crushing', 'advantage', 'equality',
   // Puzzle length
@@ -59,22 +57,8 @@ const ALWAYS_HIDDEN = new Set([
   'rookEndgame', 'queenEndgame', 'queenRookEndgame',
 ]);
 
-/** Tags only shown on the games page (hidden on puzzles page) */
-const GAMES_ONLY_TAGS = new Set([
-  'knightSacrifice', 'bishopSacrifice', 'rookSacrifice', 'queenSacrifice',
-]);
-
-/** Tags only shown on the puzzles page (hidden on games page) */
-const PUZZLES_ONLY_TAGS = new Set([
-  'sacrifice',
-]);
-
-export function isVisibleOnGamesPage(tag: string): boolean {
-  return !ALWAYS_HIDDEN.has(tag) && !PUZZLES_ONLY_TAGS.has(tag);
-}
-
-export function isVisibleOnPuzzlesPage(tag: string): boolean {
-  return !ALWAYS_HIDDEN.has(tag) && !GAMES_ONLY_TAGS.has(tag);
+export function isVisibleTag(tag: string): boolean {
+  return !HIDDEN_TAGS.has(tag);
 }
 
 export function tagDisplayName(tag: string): string {

@@ -4,7 +4,7 @@ import { Chessboard } from 'react-chessboard';
 import { PuzzleBoard, type PuzzleStatus } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
-import { tagDisplayName, isVisibleOnPuzzlesPage } from '../utils/tagDisplay';
+import { tagDisplayName, isVisibleTag } from '../utils/tagDisplay';
 import { getPuzzleStats, type PuzzleStats, type PositionStats, type ThemeStats } from '../services/puzzleStatsService';
 import type { PuzzleWithContext } from '../types/analysis';
 
@@ -155,7 +155,7 @@ export default function PuzzlesPage() {
             <div className="card p-4">
               <h3 className="text-sm font-medium text-slate-400 mb-2">Themes</h3>
               <div className="flex flex-wrap gap-2">
-                {activePuzzle.themes.filter(isVisibleOnPuzzlesPage).map(theme => (
+                {activePuzzle.themes.filter(isVisibleTag).map(theme => (
                   <span
                     key={theme}
                     className="px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-xs font-medium text-amber-400"
@@ -427,7 +427,7 @@ export default function PuzzlesPage() {
 
                   {/* Theme badges */}
                   <div className="flex flex-wrap gap-1.5">
-                    {puzzle.themes.filter(isVisibleOnPuzzlesPage).slice(0, 3).map(theme => (
+                    {puzzle.themes.filter(isVisibleTag).slice(0, 3).map(theme => (
                       <span
                         key={theme}
                         className="px-2 py-0.5 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-[10px] font-medium text-amber-400"
@@ -435,9 +435,9 @@ export default function PuzzlesPage() {
                         {tagDisplayName(theme)}
                       </span>
                     ))}
-                    {puzzle.themes.filter(isVisibleOnPuzzlesPage).length > 3 && (
+                    {puzzle.themes.filter(isVisibleTag).length > 3 && (
                       <span className="px-2 py-0.5 text-[10px] text-slate-500">
-                        +{puzzle.themes.filter(isVisibleOnPuzzlesPage).length - 3}
+                        +{puzzle.themes.filter(isVisibleTag).length - 3}
                       </span>
                     )}
                   </div>
@@ -551,7 +551,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
 function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   // Only show visible themes with enough data, sorted by total puzzles
   const filtered = themes
-    .filter(t => isVisibleOnPuzzlesPage(t.theme) && t.user.total >= 50)
+    .filter(t => isVisibleTag(t.theme) && t.user.total >= 50)
     .sort((a, b) => (b.user.total + b.opponent.total) - (a.user.total + a.opponent.total));
 
   if (filtered.length === 0) return null;
