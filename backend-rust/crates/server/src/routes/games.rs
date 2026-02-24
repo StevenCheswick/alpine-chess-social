@@ -170,7 +170,10 @@ pub async fn sync_games(
         let mut all_pairs = Vec::new();
 
         // Use the archives endpoint to only fetch months that have games
-        let archive_months = client.fetch_archives(&chess_com_username).await.unwrap_or_default();
+        let archive_months = client.fetch_archives(&chess_com_username).await.map_err(|e| {
+            tracing::error!("Chess.com archives fetch failed for {}: {}", chess_com_username, e);
+            AppError::Internal("Could not reach Chess.com — please try again later.".into())
+        })?;
         tracing::info!("  Found {} monthly archives", archive_months.len());
 
         let mut hit_limit = false;
@@ -211,7 +214,10 @@ pub async fn sync_games(
             chess_com_username, since_year, since_month, now.year(), now.month()
         );
 
-        let archive_months = client.fetch_archives(&chess_com_username).await.unwrap_or_default();
+        let archive_months = client.fetch_archives(&chess_com_username).await.map_err(|e| {
+            tracing::error!("Chess.com archives fetch failed for {}: {}", chess_com_username, e);
+            AppError::Internal("Could not reach Chess.com — please try again later.".into())
+        })?;
         let mut all_pairs = Vec::new();
 
         for (year, month) in &archive_months {
