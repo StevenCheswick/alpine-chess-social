@@ -37,7 +37,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }\n\
 thiserror = "2"\n\
 anyhow = "1"\n\
 dotenvy = "0.15"\n\
-shakmaty = "0.27"\n\
+shakmaty = "0.29"\n\
 regex = "1"\n\
 aws-config = "1"\n\
 aws-sdk-sqs = "1"\n\
@@ -53,9 +53,10 @@ RUN mkdir -p crates/chess-core/src && echo "" > crates/chess-core/src/lib.rs && 
 RUN cargo build --release -p analysis-worker
 
 # --- Source build layer ---
-# Now copy real source code
+# Now copy real source code and invalidate cargo fingerprints so it recompiles
 COPY crates/chess-core ./crates/chess-core
 COPY crates/analysis-worker ./crates/analysis-worker
+RUN rm -rf target/release/.fingerprint/analysis-worker-* target/release/.fingerprint/chess-core-*
 
 # Rebuild — only the project crates recompile, deps are cached
 RUN cargo build --release -p analysis-worker
