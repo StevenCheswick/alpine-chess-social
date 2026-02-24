@@ -78,7 +78,7 @@ function App() {
           <Route path="/games" element={<GamesPage />} />
           <Route path="/games/:gameId" element={<GamePage />} />
           <Route path="/puzzles" element={<PuzzlesPage />} />
-          <Route path="/opening-tree" element={<OpeningTreePage />} />
+          {/* <Route path="/opening-tree" element={<OpeningTreePage />} /> */}
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/endgames" element={<EndgameAnalyticsPage />} />
           <Route path="/opening-line" element={<OpeningLinePage />} />
