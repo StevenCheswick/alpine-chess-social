@@ -11,7 +11,7 @@ import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
 import GamesPage from './pages/GamesPage';
 import GamePage from './pages/GamePage';
-import OpeningTreePage from './pages/OpeningTreePage';
+// import OpeningTreePage from './pages/OpeningTreePage'; // disabled for soft beta
 import DashboardPage from './pages/DashboardPage';
 import OpeningLinePage from './pages/OpeningLinePage';
 import PuzzlesPage from './pages/PuzzlesPage';
