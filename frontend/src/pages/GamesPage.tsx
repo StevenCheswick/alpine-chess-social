@@ -4,7 +4,7 @@ import { MiniChessBoard } from '../components/chess';
 import { useAuthStore } from '../stores/authStore';
 import { API_BASE_URL } from '../config/api';
 import { gameService, type AnalyzeServerResponse, type BackfillResponse } from '../services/gameService';
-import { tagDisplayName, isVisibleTag } from '../utils/tagDisplay';
+import { tagDisplayName, isGameTag } from '../utils/tagDisplay';
 
 const API_BASE = API_BASE_URL;
 const GAMES_PER_PAGE = 10;
@@ -283,7 +283,7 @@ export default function GamesPage() {
   };
 
   const sortedTags = Array.from(allTags.entries())
-    .filter(([tag]) => isVisibleTag(tag))
+    .filter(([tag]) => isGameTag(tag))
     .sort((a, b) => b[1] - a[1])  // Sort by count descending
     .map(([tag]) => tag);
 
@@ -594,9 +594,9 @@ export default function GamesPage() {
                 to={`/games/${game.id}`}
                 className="card block p-4 hover:border-emerald-500/60 transition-all duration-200 group"
               >
-                <div className="flex items-start gap-5">
-                  {/* Mini Board */}
-                  <div className="flex-shrink-0">
+                <div className="flex items-start gap-3 sm:gap-5">
+                  {/* Mini Board — hidden on very small screens to prevent overflow */}
+                  <div className="flex-shrink-0 hidden sm:block">
                     <MiniChessBoard
                       moves={game.moves}
                       orientation={game.userColor}
@@ -680,9 +680,9 @@ export default function GamesPage() {
                     </div>
 
                     {/* Tags */}
-                    {game.tags.filter(isVisibleTag).length > 0 && (
+                    {game.tags.filter(isGameTag).length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {game.tags.filter(isVisibleTag).map(tag => (
+                        {game.tags.filter(isGameTag).map(tag => (
                           <span
                             key={tag}
                             className="px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-xs font-medium text-amber-400"

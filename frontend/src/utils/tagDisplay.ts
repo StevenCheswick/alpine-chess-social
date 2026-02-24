@@ -46,8 +46,21 @@ export const TAG_DISPLAY: Record<string, string> = {
   'Queen + Piece vs Queen': 'Queen+Piece vs Queen',
 };
 
-/** Tags that are never shown in the UI */
-const HIDDEN_TAGS = new Set([
+/** Tags shown on the games page (source, result, titled opponents) */
+const GAME_PAGE_TAGS = new Set([
+  'Chess.com', 'Lichess',
+  'Win', 'Loss', 'Draw',
+  'titled', 'GM', 'IM', 'FM', 'CM', 'NM',
+  'WGM', 'WIM', 'WFM', 'WCM', 'WNM',
+]);
+
+/** Filter for games page — only show game-level tags, not puzzle tactic tags */
+export function isGameTag(tag: string): boolean {
+  return GAME_PAGE_TAGS.has(tag);
+}
+
+/** Filter for puzzle page — show tactic/theme tags, hide meta tags */
+const HIDDEN_PUZZLE_TAGS = new Set([
   // Evaluation
   'mate', 'crushing', 'advantage', 'equality',
   // Puzzle length
@@ -55,10 +68,13 @@ const HIDDEN_TAGS = new Set([
   // Endgame types
   'pawnEndgame', 'knightEndgame', 'bishopEndgame',
   'rookEndgame', 'queenEndgame', 'queenRookEndgame',
+  // Game-level tags that don't belong on puzzles
+  'Chess.com', 'Lichess', 'Win', 'Loss', 'Draw', 'titled',
+  'GM', 'IM', 'FM', 'CM', 'NM', 'WGM', 'WIM', 'WFM', 'WCM', 'WNM',
 ]);
 
 export function isVisibleTag(tag: string): boolean {
-  return !HIDDEN_TAGS.has(tag);
+  return !HIDDEN_PUZZLE_TAGS.has(tag);
 }
 
 export function tagDisplayName(tag: string): string {
