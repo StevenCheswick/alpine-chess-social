@@ -47,7 +47,7 @@ bincode = "1"\n' > Cargo.toml
 
 # Create dummy source files to compile dependencies only
 RUN mkdir -p crates/chess-core/src && echo "" > crates/chess-core/src/lib.rs && \
-    mkdir -p crates/analysis-worker/src && echo "" > crates/analysis-worker/src/lib.rs && echo "fn main(){}" > crates/analysis-worker/src/main.rs
+    mkdir -p crates/analysis-worker/src/bin && echo "" > crates/analysis-worker/src/lib.rs && echo "fn main(){}" > crates/analysis-worker/src/main.rs && echo "fn main(){}" > crates/analysis-worker/src/bin/classify_openings.rs
 
 # Build dependencies (this layer is cached until Cargo.toml files change)
 RUN cargo build --release -p analysis-worker
