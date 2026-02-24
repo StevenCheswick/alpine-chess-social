@@ -283,9 +283,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
         clearTimeout(restartTimer.current);
         // Quick restart: skip the mistake animation, jump straight to solver's turn
         restartTimer.current = setTimeout(() => {
-          const g = new Chess(puzzle.pre_mistake_fen);
-          const move = uciToMove(puzzle.mistake_uci);
-          g.move({ from: move.from as Square, to: move.to as Square, promotion: move.promotion });
+          const g = new Chess(puzzle.tree.fen);
           setGame(g);
           setLastMove(uciToMove(puzzle.mistake_uci));
           setMoveHistory([{ san: puzzle.mistake_san, type: 'mistake' }]);
