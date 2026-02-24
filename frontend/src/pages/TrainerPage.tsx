@@ -288,9 +288,7 @@ function TrainerDrill({
     }
   }, [phase, allVariationsDone, drillMode, onComplete, puzzle.id]);
 
-  const rootEvalDisplay = puzzle.root_eval >= 10000
-    ? 'Mate'
-    : `+${(puzzle.root_eval / 100).toFixed(1)}`;
+
 
   // Eval bar values
   const isMate = Math.abs(evalCp) >= 10000;
@@ -330,20 +328,6 @@ function TrainerDrill({
           {completedCount}/{totalPuzzles} completed
         </div>
 
-        {/* Mistake info */}
-        <div className="card p-4">
-          <h3 className="text-sm font-medium text-slate-400 mb-2">Mistake</h3>
-          <div className="flex items-baseline gap-2">
-            <span className="text-red-400 font-bold text-lg">{puzzle.mistake_san}</span>
-            <span className="text-slate-500 text-xs">({puzzle.eco})</span>
-          </div>
-          <div className="flex gap-4 mt-1 text-xs text-slate-500">
-            <span>{puzzle.games} games</span>
-            <span>{rootEvalDisplay}</span>
-            <span>-{(puzzle.cp_loss / 100).toFixed(1)} cp loss</span>
-          </div>
-          <div className="mt-1 text-xs text-slate-600 font-mono select-all cursor-text">{puzzle.id}</div>
-        </div>
 
         {/* Status */}
         <div className="card p-4">
