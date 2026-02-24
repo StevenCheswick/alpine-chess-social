@@ -8,13 +8,10 @@ resolver = "2"
 members = [
     "crates/server",
     "crates/chess-core",
-    "crates/chess-puzzler",
     "crates/analysis-worker",
 ]
 
 [dev-dependencies]
-chess_puzzler = { path = "crates/chess-puzzler" }
-chess = "3.2"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"

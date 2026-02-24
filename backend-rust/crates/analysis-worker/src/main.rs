@@ -11,6 +11,13 @@ mod error;
 mod sqs;
 mod stockfish;
 
+// Re-declare lib modules so the binary can use them via `crate::`
+mod analysis;
+mod board_utils;
+mod endgame;
+mod puzzle;
+mod tactics;
+
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, Semaphore};

@@ -10,9 +10,9 @@ use std::fs;
 use std::str::FromStr;
 
 use chess::Board;
-use chess_puzzler::puzzle::cook::cook;
-use chess_puzzler::puzzle::extraction::parse_uci_move;
-use chess_puzzler::puzzle::{Puzzle, PuzzleNode};
+use analysis_worker::puzzle::cook::cook;
+use analysis_worker::puzzle::extraction::parse_uci_move;
+use analysis_worker::puzzle::{Puzzle, PuzzleNode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]

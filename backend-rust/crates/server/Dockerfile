@@ -9,13 +9,12 @@ WORKDIR /app
 FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY crates/chess-core ./crates/chess-core
-COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
 
 # Create clean workspace Cargo.toml
 RUN echo '[workspace]' > Cargo.toml.new && \
     echo 'resolver = "2"' >> Cargo.toml.new && \
-    echo 'members = ["crates/server", "crates/chess-core", "crates/chess-puzzler"]' >> Cargo.toml.new && \
+    echo 'members = ["crates/server", "crates/chess-core"]' >> Cargo.toml.new && \
     echo '' >> Cargo.toml.new && \
     grep -A1000 '^\[workspace.dependencies\]' Cargo.toml >> Cargo.toml.new && \
     mv Cargo.toml.new Cargo.toml
@@ -37,7 +36,6 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # Stage 3: Build source (only this layer rebuilds on code changes)
 COPY crates/chess-core ./crates/chess-core
-COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/server ./crates/server
 
 RUN cargo build --release -p server

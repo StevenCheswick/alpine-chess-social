@@ -3,16 +3,16 @@
 //! Ported from server/src/routes/analysis_ws.rs but uses local Stockfish
 //! instead of delegating to client-side WASM.
 
-use chess_puzzler::analysis;
-use chess_puzzler::board_utils::piece_map_count;
-use chess_puzzler::chess::{Board, Color, MoveGen, Piece};
-use chess_puzzler::endgame::EndgameTracker;
-use chess_puzzler::puzzle::cook;
-use chess_puzzler::puzzle::extraction::{
+use crate::analysis;
+use crate::board_utils::piece_map_count;
+use crate::endgame::EndgameTracker;
+use crate::puzzle::cook;
+use crate::puzzle::extraction::{
     parse_uci_move, BLUNDER_THRESHOLD, MIN_PUZZLE_CP, MIN_PUZZLE_LENGTH,
 };
-use chess_puzzler::puzzle::{Puzzle, PuzzleNode, TagKind};
-use chess_puzzler::tactics::zugzwang::ZugzwangEval;
+use crate::puzzle::{Puzzle, PuzzleNode, TagKind};
+use crate::tactics::zugzwang::ZugzwangEval;
+use chess::{Board, Color, MoveGen, Piece};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::info;
@@ -658,10 +658,10 @@ async fn extend_puzzle_line(
 fn find_san_move(
     board: &Board,
     san: &str,
-) -> Result<chess_puzzler::chess::ChessMove, WorkerError> {
+) -> Result<chess::ChessMove, WorkerError> {
     let clean = san.trim_end_matches(|c: char| c == '+' || c == '#' || c == '!' || c == '?');
 
-    let legal_moves: Vec<chess_puzzler::chess::ChessMove> = MoveGen::new_legal(board).collect();
+    let legal_moves: Vec<chess::ChessMove> = MoveGen::new_legal(board).collect();
 
     // Handle castling
     if clean == "O-O" || clean == "0-0" {
@@ -757,15 +757,15 @@ fn find_san_move(
         )));
     }
 
-    let dest = chess_puzzler::chess::Square::make_square(
-        chess_puzzler::chess::Rank::from_index((dest_rank - b'1') as usize),
-        chess_puzzler::chess::File::from_index((dest_file - b'a') as usize),
+    let dest = chess::Square::make_square(
+        chess::Rank::from_index((dest_rank - b'1') as usize),
+        chess::File::from_index((dest_file - b'a') as usize),
     );
 
     // Disambiguation
     let disambig = &rest[..rest.len() - 2];
 
-    let mut candidates: Vec<chess_puzzler::chess::ChessMove> = legal_moves
+    let mut candidates: Vec<chess::ChessMove> = legal_moves
         .into_iter()
         .filter(|m| {
             m.get_dest() == dest

@@ -48,8 +48,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "alpine-chess-tests"
 version = "0.0.0"
 dependencies = [
- "chess",
- "chess_puzzler",
  "reqwest",
  "serde",
  "serde_json",
@@ -67,7 +65,6 @@ dependencies = [
  "bincode",
  "chess",
  "chess-core",
- "chess_puzzler",
  "dotenvy",
  "num_cpus",
  "serde",
@@ -822,16 +819,6 @@ dependencies = [
  "serde_json",
  "shakmaty",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "chess_puzzler"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chess",
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
 # Copy only Cargo manifests first so dependency compilation is cached
 # and doesn't re-run when only source code changes.
 COPY crates/chess-core/Cargo.toml ./crates/chess-core/Cargo.toml
-COPY crates/chess-puzzler/Cargo.toml ./crates/chess-puzzler/Cargo.toml
 COPY crates/analysis-worker/Cargo.toml ./crates/analysis-worker/Cargo.toml
 
 # Create minimal workspace Cargo.toml
@@ -25,7 +24,6 @@ RUN echo '[workspace]\n\
 resolver = "2"\n\
 members = [\n\
     "crates/chess-core",\n\
-    "crates/chess-puzzler",\n\
     "crates/analysis-worker",\n\
 ]\n\
 \n\
@@ -49,8 +47,7 @@ bincode = "1"\n' > Cargo.toml
 
 # Create dummy source files to compile dependencies only
 RUN mkdir -p crates/chess-core/src && echo "" > crates/chess-core/src/lib.rs && \
-    mkdir -p crates/chess-puzzler/src && echo "" > crates/chess-puzzler/src/lib.rs && \
-    mkdir -p crates/analysis-worker/src && echo "fn main(){}" > crates/analysis-worker/src/main.rs
+    mkdir -p crates/analysis-worker/src && echo "" > crates/analysis-worker/src/lib.rs && echo "fn main(){}" > crates/analysis-worker/src/main.rs
 
 # Build dependencies (this layer is cached until Cargo.toml files change)
 RUN cargo build --release -p analysis-worker
@@ -58,7 +55,6 @@ RUN cargo build --release -p analysis-worker
 # --- Source build layer ---
 # Now copy real source code
 COPY crates/chess-core ./crates/chess-core
-COPY crates/chess-puzzler ./crates/chess-puzzler
 COPY crates/analysis-worker ./crates/analysis-worker
 
 # Rebuild — only the project crates recompile, deps are cached

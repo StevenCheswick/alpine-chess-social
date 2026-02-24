@@ -29,23 +29,14 @@ cd backend-rust && cargo test --test auth_test
 
 Test files live in `backend-rust/tests/` with shared helpers in `backend-rust/tests/common/mod.rs`.
 
-## Puzzle Classifier Tests
-
-The chess-puzzler crate is a port of Lichess's puzzle tagger. Tests live in `backend-rust/tests/classify_test.rs`:
-
-- **21 individual theme tests** (10 puzzles each, hardcoded) — run with `cargo test --test classify_test`
-- **Bulk validation** against 10K Lichess puzzles — run with `cargo test --test classify_test bulk_validate -- --ignored --nocapture`
-
-The bulk test uses Stockfish at 100K nodes. CP-dependent tags (advantage/crushing/equality) are excluded from comparison because Lichess uses 40M nodes for their evals.
-
 ## Lichess Reference Code
 
-The Lichess puzzler source is cloned at `C:\Users\steve\OneDrive\Desktop\lichess\lichess-puzzler`. Use it to cross-reference our Rust port against the original Python:
+The Lichess puzzler source is cloned at `C:\Users\steve\OneDrive\Desktop\lichess\lichess-puzzler`. Use it to cross-reference our Rust port (inside `analysis-worker`) against the original Python:
 
-- `tagger/cook.py` — main tagger (our `chess-puzzler/src/puzzle/cook.rs`)
-- `tagger/model.py` — data model (our `chess-puzzler/src/puzzle/mod.rs`)
-- `tagger/util.py` — utilities (our `chess-puzzler/src/board_utils.rs`)
-- `tagger/zugzwang.py` — zugzwang detection (our `chess-puzzler/src/tactics/zugzwang.rs`)
+- `tagger/cook.py` — main tagger (our `analysis-worker/src/puzzle/cook.rs`)
+- `tagger/model.py` — data model (our `analysis-worker/src/puzzle/mod.rs`)
+- `tagger/util.py` — utilities (our `analysis-worker/src/board_utils.rs`)
+- `tagger/zugzwang.py` — zugzwang detection (our `analysis-worker/src/tactics/zugzwang.rs`)
 
 ## Stale Process Cleanup
 

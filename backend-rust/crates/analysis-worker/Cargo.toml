@@ -3,9 +3,17 @@ name = "analysis-worker"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "analysis_worker"
+path = "src/lib.rs"
+
 [[bin]]
 name = "analysis-worker"
 path = "src/main.rs"
+
+[[bin]]
+name = "classify-openings"
+path = "src/bin/classify_openings.rs"
 
 [dependencies]
 # Workspace dependencies
@@ -27,7 +35,6 @@ num_cpus = { workspace = true }
 
 # Local crates
 chess-core = { path = "../chess-core" }
-chess_puzzler = { path = "../chess-puzzler" }
 
 # Chess
 chess = "3.2"
