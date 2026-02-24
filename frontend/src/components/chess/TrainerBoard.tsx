@@ -151,6 +151,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
   const totalLeavesRef = useRef(totalLeaves);
   const [variationsCompleted, setVariationsCompleted] = useState(0);
   const isFirstAttemptRef = useRef(true);
+  const hadMistakeRef = useRef(false);
   const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const movePendingRef = useRef(false);
   // Per-node shuffled move order so opponent never repeats the same branch
@@ -199,6 +200,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     // Reset subvariation state
     clearTimeout(restartTimer.current);
     movePendingRef.current = false;
+    hadMistakeRef.current = false;
     opponentOrderRef.current.clear();
     visitedLeaves.clear();
     setDrillMode('main');
@@ -270,7 +272,18 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
     console.log(`[Trainer] puzzleComplete: ${message} — variation ${clamped}/${total} (mode=${drillModeRef.current}, raw visited=${completed})`);
 
     if (clamped >= total) {
-      // All variations done (for current drill mode)
+      // All variations done — but if user made mistakes, replay the whole thing
+      if (hadMistakeRef.current) {
+        console.log(`[Trainer] puzzleComplete: had mistakes — restarting for clean run`);
+        setStatusMessage({ title: 'Good, but not perfect', msg: 'You made mistakes along the way. Let\'s try it again from the top.', type: 'info' });
+        hadMistakeRef.current = false;
+        visitedLeavesRef.current.clear();
+        opponentOrderRef.current.clear();
+        setVariationsCompleted(0);
+        clearTimeout(restartTimer.current);
+        restartTimer.current = setTimeout(() => start(true), 2000);
+        return;
+      }
       updatePhase('done');
       const doneMsg = drillModeRef.current === 'main' ? 'Main line complete!' : `Completed all ${total} variation${total !== 1 ? 's' : ''}.`;
       setStatusMessage({ title: doneMsg, msg: message, type: 'success' });
@@ -412,8 +425,9 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
       console.log(`[Trainer] lookup uci=${uci} — found=${!!moveData}, accepted=${moveData?.accepted}, available=[${Object.keys(curNode.moves).join(', ')}]`);
 
       if (!moveData || !moveData.accepted) {
-        // Wrong move — red flash, then show the best move and restart
+        // Wrong move — red flash, show correct move, then reset to same position
         console.log(`[Trainer] wrong move ${uci} — ${!moveData ? 'not in book' : 'not accepted'}`);
+        hadMistakeRef.current = true;
         movePendingRef.current = false;
         setFeedbackSquare({ square: targetSquare, color: 'rgba(220, 38, 38, 0.5)' });
         setSelectedSquare(null);
@@ -442,14 +456,21 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
           updatePhase('showing_correction');
           setStatusMessage({
             title: 'Wrong move',
-            msg: `The best move was ${bestData.san}`,
+            msg: `The best move was ${bestData.san}. Now play it.`,
             type: 'error',
           });
 
-          // After 1.5s, restart the current variation
+          // After 1.5s, reset back to the same position so user can play the correct move
           setTimeout(() => {
             setFeedbackSquare(null);
-            start(true);
+            setGame(new Chess(curGame.fen()));
+            setLastMove(null);
+            updatePhase('solver_turn');
+            setStatusMessage({
+              title: 'Try again',
+              msg: `Play ${bestData.san}.`,
+              type: 'info',
+            });
           }, 1500);
         }, 800);
 
