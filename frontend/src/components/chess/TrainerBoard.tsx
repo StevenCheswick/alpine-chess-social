@@ -281,7 +281,22 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
         opponentOrderRef.current.clear();
         setVariationsCompleted(0);
         clearTimeout(restartTimer.current);
-        restartTimer.current = setTimeout(() => start(true), 2000);
+        // Quick restart: skip the mistake animation, jump straight to solver's turn
+        restartTimer.current = setTimeout(() => {
+          const g = new Chess(puzzle.post_mistake_fen);
+          setGame(g);
+          setLastMove(uciToMove(puzzle.mistake_uci));
+          setMoveHistory([{ san: puzzle.mistake_san, type: 'mistake' }]);
+          onMoveHistory?.([{ san: puzzle.mistake_san, type: 'mistake' }]);
+          setCurrentNode(puzzle.tree);
+          onEvalUpdate?.(puzzle.root_eval);
+          updatePhase('solver_turn');
+          setStatusMessage({
+            title: 'Try again from the top',
+            msg: `They played ${puzzle.mistake_san}. Find the best response!`,
+            type: 'info',
+          });
+        }, 2000);
         return;
       }
       updatePhase('done');
