@@ -377,6 +377,12 @@ pub async fn get_user_puzzles(
                 continue;
             }
 
+            // Skip puzzles the user already found in-game
+            let found = puzzle.get("found").and_then(|v| v.as_bool()).unwrap_or(false);
+            if found {
+                continue;
+            }
+
             // Apply theme filter if provided
             if let Some(filter) = theme_filter {
                 let themes = puzzle
@@ -447,6 +453,11 @@ pub async fn get_user_puzzle_themes(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             if solver_is_white != user_is_white {
+                continue;
+            }
+
+            let found = puzzle.get("found").and_then(|v| v.as_bool()).unwrap_or(false);
+            if found {
                 continue;
             }
 
