@@ -106,6 +106,7 @@ export default function PuzzlesPage() {
   };
 
   const sortedThemes = Object.entries(themes)
+    .filter(([theme]) => isVisibleTag(theme))
     .sort((a, b) => b[1] - a[1])
     .map(([theme]) => theme);
 

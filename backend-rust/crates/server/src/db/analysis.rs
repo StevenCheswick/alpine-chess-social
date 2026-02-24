@@ -365,7 +365,18 @@ pub async fn get_user_puzzles(
             None => continue,
         };
 
+        let user_is_white = user_color.eq_ignore_ascii_case("white");
+
         for puzzle in puzzles {
+            // Only include puzzles where the user is the solver
+            let solver_is_white = puzzle
+                .get("solver_is_white")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if solver_is_white != user_is_white {
+                continue;
+            }
+
             // Apply theme filter if provided
             if let Some(filter) = theme_filter {
                 let themes = puzzle
@@ -401,7 +412,7 @@ pub async fn get_user_puzzles(
     Ok(result)
 }
 
-/// Get theme counts across all user puzzles.
+/// Get theme counts across user-side puzzles only.
 pub async fn get_user_puzzle_themes(
     pool: &PgPool,
     user_id: i64,
@@ -409,7 +420,7 @@ pub async fn get_user_puzzle_themes(
     use sqlx::Row;
 
     let rows = sqlx::query(
-        r#"SELECT ga.puzzles
+        r#"SELECT ug.user_color, ga.puzzles
            FROM user_games ug
            INNER JOIN game_analysis ga ON ug.id = ga.game_id
            WHERE ug.user_id = $1 AND ga.puzzles IS NOT NULL"#,
@@ -422,6 +433,8 @@ pub async fn get_user_puzzle_themes(
     let mut counts: HashMap<String, i64> = HashMap::new();
 
     for row in &rows {
+        let user_color: String = row.try_get("user_color").unwrap_or_default();
+        let user_is_white = user_color.eq_ignore_ascii_case("white");
         let puzzles_json: Option<JsonValue> = row.try_get("puzzles").unwrap_or(None);
         let puzzles = match puzzles_json.and_then(|v| v.as_array().cloned()) {
             Some(arr) => arr,
@@ -429,6 +442,14 @@ pub async fn get_user_puzzle_themes(
         };
 
         for puzzle in puzzles {
+            let solver_is_white = puzzle
+                .get("solver_is_white")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if solver_is_white != user_is_white {
+                continue;
+            }
+
             if let Some(themes) = puzzle.get("themes").and_then(|t| t.as_array()) {
                 for theme in themes {
                     if let Some(t) = theme.as_str() {
