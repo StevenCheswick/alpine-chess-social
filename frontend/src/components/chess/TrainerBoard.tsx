@@ -296,7 +296,7 @@ export function TrainerBoard({ puzzle, onPhaseChange, onMoveHistory, onEvalUpdat
             msg: `They played ${puzzle.mistake_san}. Find the best response!`,
             type: 'info',
           });
-        }, 2000);
+        }, 1000);
         return;
       }
       updatePhase('done');
