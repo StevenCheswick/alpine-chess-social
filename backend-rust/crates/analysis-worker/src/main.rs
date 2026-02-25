@@ -17,6 +17,7 @@ mod board_utils;
 mod endgame;
 mod puzzle;
 mod queen_sac;
+mod rook_sac;
 mod smothered_mate;
 mod tactics;
 

@@ -499,6 +499,14 @@ pub async fn analyze_game(
         all_tags.push("queen_sacrifice".to_string());
     }
 
+    // Rook sacrifice detection
+    if crate::rook_sac::detect_rook_sacrifice(
+        &boards_before, &chess_moves, user_color,
+        &evals, &best_moves, &positions_uci,
+    ) {
+        all_tags.push("rook_sacrifice".to_string());
+    }
+
     // Smothered mate detection (check final position)
     let final_board = boards_before.last().copied().unwrap_or_default();
     if crate::smothered_mate::detect_smothered_mate(&final_board, user_color) {
