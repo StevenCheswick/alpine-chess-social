@@ -242,14 +242,6 @@ export default function PuzzlesPage() {
   // --- List mode ---
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">Puzzles</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Practice tactics extracted from your analyzed games
-        </p>
-      </div>
-
       {/* Puzzle Performance Stats */}
       {stats && stats.user.total + stats.opponent.total > 0 && (() => {
         const edge = stats.user.rate - stats.opponent.rate;
@@ -550,6 +542,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
         {positions.map((p) => {
           const { label, color } = getPositionLabel(p.position);
           const edge = p.user.rate - p.opponent.rate;
+          const losing = edge < 0;
           return (
             <div key={p.position}>
               <div className="flex items-center justify-between mb-1">
@@ -563,8 +556,8 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
               </div>
               <div className="flex items-center gap-1.5 h-5">
                 <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
-                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-emerald-600/60 to-emerald-500/40" style={{ width: `${p.user.rate}%` }} />
-                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-medium text-emerald-400/90 font-mono">{p.user.rate}%</span>
+                  <div className={`bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r ${losing ? 'from-red-500/50 to-red-400/30' : 'from-emerald-600/60 to-emerald-500/40'}`} style={{ width: `${p.user.rate}%` }} />
+                  <span className={`absolute inset-y-0 left-2 flex items-center text-[10px] font-medium font-mono ${losing ? 'text-red-400/90' : 'text-emerald-400/90'}`}>{p.user.rate}%</span>
                 </div>
                 <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
                   <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-600/40 to-slate-500/25" style={{ width: `${p.opponent.rate}%` }} />
@@ -597,13 +590,14 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
       <div className="space-y-2">
         {filtered.map((t) => {
           const edge = t.user.rate - t.opponent.rate;
+          const losing = edge < 0;
           return (
             <div key={t.theme} className="flex items-center gap-3 py-1 hover:bg-slate-800/20 rounded-md px-1 -mx-1 transition-colors">
               <span className="w-28 sm:w-32 text-[13px] text-slate-300 truncate shrink-0">{tagDisplayName(t.theme)}</span>
               <div className="flex-1 flex items-center gap-1.5">
                 <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
-                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-emerald-600/60 to-emerald-500/40" style={{ width: `${t.user.rate}%` }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-emerald-400/80 font-mono">{t.user.rate}%</span>
+                  <div className={`bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r ${losing ? 'from-red-500/50 to-red-400/30' : 'from-emerald-600/60 to-emerald-500/40'}`} style={{ width: `${t.user.rate}%` }} />
+                  <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-medium font-mono ${losing ? 'text-red-400/80' : 'text-emerald-400/80'}`}>{t.user.rate}%</span>
                 </div>
                 <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
                   <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-slate-600/40 to-slate-500/25" style={{ width: `${t.opponent.rate}%` }} />
