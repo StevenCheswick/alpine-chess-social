@@ -423,8 +423,7 @@ function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
 
   return (
     <div className="card p-5">
-      <h2 className="text-sm font-semibold text-white mb-1">Costliest Opening Habits</h2>
-      <p className="text-[10px] text-slate-600 mb-3">Mistakes you keep repeating</p>
+      <h2 className="text-sm font-semibold text-white mb-3">Costliest Opening Habits</h2>
       <div className="h-px mb-3" style={{ background: 'rgba(239,68,68,0.25)' }} />
       <div className="space-y-0">
         {blunders.map((b, i) => {
@@ -478,8 +477,7 @@ function CleanestLinesList({ lines }: { lines: CleanLine[] }) {
 
   return (
     <div className="card p-5">
-      <h2 className="text-sm font-semibold text-white mb-1">Deepest Opening Prep</h2>
-      <p className="text-[10px] text-slate-600 mb-3">Longest lines with no inaccuracies</p>
+      <h2 className="text-sm font-semibold text-white mb-3">Deepest Opening Prep</h2>
       <div className="h-px mb-3" style={{ background: 'rgba(51,65,85,0.4)' }} />
       <div className="space-y-0">
         {lines.map((c, i) => (
