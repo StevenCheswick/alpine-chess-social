@@ -35,8 +35,7 @@
 
   .card {
     background: rgba(10,10,10,0.95);
-    @apply rounded-xl border border-emerald-500/30
-           shadow-[0_0_30px_rgba(16,185,129,0.15)];
+    @apply rounded-xl border border-slate-800/60;
   }
 
   .input {
