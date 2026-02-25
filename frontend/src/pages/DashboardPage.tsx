@@ -34,18 +34,6 @@ const QUALITY_LABEL: Record<string, string> = {
   blunder: 'Blunder',
 };
 
-const QUALITY_SHORT: Record<string, string> = {
-  book: '',
-  best: 'Best',
-  excellent: 'Exc',
-  good: 'Good',
-  inaccuracy: 'Inacc',
-  mistake: '',
-  blunder: '',
-};
-
-const DARK_TEXT_KEYS = new Set(['good', 'inaccuracy']);
-
 const MIN_GAMES = 100;
 const GAUGE_R = 50;
 const GAUGE_C = 2 * Math.PI * GAUGE_R;
@@ -177,10 +165,6 @@ export default function DashboardPage() {
     ? stats.ratingOverTime[0].rating
     : null;
   const ratingTrend = latestRating && firstRating ? latestRating - firstRating : null;
-
-  const earliestDate = stats.accuracyOverTime.length > 0
-    ? stats.accuracyOverTime[0].date
-    : '';
 
   // Move quality percentages
   const mqTotal = QUALITY_ORDER.reduce((s, k) => s + (stats.moveQualityBreakdown[k] || 0), 0);
