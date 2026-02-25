@@ -161,11 +161,6 @@ export default function DashboardPage() {
   const latestRating = stats.ratingOverTime.length > 0
     ? stats.ratingOverTime[stats.ratingOverTime.length - 1].rating
     : null;
-  const firstRating = stats.ratingOverTime.length > 1
-    ? stats.ratingOverTime[0].rating
-    : null;
-  const ratingTrend = latestRating && firstRating ? latestRating - firstRating : null;
-
   // Move quality percentages
   const mqTotal = QUALITY_ORDER.reduce((s, k) => s + (stats.moveQualityBreakdown[k] || 0), 0);
   const mqSegments = QUALITY_ORDER.map((key) => {
