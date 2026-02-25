@@ -305,17 +305,29 @@ export default function PuzzlesPage() {
             </div>
 
             {/* Tactical Edge hero */}
-            <div className="flex flex-col items-center justify-center text-center rounded-lg bg-gradient-to-br from-emerald-950/40 via-slate-900/20 to-teal-950/30 border border-emerald-500/10 px-4 py-5">
-              <p className="text-[10px] uppercase tracking-[0.15em] text-emerald-500/70 font-medium mb-2">Tactical Edge</p>
-              <span className="text-4xl font-bold gradient-text font-mono leading-none">
+            <div className={`flex flex-col items-center justify-center text-center rounded-lg border px-4 py-5 ${
+              edge > 5
+                ? 'bg-gradient-to-br from-emerald-950/40 via-slate-900/20 to-teal-950/30 border-emerald-500/10'
+                : edge < -5
+                ? 'bg-gradient-to-br from-red-950/40 via-slate-900/20 to-red-950/30 border-red-500/10'
+                : 'bg-gradient-to-br from-slate-800/40 via-slate-900/20 to-slate-800/30 border-slate-600/10'
+            }`}>
+              <p className={`text-[10px] uppercase tracking-[0.15em] font-medium mb-2 ${
+                edge > 5 ? 'text-emerald-500/70' : edge < -5 ? 'text-red-500/70' : 'text-slate-500/70'
+              }`}>Tactical Edge</p>
+              <span className={`text-4xl font-bold font-mono leading-none ${
+                edge > 5 ? 'gradient-text' : edge < -5 ? 'text-red-400' : 'text-slate-400'
+              }`}>
                 {edge > 0 ? '+' : ''}{edge.toFixed(0)}%
               </span>
-              <p className="text-[11px] text-emerald-500/50 mt-2">
+              <p className={`text-[11px] mt-2 ${
+                edge > 5 ? 'text-emerald-500/50' : edge < -5 ? 'text-red-500/50' : 'text-slate-500/50'
+              }`}>
                 {edge > 5 ? 'You outperform opponents' : edge < -5 ? 'Opponents outperform you' : 'Evenly matched'}
               </p>
               <div className="flex items-center gap-3 mt-3 text-[10px]">
-                <span className="flex items-center gap-1 text-emerald-400/70">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                <span className={`flex items-center gap-1 ${edge < -5 ? 'text-red-400/70' : 'text-emerald-400/70'}`}>
+                  <span className={`w-1 h-1 rounded-full ${edge < -5 ? 'bg-red-400' : 'bg-emerald-400'}`} />
                   {stats.user.rate}%
                 </span>
                 <span className="text-slate-700">vs</span>
@@ -586,6 +598,7 @@ function ThemeRow({ t }: { t: ThemeStats }) {
   return (
     <div className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
       <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
+      <span className="w-10 text-center text-[11px] font-mono text-slate-600">{t.user.total}</span>
       <span className={`w-12 text-center text-[13px] font-mono font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
       <span className="w-12 text-center text-[13px] font-mono font-medium text-slate-400">{t.opponent.rate}%</span>
       <span className={`w-10 text-right text-[12px] font-mono font-semibold ${edgeColor}`}>
@@ -595,11 +608,12 @@ function ThemeRow({ t }: { t: ThemeStats }) {
   );
 }
 
-/** Column headers for theme/mate grids */
-function ThemeGridHeader() {
+/** Section header with inline column labels */
+function ThemeSectionHeader({ title }: { title: string }) {
   return (
-    <div className="flex items-center gap-3 px-1 mb-2">
-      <span className="flex-1 text-[10px] text-slate-600 font-medium">Theme</span>
+    <div className="flex items-baseline gap-3 px-1 mb-2">
+      <span className="flex-1 text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</span>
+      <span className="w-10 text-center text-[10px] text-slate-600 font-medium">Games</span>
       <span className="w-12 text-center text-[10px] text-slate-600 font-medium">You</span>
       <span className="w-12 text-center text-[10px] text-slate-600 font-medium">Opp</span>
       <span className="w-10 text-right text-[10px] text-slate-600 font-medium">Edge</span>
@@ -632,8 +646,7 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
     <>
       {tactics.length > 0 && (
         <div className="mt-6 pt-5 border-t border-slate-800/80">
-          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">By Tactic</h3>
-          <ThemeGridHeader />
+          <ThemeSectionHeader title="By Tactic" />
           <div>
             {tactics.map(t => <ThemeRow key={t.theme} t={t} />)}
           </div>
@@ -641,8 +654,7 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
       )}
       {mates.length > 0 && (
         <div className="mt-6 pt-5 border-t border-slate-800/80">
-          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">By Checkmate Pattern</h3>
-          <ThemeGridHeader />
+          <ThemeSectionHeader title="By Checkmate Pattern" />
           <div>
             {mates.map(t => <ThemeRow key={t.theme} t={t} />)}
           </div>
