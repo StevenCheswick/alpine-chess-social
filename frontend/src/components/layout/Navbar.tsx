@@ -55,7 +55,7 @@ export default function Navbar() {
                   className="fixed inset-0 z-10"
                   onClick={() => setShowUserMenu(false)}
                 />
-                <div className="absolute right-0 mt-2 w-48 bg-slate-800 rounded-lg shadow-lg border border-slate-700 py-1 z-20">
+                <div className="absolute right-0 mt-2 w-48 rounded-lg shadow-lg py-1 z-20 card">
                   <Link
                     to={`/u/${user?.username}`}
                     className="block px-4 py-2 text-sm text-slate-300 hover:bg-slate-700"
@@ -63,7 +63,7 @@ export default function Navbar() {
                   >
                     Profile
                   </Link>
-                  <hr className="my-1 border-slate-700" />
+                  <hr className="my-1 border-slate-800" />
                   <button
                     onClick={handleLogout}
                     className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-slate-700"

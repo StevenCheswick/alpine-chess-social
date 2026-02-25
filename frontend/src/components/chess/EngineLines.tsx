@@ -43,7 +43,7 @@ export const EngineLines = memo(function EngineLines({ lines, currentFen, isAnal
 
   if (lines.length === 0) {
     return (
-      <div className="bg-slate-900 rounded-lg p-3 border border-slate-800">
+      <div className="bg-black rounded-lg p-3 border border-slate-800/50">
         <div className="text-slate-500 text-sm text-center py-2">
           {isAnalyzing ? 'Analyzing...' : 'No analysis'}
         </div>
@@ -52,11 +52,11 @@ export const EngineLines = memo(function EngineLines({ lines, currentFen, isAnal
   }
 
   return (
-    <div className="bg-slate-900 rounded-lg border border-slate-800 overflow-hidden">
+    <div className="bg-black rounded-lg border border-slate-800/50 overflow-hidden">
       {linesWithSan.map((line, idx) => (
         <div
           key={idx}
-          className="flex items-center gap-2 px-3 py-2 border-b border-slate-800 last:border-b-0 font-mono text-sm"
+          className="flex items-center gap-2 px-3 py-2 border-b border-slate-800/50 last:border-b-0 font-mono text-sm"
         >
           <span className="text-slate-600 w-4 text-xs">{idx + 1}</span>
           <span

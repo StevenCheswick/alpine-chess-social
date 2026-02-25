@@ -4,7 +4,7 @@ export default function AuthLayout() {
   return (
     <div className="min-h-screen flex" style={{ background: '#000' }}>
       {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-950 p-12 flex-col justify-between">
+      <div className="hidden lg:flex lg:w-1/2 p-12 flex-col justify-between" style={{ background: '#0a0a0a' }}>
         <div>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.4)]">

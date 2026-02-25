@@ -44,7 +44,7 @@ const RESULT_COLOR: Record<string, string> = { W: 'text-emerald-400', L: 'text-r
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-black border border-slate-800 rounded-lg px-3 py-2 shadow-xl">
       <p className="text-slate-400 text-[11px] mb-1">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="text-white font-mono text-xs">

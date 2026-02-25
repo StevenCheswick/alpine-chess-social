@@ -45,7 +45,7 @@ export default function EndgameAnalyticsPage() {
     return (
       <div className="max-w-4xl mx-auto p-6">
         <h1 className="text-2xl font-bold text-white mb-6">Endgame Analytics</h1>
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
+        <div className="card p-8 text-center">
           <h2 className="text-xl font-semibold text-white mb-2">No linked account</h2>
           <p className="text-slate-400 mb-4">
             Link your Chess.com account in settings to see your endgame analytics.
@@ -65,7 +65,7 @@ export default function EndgameAnalyticsPage() {
     return (
       <div className="max-w-4xl mx-auto p-6">
         <h1 className="text-2xl font-bold text-white mb-6">Endgame Analytics</h1>
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
+        <div className="card p-8 text-center">
           <h2 className="text-xl font-semibold text-white mb-2">No endgame data yet</h2>
           <p className="text-slate-400 mb-4">
             Analyze some games to see your endgame performance breakdown.
@@ -90,7 +90,7 @@ export default function EndgameAnalyticsPage() {
         </span>
       </div>
 
-      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
+      <div className="card p-5">
         <h2 className="text-lg font-semibold text-white mb-1">Breakdown</h2>
         <p className="text-sm text-slate-500 mb-4">
           Lower CP loss is better. Positive edge means you outplay your opponents.
@@ -98,7 +98,7 @@ export default function EndgameAnalyticsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-slate-400 border-b border-slate-700">
+              <tr className="text-slate-400 border-b border-slate-800">
                 <th className="text-left py-2 pr-4">Endgame Type</th>
                 <th className="text-right py-2 px-4">Games</th>
                 <th className="text-right py-2 px-4">Your Avg CP Loss</th>
@@ -111,7 +111,7 @@ export default function EndgameAnalyticsPage() {
                 const edge = s.opponentAvgCpLoss - s.userAvgCpLoss;
                 const edgeColor = edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-400';
                 return (
-                  <tr key={s.type} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <tr key={s.type} className="border-b border-slate-800/50 hover:bg-slate-700/30">
                     <td className="py-2.5 pr-4 text-white">{s.type}</td>
                     <td className="py-2.5 px-4 text-right text-slate-300">{s.games}</td>
                     <td className="py-2.5 px-4 text-right text-emerald-400">{s.userAvgCpLoss}</td>

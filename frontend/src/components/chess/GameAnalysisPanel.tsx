@@ -18,7 +18,7 @@ function AccuracyCircle({ accuracy, label, isUser }: { accuracy: number; label: 
   const color = accuracy >= 90 ? 'text-emerald-400' :
                 accuracy >= 80 ? 'text-green-400' :
                 accuracy >= 70 ? 'text-yellow-400' :
-                accuracy >= 60 ? 'text-orange-400' : 'text-red-400';
+                accuracy >= 60 ? 'text-amber-400' : 'text-red-400';
 
   return (
     <div className="flex flex-col items-center">
@@ -106,7 +106,7 @@ function ClassificationBreakdown({
         <ClassificationRow label="Excellent" count={classifications.excellent} colorClass="text-green-400" />
         <ClassificationRow label="Good" count={classifications.good} colorClass="text-green-300" />
         <ClassificationRow label="Inaccuracy" count={classifications.inaccuracy} colorClass="text-yellow-400" isNegative />
-        <ClassificationRow label="Mistake" count={classifications.mistake} colorClass="text-orange-400" isNegative />
+        <ClassificationRow label="Mistake" count={classifications.mistake} colorClass="text-amber-400" isNegative />
         <ClassificationRow label="Blunder" count={classifications.blunder} colorClass="text-red-400" isNegative />
         {classifications.forced > 0 && (
           <ClassificationRow label="Forced" count={classifications.forced} colorClass="text-slate-400" />
@@ -209,16 +209,16 @@ export default function GameAnalysisPanel({ analysis, userColor, moves, onMoveCl
   const opponentClassifications = userColor === 'white' ? analysis.black_classifications : analysis.white_classifications;
 
   return (
-    <div className="bg-slate-800/50 rounded-lg p-4 space-y-4 h-full overflow-y-auto">
+    <div className="card p-4 space-y-4 h-full overflow-y-auto">
       {/* Accuracy Section */}
       <div className="flex justify-around items-center py-2">
         <AccuracyCircle accuracy={userAccuracy} label="Your Accuracy" isUser={true} />
-        <div className="w-px h-16 bg-slate-700" />
+        <div className="w-px h-16 bg-slate-800" />
         <AccuracyCircle accuracy={opponentAccuracy} label="Opponent" isUser={false} />
       </div>
 
       {/* Divider */}
-      <div className="border-t border-slate-700" />
+      <div className="border-t border-slate-800" />
 
       {/* Classification Breakdown */}
       <div className="flex gap-6">
@@ -227,7 +227,7 @@ export default function GameAnalysisPanel({ analysis, userColor, moves, onMoveCl
           label="Your Moves"
           isUser={true}
         />
-        <div className="w-px bg-slate-700" />
+        <div className="w-px bg-slate-800" />
         <ClassificationBreakdown
           classifications={opponentClassifications}
           label="Opponent Moves"
@@ -238,7 +238,7 @@ export default function GameAnalysisPanel({ analysis, userColor, moves, onMoveCl
       {/* Color-coded PGN */}
       {moves && moves.length > 0 && (
         <>
-          <div className="border-t border-slate-700" />
+          <div className="border-t border-slate-800" />
           <div>
             <h4 className="text-sm font-medium text-white mb-2">Moves</h4>
             <ColorCodedPGN moves={moves} analysis={analysis} userColor={userColor} onMoveClick={onMoveClick} currentMoveIndex={currentMoveIndex} />

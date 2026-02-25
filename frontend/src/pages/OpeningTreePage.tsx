@@ -16,7 +16,7 @@ function getWinRateColor(winRate: number): string {
   if (winRate >= 60) return 'text-green-400';
   if (winRate >= 50) return 'text-green-300';
   if (winRate >= 40) return 'text-yellow-400';
-  if (winRate >= 30) return 'text-orange-400';
+  if (winRate >= 30) return 'text-amber-400';
   return 'text-red-400';
 }
 
