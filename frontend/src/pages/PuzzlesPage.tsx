@@ -253,7 +253,6 @@ export default function PuzzlesPage() {
       {/* Puzzle Performance Stats */}
       {stats && stats.user.total + stats.opponent.total > 0 && (() => {
         const edge = stats.user.rate - stats.opponent.rate;
-        const edgeAbs = Math.abs(edge);
         // Map edge to a 0-100 bar width: 50% = neutral, 100% = +50 edge
         const edgeBarWidth = Math.min(100, Math.max(0, 50 + edge));
         return (
