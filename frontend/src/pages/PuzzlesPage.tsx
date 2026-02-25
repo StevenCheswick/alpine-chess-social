@@ -560,7 +560,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-baseline gap-2">
                   <span className={`text-sm font-medium ${color}`}>{label}</span>
-                  <span className="text-[10px] text-slate-700 font-mono">{p.user.total} puzzles</span>
+                  <span className="text-[10px] text-slate-500 font-mono">{p.user.total} puzzles</span>
                 </div>
                 <span className={`text-[11px] font-semibold font-mono ${getEdgeColor(edge)}`}>
                   {edge > 0 ? '+' : ''}{edge.toFixed(0)}
@@ -598,7 +598,7 @@ function ThemeRow({ t }: { t: ThemeStats }) {
   return (
     <div className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
       <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
-      <span className="w-10 text-center text-[11px] font-mono text-slate-600">{t.user.total}</span>
+      <span className="w-10 text-center text-[11px] font-mono text-slate-500">{t.user.total}</span>
       <span className={`w-12 text-center text-[13px] font-mono font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
       <span className="w-12 text-center text-[13px] font-mono font-medium text-slate-400">{t.opponent.rate}%</span>
       <span className={`w-10 text-right text-[12px] font-mono font-semibold ${edgeColor}`}>
@@ -612,11 +612,11 @@ function ThemeRow({ t }: { t: ThemeStats }) {
 function ThemeSectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-baseline gap-3 px-1 mb-2">
-      <span className="flex-1 text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</span>
-      <span className="w-10 text-center text-[10px] text-slate-600 font-medium">Games</span>
-      <span className="w-12 text-center text-[10px] text-slate-600 font-medium">You</span>
-      <span className="w-12 text-center text-[10px] text-slate-600 font-medium">Opp</span>
-      <span className="w-10 text-right text-[10px] text-slate-600 font-medium">Edge</span>
+      <span className="flex-1 text-xs font-medium text-slate-400 uppercase tracking-wider">{title}</span>
+      <span className="w-10 text-center text-[10px] text-slate-500 font-medium">Games</span>
+      <span className="w-12 text-center text-[10px] text-slate-500 font-medium">You</span>
+      <span className="w-12 text-center text-[10px] text-slate-500 font-medium">Opp</span>
+      <span className="w-10 text-right text-[10px] text-slate-500 font-medium">Edge</span>
     </div>
   );
 }
