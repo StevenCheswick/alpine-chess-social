@@ -257,34 +257,27 @@ export default function DashboardPage() {
         <h2 className="text-sm font-semibold text-white mb-4">Move Quality Breakdown</h2>
         <div className="flex items-center gap-1 h-8 rounded-lg overflow-hidden">
           {mqSegments.map((seg, i) => {
-            const textCls = DARK_TEXT_KEYS.has(seg.key) ? 'text-slate-800/80' : 'text-white/90';
-            const pctStr = `${Math.round(seg.pct)}%`;
-            const short = QUALITY_SHORT[seg.key];
-            const showLabel = seg.pct >= 10 && short;
-            const showPct = seg.pct >= 4;
             const rounded = i === 0 ? 'rounded-l-md' : i === mqSegments.length - 1 ? 'rounded-r-md' : '';
             return (
               <div
                 key={seg.key}
                 className={`h-full relative cursor-default ${rounded}`}
                 style={{ width: `${seg.pct}%`, backgroundColor: QUALITY_COLORS[seg.key] }}
-              >
-                {showPct && (
-                  <div className={`absolute inset-0 flex items-center justify-center font-mono font-semibold ${textCls} ${showLabel ? 'text-[10px]' : 'text-[9px]'}`}>
-                    {showLabel ? `${short} ${pctStr}` : pctStr}
-                  </div>
-                )}
-              </div>
+              />
             );
           })}
         </div>
-        <div className="flex gap-4 mt-3 text-[10px] text-slate-500 justify-center flex-wrap">
-          {QUALITY_ORDER.map(key => (
-            <span key={key} className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: QUALITY_COLORS[key] }} />
-              {QUALITY_LABEL[key]}
-            </span>
-          ))}
+        <div className="flex gap-5 mt-3 text-xs text-slate-400 justify-center flex-wrap">
+          {QUALITY_ORDER.map(key => {
+            const raw = stats.moveQualityBreakdown[key] || 0;
+            const pct = mqTotal > 0 ? Math.round((raw / mqTotal) * 100) : 0;
+            return (
+              <span key={key} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: QUALITY_COLORS[key] }} />
+                {QUALITY_LABEL[key]} {pct}%
+              </span>
+            );
+          })}
         </div>
       </div>
 
