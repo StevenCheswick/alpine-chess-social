@@ -570,7 +570,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
                 <div className="flex items-center gap-2">
                   <span className="w-7 text-[9px] text-slate-500 font-medium shrink-0">You</span>
                   <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[4px] relative overflow-hidden">
-                    <div className={`bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r ${losing ? 'from-red-600/60 to-red-500/40' : 'from-emerald-600/60 to-emerald-500/40'}`} style={{ width: `${p.user.rate}%` }} />
+                    <div className={`bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r ${losing ? 'from-red-400/60 to-red-500/40' : 'from-emerald-400/60 to-teal-500/40'}`} style={{ width: `${p.user.rate}%` }} />
                     <span className={`absolute inset-y-0 right-2 flex items-center text-[10px] font-medium font-mono ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{p.user.rate}%</span>
                   </div>
                 </div>
