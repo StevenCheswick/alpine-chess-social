@@ -4,7 +4,8 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-white antialiased;
+    @apply text-white antialiased;
+    background: #000000;
   }
 }
 
@@ -33,8 +34,8 @@
   }
 
   .card {
-    @apply bg-gradient-to-br from-slate-900/95 via-slate-950/95 to-slate-900/95
-           rounded-xl border-2 border-emerald-500/40 backdrop-blur-sm
+    background: rgba(10,10,10,0.95);
+    @apply rounded-xl border border-emerald-500/30
            shadow-[0_0_30px_rgba(16,185,129,0.15)];
   }
 
