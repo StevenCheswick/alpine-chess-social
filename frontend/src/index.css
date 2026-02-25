@@ -53,3 +53,21 @@
     @apply shadow-[0_0_20px_rgba(16,185,129,0.3)];
   }
 }
+
+/* Puzzle stats gauge */
+.gauge-ring { transform: rotate(-90deg); }
+.gauge-track { stroke: rgba(51,65,85,0.5); }
+.gauge-fill {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Animated bar fills */
+.bar-fill {
+  transform-origin: left;
+  animation: barGrow 0.8s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes barGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}

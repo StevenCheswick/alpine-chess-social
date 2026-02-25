@@ -6,7 +6,12 @@ export default {
   ],
   important: true,
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+    },
   },
   plugins: [],
 }

@@ -253,50 +253,85 @@ export default function PuzzlesPage() {
       {/* Puzzle Performance Stats */}
       {stats && stats.user.total + stats.opponent.total > 0 && (() => {
         const edge = stats.user.rate - stats.opponent.rate;
-        // Map edge to a 0-100 bar width: 50% = neutral, 100% = +50 edge
-        const edgeBarWidth = Math.min(100, Math.max(0, 50 + edge));
+        const CIRC = 2 * Math.PI * 50; // circumference for r=50
+        const userOffset = CIRC * (1 - stats.user.rate / 100);
+        const oppOffset = CIRC * (1 - stats.opponent.rate / 100);
         return (
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-          <h2 className="text-lg font-semibold text-white mb-5">Tactical Performance</h2>
+        <div className="card p-6 relative overflow-hidden">
+          {/* Header with gradient underline */}
+          <div className="mb-6">
+            <h2 className="text-base font-semibold text-white tracking-tight">Tactical Performance</h2>
+            <div className="mt-2 h-px bg-gradient-to-r from-emerald-500/60 via-teal-500/30 to-transparent" />
+          </div>
 
-          {/* Summary: three stat cards */}
-          <div className="grid grid-cols-3 gap-4">
-            {/* Your Find Rate */}
-            <div className="bg-slate-800/60 rounded-lg p-4">
-              <p className="text-xs text-slate-500 mb-2">Your Find Rate</p>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold text-emerald-400">{stats.user.rate}%</span>
+          {/* Summary: Gauges + Edge */}
+          <div className="grid grid-cols-[1fr_1fr_1.1fr] gap-5">
+            {/* Your Find Rate gauge */}
+            <div className="flex flex-col items-center text-center">
+              <div className="relative w-28 h-28 mb-3">
+                <svg className="gauge-ring w-full h-full" viewBox="0 0 120 120">
+                  <circle className="gauge-track" cx="60" cy="60" r="50" fill="none" strokeWidth="8" />
+                  <circle className="gauge-fill" cx="60" cy="60" r="50" fill="none"
+                    stroke="url(#emeraldGrad)" strokeWidth="8"
+                    strokeDasharray={CIRC} strokeDashoffset={userOffset} />
+                  <defs>
+                    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#34d399" />
+                      <stop offset="100%" stopColor="#14b8a6" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold text-emerald-400 font-mono">{stats.user.rate}<span className="text-lg">%</span></span>
+                </div>
               </div>
-              <div className="w-full h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-emerald-600/80 rounded-full" style={{ width: `${stats.user.rate}%` }} />
-              </div>
-              <p className="text-xs text-slate-500 mt-2">{stats.user.found} of {stats.user.total} found</p>
+              <p className="text-xs font-medium text-slate-400 mb-0.5">Your Find Rate</p>
+              <p className="text-[11px] text-slate-600">{stats.user.found} of {stats.user.total} found</p>
             </div>
-            {/* Opponent Find Rate */}
-            <div className="bg-slate-800/60 rounded-lg p-4">
-              <p className="text-xs text-slate-500 mb-2">Opponent Find Rate</p>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold text-slate-300">{stats.opponent.rate}%</span>
+
+            {/* Opponent Find Rate gauge */}
+            <div className="flex flex-col items-center text-center">
+              <div className="relative w-28 h-28 mb-3">
+                <svg className="gauge-ring w-full h-full" viewBox="0 0 120 120">
+                  <circle className="gauge-track" cx="60" cy="60" r="50" fill="none" strokeWidth="8" />
+                  <circle className="gauge-fill" cx="60" cy="60" r="50" fill="none"
+                    stroke="url(#slateGrad)" strokeWidth="8"
+                    strokeDasharray={CIRC} strokeDashoffset={oppOffset} />
+                  <defs>
+                    <linearGradient id="slateGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#94a3b8" />
+                      <stop offset="100%" stopColor="#64748b" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold text-slate-300 font-mono">{stats.opponent.rate}<span className="text-lg">%</span></span>
+                </div>
               </div>
-              <div className="w-full h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-slate-500/80 rounded-full" style={{ width: `${stats.opponent.rate}%` }} />
-              </div>
-              <p className="text-xs text-slate-500 mt-2">{stats.opponent.found} of {stats.opponent.total} found</p>
+              <p className="text-xs font-medium text-slate-400 mb-0.5">Opponent Find Rate</p>
+              <p className="text-[11px] text-slate-600">{stats.opponent.found} of {stats.opponent.total} found</p>
             </div>
-            {/* Tactical Edge */}
-            <div className="bg-slate-800/60 rounded-lg p-4">
-              <p className="text-xs text-slate-500 mb-2">Tactical Edge</p>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-3xl font-bold ${edge > 0 ? 'text-emerald-400' : edge < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                  {edge > 0 ? '+' : ''}{edge.toFixed(0)}%
-                </span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden">
-                <div className="h-full bg-emerald-600/80 rounded-full" style={{ width: `${edgeBarWidth}%` }} />
-              </div>
-              <p className="text-xs text-slate-500 mt-2">
+
+            {/* Tactical Edge hero */}
+            <div className="flex flex-col items-center justify-center text-center rounded-lg bg-gradient-to-br from-emerald-950/40 via-slate-900/20 to-teal-950/30 border border-emerald-500/10 px-4 py-5">
+              <p className="text-[10px] uppercase tracking-[0.15em] text-emerald-500/70 font-medium mb-2">Tactical Edge</p>
+              <span className="text-4xl font-bold gradient-text font-mono leading-none">
+                {edge > 0 ? '+' : ''}{edge.toFixed(0)}%
+              </span>
+              <p className="text-[11px] text-emerald-500/50 mt-2">
                 {edge > 5 ? 'You outperform opponents' : edge < -5 ? 'Opponents outperform you' : 'Evenly matched'}
               </p>
+              <div className="flex items-center gap-3 mt-3 text-[10px]">
+                <span className="flex items-center gap-1 text-emerald-400/70">
+                  <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                  {stats.user.rate}%
+                </span>
+                <span className="text-slate-700">vs</span>
+                <span className="flex items-center gap-1 text-slate-500">
+                  <span className="w-1 h-1 rounded-full bg-slate-500" />
+                  {stats.opponent.rate}%
+                </span>
+              </div>
             </div>
           </div>
 
@@ -497,7 +532,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   if (positions.length === 0) return null;
 
   const getEdgeColor = (edge: number) =>
-    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-500';
+    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-600';
 
   const getPositionLabel = (pos: string) => {
     switch (pos) {
@@ -509,40 +544,31 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   };
 
   return (
-    <div className="mt-4 pt-4 border-t border-slate-700">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-sm font-medium text-slate-400">Find Rate by Position</h3>
-          <p className="text-xs text-slate-500 mt-0.5">How well you find tactics based on the position before opponent blundered.</p>
-        </div>
-        <div className="flex gap-4 text-[10px] text-slate-500">
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />You</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-slate-500 rounded-full" />Opponent</span>
-        </div>
-      </div>
-      <div className="space-y-4">
+    <div className="mt-6 pt-5 border-t border-slate-800/80">
+      <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">By Position</h3>
+      <div className="space-y-3">
         {positions.map((p) => {
           const { label, color } = getPositionLabel(p.position);
           const edge = p.user.rate - p.opponent.rate;
           return (
             <div key={p.position}>
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-baseline gap-2">
                   <span className={`text-sm font-medium ${color}`}>{label}</span>
-                  <span className="text-[10px] text-slate-600">{p.user.total} puzzles</span>
+                  <span className="text-[10px] text-slate-700 font-mono">{p.user.total}</span>
                 </div>
-                <span className={`text-xs font-semibold ${getEdgeColor(edge)}`}>
+                <span className={`text-[11px] font-semibold font-mono ${getEdgeColor(edge)}`}>
                   {edge > 0 ? '+' : ''}{edge.toFixed(0)}%
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-6 bg-slate-800/80 rounded relative overflow-hidden">
-                  <div className="absolute inset-y-0 left-0 bg-emerald-600/50 rounded" style={{ width: `${p.user.rate}%` }} />
-                  <span className="absolute inset-y-0 left-2.5 flex items-center text-xs font-medium text-emerald-400">{p.user.rate}%</span>
+              <div className="flex items-center gap-1.5 h-5">
+                <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
+                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-emerald-600/60 to-emerald-500/40" style={{ width: `${p.user.rate}%` }} />
+                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-medium text-emerald-400/90 font-mono">{p.user.rate}%</span>
                 </div>
-                <div className="flex-1 h-6 bg-slate-800/80 rounded relative overflow-hidden">
-                  <div className="absolute inset-y-0 left-0 bg-slate-500/40 rounded" style={{ width: `${p.opponent.rate}%` }} />
-                  <span className="absolute inset-y-0 left-2.5 flex items-center text-xs font-medium text-slate-400">{p.opponent.rate}%</span>
+                <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
+                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-600/40 to-slate-500/25" style={{ width: `${p.opponent.rate}%` }} />
+                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-medium text-slate-500 font-mono">{p.opponent.rate}%</span>
                 </div>
               </div>
             </div>
@@ -563,37 +589,28 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   if (filtered.length === 0) return null;
 
   const getEdgeColor = (edge: number) =>
-    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-500';
+    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400/80' : 'text-slate-600';
 
   return (
-    <div className="mt-4 pt-4 border-t border-slate-700">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-sm font-medium text-slate-400">Find Rate by Theme</h3>
-          <p className="text-xs text-slate-500 mt-0.5">How well you find tactics by puzzle type.</p>
-        </div>
-        <div className="flex gap-4 text-[10px] text-slate-500">
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />You</span>
-          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-slate-500 rounded-full" />Opponent</span>
-        </div>
-      </div>
-      <div className="space-y-3">
+    <div className="mt-6 pt-5 border-t border-slate-800/80">
+      <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">By Theme</h3>
+      <div className="space-y-2">
         {filtered.map((t) => {
           const edge = t.user.rate - t.opponent.rate;
           return (
-            <div key={t.theme} className="flex items-center gap-3">
-              <span className="w-28 sm:w-36 text-sm text-slate-200 truncate shrink-0">{tagDisplayName(t.theme)}</span>
+            <div key={t.theme} className="flex items-center gap-3 py-1 hover:bg-slate-800/20 rounded-md px-1 -mx-1 transition-colors">
+              <span className="w-28 sm:w-32 text-[13px] text-slate-300 truncate shrink-0">{tagDisplayName(t.theme)}</span>
               <div className="flex-1 flex items-center gap-1.5">
-                <div className="flex-1 h-5 bg-slate-800/80 rounded relative overflow-hidden">
-                  <div className="absolute inset-y-0 left-0 bg-emerald-600/50 rounded" style={{ width: `${t.user.rate}%` }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-emerald-400">{t.user.rate}%</span>
+                <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
+                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-emerald-600/60 to-emerald-500/40" style={{ width: `${t.user.rate}%` }} />
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-emerald-400/80 font-mono">{t.user.rate}%</span>
                 </div>
-                <div className="flex-1 h-5 bg-slate-800/80 rounded relative overflow-hidden">
-                  <div className="absolute inset-y-0 left-0 bg-slate-500/40 rounded" style={{ width: `${t.opponent.rate}%` }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-slate-400">{t.opponent.rate}%</span>
+                <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
+                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-slate-600/40 to-slate-500/25" style={{ width: `${t.opponent.rate}%` }} />
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-slate-500/80 font-mono">{t.opponent.rate}%</span>
                 </div>
               </div>
-              <span className={`w-10 text-right text-xs font-semibold shrink-0 ${getEdgeColor(edge)}`}>
+              <span className={`w-9 text-right text-[11px] font-semibold shrink-0 font-mono ${getEdgeColor(edge)}`}>
                 {edge > 0 ? '+' : ''}{edge.toFixed(0)}
               </span>
             </div>
