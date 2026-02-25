@@ -560,8 +560,8 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
                   <span className={`absolute inset-y-0 left-2 flex items-center text-[10px] font-medium font-mono ${losing ? 'text-red-400/90' : 'text-emerald-400/90'}`}>{p.user.rate}%</span>
                 </div>
                 <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
-                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-600/40 to-slate-500/25" style={{ width: `${p.opponent.rate}%` }} />
-                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-medium text-slate-500 font-mono">{p.opponent.rate}%</span>
+                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-500/50 to-slate-400/35" style={{ width: `${p.opponent.rate}%` }} />
+                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-medium text-slate-300 font-mono">{p.opponent.rate}%</span>
                 </div>
               </div>
             </div>
@@ -600,8 +600,8 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
                   <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-medium font-mono ${losing ? 'text-red-400/80' : 'text-emerald-400/80'}`}>{t.user.rate}%</span>
                 </div>
                 <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
-                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-slate-600/40 to-slate-500/25" style={{ width: `${t.opponent.rate}%` }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-slate-500/80 font-mono">{t.opponent.rate}%</span>
+                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-slate-500/50 to-slate-400/35" style={{ width: `${t.opponent.rate}%` }} />
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-slate-300/80 font-mono">{t.opponent.rate}%</span>
                 </div>
               </div>
               <span className={`w-9 text-right text-[11px] font-semibold shrink-0 font-mono ${getEdgeColor(edge)}`}>
