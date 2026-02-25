@@ -499,6 +499,12 @@ pub async fn analyze_game(
         all_tags.push("queen_sacrifice".to_string());
     }
 
+    // Smothered mate detection (check final position)
+    let final_board = boards_before.last().copied().unwrap_or_default();
+    if crate::smothered_mate::detect_smothered_mate(&final_board, user_color) {
+        all_tags.push("smothered_mate".to_string());
+    }
+
     // Build final analysis JSON
     let analysis = serde_json::json!({
         "moves": move_outputs,

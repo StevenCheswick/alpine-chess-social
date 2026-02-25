@@ -33,6 +33,7 @@ export const TAG_DISPLAY: Record<string, string> = {
   queenEndgame: 'Queen Endgame', queenRookEndgame: 'Queen + Rook Endgame',
   // Game-level tags
   queen_sacrifice: 'Queen Sacrifice',
+  smothered_mate: 'Smothered Mate',
   // Titled opponent tags
   titled: 'Titled',
   GM: 'GM', IM: 'IM', FM: 'FM', CM: 'CM', NM: 'NM',
@@ -53,6 +54,7 @@ const GAME_PAGE_TAGS = new Set([
   'Chess.com', 'Lichess',
   'Win', 'Loss', 'Draw',
   'queen_sacrifice',
+  'smothered_mate',
   'titled', 'GM', 'IM', 'FM', 'CM', 'NM',
   'WGM', 'WIM', 'WFM', 'WCM', 'WNM',
 ]);
