@@ -71,7 +71,7 @@ export default function MainLayout() {
       </main>
 
       {/* Mobile bottom navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 border-t border-slate-800 flex items-center justify-around px-2 z-50" style={{ background: '#0a0a0a' }}>
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 border-t border-emerald-500/30 flex items-center justify-around px-2 z-50" style={{ background: '#0a0a0a' }}>
         {mobileNavItems.map((item) => {
           const path = item.path === '/profile' ? `/u/${user?.username}` : item.path;
           return (
