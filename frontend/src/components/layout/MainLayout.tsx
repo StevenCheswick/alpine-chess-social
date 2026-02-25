@@ -59,7 +59,7 @@ export default function MainLayout() {
   const { user } = useAuthStore();
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen" style={{ background: '#000' }}>
       <Navbar />
       <LeftSidebar />
 
@@ -71,7 +71,7 @@ export default function MainLayout() {
       </main>
 
       {/* Mobile bottom navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-900 border-t border-slate-800 flex items-center justify-around px-2 z-50">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 border-t border-slate-800 flex items-center justify-around px-2 z-50" style={{ background: '#0a0a0a' }}>
         {mobileNavItems.map((item) => {
           const path = item.path === '/profile' ? `/u/${user?.username}` : item.path;
           return (

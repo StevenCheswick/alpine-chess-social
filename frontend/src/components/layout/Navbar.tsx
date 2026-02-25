@@ -13,7 +13,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 h-16 bg-slate-900 border-b border-slate-800 z-50">
+    <nav className="fixed top-0 left-0 right-0 h-16 border-b border-slate-800 z-50" style={{ background: '#0a0a0a' }}>
       <div className="h-full max-w-7xl mx-auto px-4 flex items-center justify-between">
         {/* Logo */}
         <Link to="/dashboard" className="flex items-center gap-2">

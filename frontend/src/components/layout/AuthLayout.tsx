@@ -2,7 +2,7 @@ import { Outlet } from 'react-router-dom';
 
 export default function AuthLayout() {
   return (
-    <div className="min-h-screen bg-slate-950 flex">
+    <div className="min-h-screen flex" style={{ background: '#000' }}>
       {/* Left side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-950 p-12 flex-col justify-between">
         <div>

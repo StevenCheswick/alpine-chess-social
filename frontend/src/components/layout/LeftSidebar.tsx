@@ -81,7 +81,7 @@ export default function LeftSidebar() {
   const { user } = useAuthStore();
 
   return (
-    <aside className="hidden lg:block w-64 fixed left-0 top-16 bottom-0 border-r border-slate-800 bg-slate-950 p-4">
+    <aside className="hidden lg:block w-64 fixed left-0 top-16 bottom-0 border-r border-slate-800 p-4" style={{ background: '#0a0a0a' }}>
       <nav className="space-y-1">
         {navItems.map((item) => {
           // Replace profile path with actual username
