@@ -15,6 +15,7 @@ path = "src/main.rs"
 name = "classify-openings"
 path = "src/bin/classify_openings.rs"
 
+
 [dependencies]
 # Workspace dependencies
 tokio = { workspace = true }

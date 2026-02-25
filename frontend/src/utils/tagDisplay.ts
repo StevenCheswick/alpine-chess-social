@@ -52,6 +52,7 @@ export const TAG_DISPLAY: Record<string, string> = {
 const GAME_PAGE_TAGS = new Set([
   'Chess.com', 'Lichess',
   'Win', 'Loss', 'Draw',
+  'queen_sacrifice',
   'titled', 'GM', 'IM', 'FM', 'CM', 'NM',
   'WGM', 'WIM', 'WFM', 'WCM', 'WNM',
 ]);

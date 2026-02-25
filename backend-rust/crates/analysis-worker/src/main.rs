@@ -16,6 +16,7 @@ mod analysis;
 mod board_utils;
 mod endgame;
 mod puzzle;
+mod queen_sac;
 mod tactics;
 
 use std::sync::Arc;
@@ -27,6 +28,25 @@ use crate::config::WorkerConfig;
 use crate::error::WorkerError;
 use crate::sqs::SqsClient;
 use crate::stockfish::StockfishEngine;
+
+/// Parse --test-games 123,456,789 from CLI args
+fn parse_test_games() -> Option<Vec<i64>> {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len() {
+        if args[i] == "--test-games" {
+            if let Some(ids_str) = args.get(i + 1) {
+                let ids: Vec<i64> = ids_str
+                    .split(',')
+                    .filter_map(|s| s.trim().parse().ok())
+                    .collect();
+                if !ids.is_empty() {
+                    return Some(ids);
+                }
+            }
+        }
+    }
+    None
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,6 +60,69 @@ async fn main() -> anyhow::Result<()> {
 
     // Load .env file for local dev
     let _ = dotenvy::dotenv();
+
+    // --test-games mode: analyze specific game IDs locally, skip SQS
+    if let Some(game_ids) = parse_test_games() {
+        // Force local dev mode so config doesn't need AWS secrets
+        std::env::set_var("LOCAL_DEV", "1");
+        std::env::set_var("SQS_QUEUE_URL", "unused");
+
+        let config = WorkerConfig::load().await?;
+        info!(stockfish_path = %config.stockfish_path, "Test mode config loaded");
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&config.database_url)
+            .await?;
+
+        let mut engine = StockfishEngine::new(&config.stockfish_path)
+            .await
+            .expect("Failed to spawn Stockfish");
+
+        let mut passed = 0u32;
+        let mut failed = 0u32;
+
+        for game_id in &game_ids {
+            println!("\n{}", "=".repeat(60));
+            println!("Analyzing game_id={game_id}...");
+
+            match analyzer::analyze_game(&mut engine, &pool, &config, *game_id).await {
+                Ok(()) => {
+                    let row: Option<(i64,)> = sqlx::query_as(
+                        "SELECT game_id FROM game_tags WHERE game_id = $1 AND tag = 'queen_sacrifice'"
+                    )
+                    .bind(game_id)
+                    .fetch_optional(&pool)
+                    .await?;
+
+                    if row.is_some() {
+                        println!("  PASS: queen_sacrifice tag detected");
+                        passed += 1;
+                    } else {
+                        let tags: Vec<(String,)> = sqlx::query_as(
+                            "SELECT tag FROM game_tags WHERE game_id = $1"
+                        )
+                        .bind(game_id)
+                        .fetch_all(&pool)
+                        .await?;
+                        let tag_list: Vec<&str> = tags.iter().map(|t| t.0.as_str()).collect();
+                        println!("  FAIL: no queen_sacrifice tag");
+                        println!("  Tags found: {tag_list:?}");
+                        failed += 1;
+                    }
+                }
+                Err(e) => {
+                    println!("  ERROR: {e}");
+                    failed += 1;
+                }
+            }
+        }
+
+        engine.quit().await;
+        println!("\n{}", "=".repeat(60));
+        println!("Results: {passed} passed, {failed} failed out of {} games", game_ids.len());
+        return Ok(());
+    }
 
     // Load config (fetches DB URL from Secrets Manager in prod)
     let config = WorkerConfig::load().await?;

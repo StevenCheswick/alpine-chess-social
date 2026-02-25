@@ -12,7 +12,7 @@ use crate::puzzle::extraction::{
 };
 use crate::puzzle::{Puzzle, PuzzleNode, TagKind};
 use crate::tactics::zugzwang::ZugzwangEval;
-use chess::{Board, Color, MoveGen, Piece};
+use chess::{Board, ChessMove, Color, MoveGen, Piece};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::info;
@@ -84,6 +84,7 @@ pub async fn analyze_game(
     let mut board = Board::default();
     let mut positions: Vec<(String, String, Board)> = Vec::new();
     let mut boards_before: Vec<Board> = vec![board];
+    let mut chess_moves: Vec<ChessMove> = Vec::new();
     let mut legal_counts: Vec<usize> = Vec::new();
 
     let start_fen = board.to_string();
@@ -111,6 +112,7 @@ pub async fn analyze_game(
                 .unwrap_or("")
         );
 
+        chess_moves.push(chess_move);
         board = board.make_move_new(chess_move);
         positions.push((fen_before, uci, board));
         boards_before.push(board);
@@ -477,11 +479,25 @@ pub async fn analyze_game(
 
     let endgame_segments = eg_tracker.finish();
 
-    // Puzzle tags disabled: the `found` flag only checks the first solver move,
-    // so sacrifice/tactic tags can be attributed to the user even when the key
-    // move was never played in the actual game.  Until we verify the full
-    // mainline against game moves, send an empty tags list.
-    let all_tags: Vec<String> = Vec::new();
+    // Game-level tags (queen sacrifice, etc.)
+    // Puzzle tags are disabled pending found-flag fix, but game-level tags
+    // are computed from the actual moves played and don't need puzzle verification.
+    let mut all_tags: Vec<String> = Vec::new();
+
+    // Queen sacrifice detection (uses pre-computed data, no extra SF calls)
+    let user_color = if game.user_color == "white" { Color::White } else { Color::Black };
+    let positions_uci: Vec<String> = positions.iter().map(|(_, uci, _)| uci.clone()).collect();
+    let has_queen_sac = crate::queen_sac::detect_queen_sacrifice(
+        &boards_before,
+        &chess_moves,
+        user_color,
+        &evals,
+        &best_moves,
+        &positions_uci,
+    );
+    if has_queen_sac {
+        all_tags.push("queen_sacrifice".to_string());
+    }
 
     // Build final analysis JSON
     let analysis = serde_json::json!({
