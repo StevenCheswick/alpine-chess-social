@@ -519,7 +519,7 @@ export default function PuzzlesPage() {
   );
 }
 
-/** Position type breakdown - side-by-side comparison bars */
+/** Position type breakdown - stacked bars with You/Opp labels */
 function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   if (positions.length === 0) return null;
 
@@ -538,30 +538,36 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   return (
     <div className="mt-6 pt-5 border-t border-slate-800/80">
       <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">By Position</h3>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {positions.map((p) => {
           const { label, color } = getPositionLabel(p.position);
           const edge = p.user.rate - p.opponent.rate;
           const losing = edge < 0;
           return (
             <div key={p.position}>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-baseline gap-2">
                   <span className={`text-sm font-medium ${color}`}>{label}</span>
-                  <span className="text-[10px] text-slate-700 font-mono">{p.user.total}</span>
+                  <span className="text-[10px] text-slate-700 font-mono">{p.user.total} puzzles</span>
                 </div>
                 <span className={`text-[11px] font-semibold font-mono ${getEdgeColor(edge)}`}>
-                  {edge > 0 ? '+' : ''}{edge.toFixed(0)}%
+                  {edge > 0 ? '+' : ''}{edge.toFixed(0)}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 h-5">
-                <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
-                  <div className={`bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r ${losing ? 'from-red-500/50 to-red-400/30' : 'from-emerald-600/60 to-emerald-500/40'}`} style={{ width: `${p.user.rate}%` }} />
-                  <span className={`absolute inset-y-0 left-2 flex items-center text-[10px] font-medium font-mono ${losing ? 'text-red-400/90' : 'text-emerald-400/90'}`}>{p.user.rate}%</span>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 text-[9px] text-slate-500 font-medium shrink-0">You</span>
+                  <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[4px] relative overflow-hidden">
+                    <div className={`bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r ${losing ? 'from-red-500/50 to-red-400/30' : 'from-emerald-600/60 to-emerald-500/40'}`} style={{ width: `${p.user.rate}%` }} />
+                    <span className={`absolute inset-y-0 right-2 flex items-center text-[10px] font-medium font-mono ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{p.user.rate}%</span>
+                  </div>
                 </div>
-                <div className="flex-1 h-full bg-slate-900/80 rounded-[4px] relative overflow-hidden">
-                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-500/50 to-slate-400/35" style={{ width: `${p.opponent.rate}%` }} />
-                  <span className="absolute inset-y-0 left-2 flex items-center text-[10px] font-medium text-slate-300 font-mono">{p.opponent.rate}%</span>
+                <div className="flex items-center gap-2">
+                  <span className="w-7 text-[9px] text-slate-500 font-medium shrink-0">Opp</span>
+                  <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[4px] relative overflow-hidden">
+                    <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-500/50 to-slate-400/35" style={{ width: `${p.opponent.rate}%` }} />
+                    <span className="absolute inset-y-0 right-2 flex items-center text-[10px] font-medium text-slate-400 font-mono">{p.opponent.rate}%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -572,7 +578,7 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   );
 }
 
-/** Theme breakdown - compact side-by-side bars sorted by edge */
+/** Theme breakdown - clean numeric grid sorted by edge */
 function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   // Only show visible themes with enough data, sorted by edge (descending)
   const filtered = themes
@@ -586,25 +592,24 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
 
   return (
     <div className="mt-6 pt-5 border-t border-slate-800/80">
-      <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">By Theme</h3>
-      <div className="space-y-2">
+      <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">By Theme</h3>
+      {/* Column headers */}
+      <div className="flex items-center gap-3 px-1 mb-2">
+        <span className="flex-1 text-[10px] text-slate-600 font-medium">Theme</span>
+        <span className="w-12 text-center text-[10px] text-slate-600 font-medium">You</span>
+        <span className="w-12 text-center text-[10px] text-slate-600 font-medium">Opp</span>
+        <span className="w-10 text-right text-[10px] text-slate-600 font-medium">Edge</span>
+      </div>
+      <div>
         {filtered.map((t) => {
           const edge = t.user.rate - t.opponent.rate;
           const losing = edge < 0;
           return (
-            <div key={t.theme} className="flex items-center gap-3 py-1 hover:bg-slate-800/20 rounded-md px-1 -mx-1 transition-colors">
-              <span className="w-28 sm:w-32 text-[13px] text-slate-300 truncate shrink-0">{tagDisplayName(t.theme)}</span>
-              <div className="flex-1 flex items-center gap-1.5">
-                <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
-                  <div className={`bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r ${losing ? 'from-red-500/50 to-red-400/30' : 'from-emerald-600/60 to-emerald-500/40'}`} style={{ width: `${t.user.rate}%` }} />
-                  <span className={`absolute inset-0 flex items-center justify-center text-[10px] font-medium font-mono ${losing ? 'text-red-400/80' : 'text-emerald-400/80'}`}>{t.user.rate}%</span>
-                </div>
-                <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[3px] relative overflow-hidden">
-                  <div className="bar-fill absolute inset-y-0 left-0 rounded-[3px] bg-gradient-to-r from-slate-500/50 to-slate-400/35" style={{ width: `${t.opponent.rate}%` }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-slate-300/80 font-mono">{t.opponent.rate}%</span>
-                </div>
-              </div>
-              <span className={`w-9 text-right text-[11px] font-semibold shrink-0 font-mono ${getEdgeColor(edge)}`}>
+            <div key={t.theme} className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
+              <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
+              <span className={`w-12 text-center text-[13px] font-mono font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
+              <span className="w-12 text-center text-[13px] font-mono font-medium text-slate-400">{t.opponent.rate}%</span>
+              <span className={`w-10 text-right text-[12px] font-mono font-semibold ${getEdgeColor(edge)}`}>
                 {edge > 0 ? '+' : ''}{edge.toFixed(0)}
               </span>
             </div>
