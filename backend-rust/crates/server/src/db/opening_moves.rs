@@ -417,6 +417,7 @@ pub async fn get_opening_blunders(
              WHERE ug.user_id = $1
                AND (ord - 1) < 30
                AND (m->>'cp_loss')::float8 >= $2
+               AND COALESCE((m->>'classification')::text, '') NOT IN ('book', 'forced')
                AND (
                  (LOWER(ug.user_color) = 'white' AND (ord - 1) % 2 = 0)
                  OR (LOWER(ug.user_color) = 'black' AND (ord - 1) % 2 = 1)
