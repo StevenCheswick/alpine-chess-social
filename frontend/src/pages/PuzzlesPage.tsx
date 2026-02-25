@@ -590,37 +590,6 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   );
 }
 
-/** Shared grid row for theme/mate tables */
-function ThemeRow({ t }: { t: ThemeStats }) {
-  const edge = t.user.rate - t.opponent.rate;
-  const losing = edge < 0;
-  const edgeColor = edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400/80' : 'text-slate-600';
-  return (
-    <div className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
-      <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
-      <span className="w-10 text-center text-[11px] text-slate-400">{t.user.total}</span>
-      <span className={`w-12 text-center text-[13px] font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
-      <span className="w-12 text-center text-[13px] font-medium text-slate-300">{t.opponent.rate}%</span>
-      <span className={`w-10 text-right text-[12px] font-semibold ${edgeColor}`}>
-        {edge > 0 ? '+' : ''}{edge.toFixed(0)}
-      </span>
-    </div>
-  );
-}
-
-/** Section header with inline column labels */
-function ThemeSectionHeader({ title }: { title: string }) {
-  return (
-    <div className="flex items-baseline gap-3 px-1 mb-2">
-      <span className="flex-1 text-xs font-medium text-slate-400 uppercase tracking-wider">{title}</span>
-      <span className="w-10 text-center text-[10px] text-slate-400 font-medium">Games</span>
-      <span className="w-12 text-center text-[10px] text-slate-400 font-medium">You</span>
-      <span className="w-12 text-center text-[10px] text-slate-400 font-medium">Opp</span>
-      <span className="w-10 text-right text-[10px] text-slate-400 font-medium">Edge</span>
-    </div>
-  );
-}
-
 const MATE_THEMES = new Set([
   'backRankMate', 'smotheredMate', 'anastasiaMate', 'arabianMate',
   'bodenMate', 'dovetailMate', 'doubleBishopMate', 'balestraMate',
@@ -630,7 +599,52 @@ const MATE_THEMES = new Set([
   'mateIn1', 'mateIn2', 'mateIn3', 'mateIn4', 'mateIn5',
 ]);
 
-/** Theme + Mate breakdown - clean numeric grids sorted by edge */
+/** Theme table - proper table layout matching endgame analytics */
+function ThemeTable({ title, items }: { title: string; items: ThemeStats[] }) {
+  return (
+    <div className="mt-6 pt-5 border-t border-slate-800/80">
+      <h3 className="text-sm font-semibold text-white mb-3">{title}</h3>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-slate-400 uppercase tracking-wider">
+            <th className="text-left py-2 pr-4 font-medium">Theme</th>
+            <th className="text-right py-2 px-3 font-medium">Games</th>
+            <th className="text-right py-2 px-3 font-medium">You</th>
+            <th className="text-right py-2 px-3 font-medium">Opponent</th>
+            <th className="text-right py-2 pl-3 font-medium">Edge</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((t, i) => {
+            const edge = t.user.rate - t.opponent.rate;
+            const losing = edge < 0;
+            const edgeColor = edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-400';
+            return (
+              <tr
+                key={t.theme}
+                className={`border-t border-slate-800/50 ${i % 2 === 1 ? 'bg-slate-800/20' : ''}`}
+              >
+                <td className="py-2.5 pr-4 text-white font-medium">{tagDisplayName(t.theme)}</td>
+                <td className="py-2.5 px-3 text-right text-slate-300">{t.user.total}</td>
+                <td className={`py-2.5 px-3 text-right ${losing ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {t.user.rate}%
+                </td>
+                <td className="py-2.5 px-3 text-right text-slate-300">
+                  {t.opponent.rate}%
+                </td>
+                <td className={`py-2.5 pl-3 text-right font-semibold ${edgeColor}`}>
+                  {edge > 0 ? '+' : ''}{edge.toFixed(0)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Theme + Mate breakdown - proper tables sorted alphabetically */
 function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   const eligible = themes.filter(t => isVisibleTag(t.theme) && t.user.total >= 50);
   const tactics = eligible
@@ -644,22 +658,8 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
 
   return (
     <>
-      {tactics.length > 0 && (
-        <div className="mt-6 pt-5 border-t border-slate-800/80">
-          <ThemeSectionHeader title="By Tactic" />
-          <div>
-            {tactics.map(t => <ThemeRow key={t.theme} t={t} />)}
-          </div>
-        </div>
-      )}
-      {mates.length > 0 && (
-        <div className="mt-6 pt-5 border-t border-slate-800/80">
-          <ThemeSectionHeader title="By Checkmate Pattern" />
-          <div>
-            {mates.map(t => <ThemeRow key={t.theme} t={t} />)}
-          </div>
-        </div>
-      )}
+      {tactics.length > 0 && <ThemeTable title="By Tactic" items={tactics} />}
+      {mates.length > 0 && <ThemeTable title="By Checkmate Pattern" items={mates} />}
     </>
   );
 }
