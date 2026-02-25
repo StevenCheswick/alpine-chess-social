@@ -95,7 +95,7 @@ export default function EndgameAnalyticsPage() {
       <div className="card p-5">
         <div className="mb-4">
           <h2 className="text-sm font-semibold text-white">By Endgame Type</h2>
-          <p className="text-xs text-slate-400 mt-1">Average centipawn loss per endgame. Lower is better — positive edge means you outplay opponents.</p>
+          <p className="text-xs text-slate-400 mt-1">Average centipawn loss per endgame. Lower is better.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
