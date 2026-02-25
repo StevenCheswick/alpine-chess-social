@@ -81,6 +81,13 @@ export default function EndgameAnalyticsPage() {
     );
   }
 
+  // Sort by edge descending (strongest advantage first)
+  const sorted = [...stats.typeStats].sort((a, b) => {
+    const edgeA = a.opponentAvgCpLoss - a.userAvgCpLoss;
+    const edgeB = b.opponentAvgCpLoss - b.userAvgCpLoss;
+    return edgeB - edgeA;
+  });
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -91,32 +98,38 @@ export default function EndgameAnalyticsPage() {
       </div>
 
       <div className="card p-5">
-        <h2 className="text-lg font-semibold text-white mb-1">Breakdown</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          Lower CP loss is better. Positive edge means you outplay your opponents.
-        </p>
+        <h2 className="text-sm font-semibold text-white mb-4">By Endgame Type</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-slate-400 border-b border-slate-800">
-                <th className="text-left py-2 pr-4">Endgame Type</th>
-                <th className="text-right py-2 px-4">Games</th>
-                <th className="text-right py-2 px-4">Your Avg CP Loss</th>
-                <th className="text-right py-2 px-4">Opp Avg CP Loss</th>
-                <th className="text-right py-2 pl-4">Edge</th>
+              <tr className="text-xs text-slate-400 uppercase tracking-wider">
+                <th className="text-left py-2 pr-4 font-medium">Type</th>
+                <th className="text-right py-2 px-3 font-medium">Games</th>
+                <th className="text-right py-2 px-3 font-medium">You</th>
+                <th className="text-right py-2 px-3 font-medium">Opponent</th>
+                <th className="text-right py-2 pl-3 font-medium">Edge</th>
               </tr>
             </thead>
             <tbody>
-              {stats.typeStats.map((s) => {
+              {sorted.map((s, i) => {
                 const edge = s.opponentAvgCpLoss - s.userAvgCpLoss;
                 const edgeColor = edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400' : 'text-slate-400';
+                const userWins = s.userAvgCpLoss <= s.opponentAvgCpLoss;
+
                 return (
-                  <tr key={s.type} className="border-b border-slate-800/50 hover:bg-slate-700/30">
-                    <td className="py-2.5 pr-4 text-white">{s.type}</td>
-                    <td className="py-2.5 px-4 text-right text-slate-300">{s.games}</td>
-                    <td className="py-2.5 px-4 text-right text-emerald-400">{s.userAvgCpLoss}</td>
-                    <td className="py-2.5 px-4 text-right text-indigo-400">{s.opponentAvgCpLoss}</td>
-                    <td className={`py-2.5 pl-4 text-right font-medium ${edgeColor}`}>
+                  <tr
+                    key={s.type}
+                    className={`border-t border-slate-800/50 ${i % 2 === 1 ? 'bg-slate-800/20' : ''}`}
+                  >
+                    <td className="py-2.5 pr-4 text-white font-medium">{s.type}</td>
+                    <td className="py-2.5 px-3 text-right text-slate-300">{s.games}</td>
+                    <td className={`py-2.5 px-3 text-right ${userWins ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {s.userAvgCpLoss.toFixed(1)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right text-slate-300">
+                      {s.opponentAvgCpLoss.toFixed(1)}
+                    </td>
+                    <td className={`py-2.5 pl-3 text-right font-semibold ${edgeColor}`}>
                       {edge > 0 ? '+' : ''}{edge.toFixed(1)}
                     </td>
                   </tr>

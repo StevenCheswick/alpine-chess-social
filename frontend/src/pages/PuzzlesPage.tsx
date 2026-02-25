@@ -560,9 +560,9 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-baseline gap-2">
                   <span className={`text-sm font-medium ${color}`}>{label}</span>
-                  <span className="text-[10px] text-slate-500 font-mono">{p.user.total} puzzles</span>
+                  <span className="text-[10px] text-slate-400">{p.user.total} puzzles</span>
                 </div>
-                <span className={`text-[11px] font-semibold font-mono ${getEdgeColor(edge)}`}>
+                <span className={`text-[11px] font-semibold ${getEdgeColor(edge)}`}>
                   {edge > 0 ? '+' : ''}{edge.toFixed(0)}
                 </span>
               </div>
@@ -571,14 +571,14 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
                   <span className="w-7 text-[9px] text-slate-500 font-medium shrink-0">You</span>
                   <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[4px] relative overflow-hidden">
                     <div className={`bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r ${losing ? 'from-red-400/60 to-red-500/40' : 'from-emerald-400/60 to-teal-500/40'}`} style={{ width: `${p.user.rate}%` }} />
-                    <span className={`absolute inset-y-0 right-2 flex items-center text-[10px] font-medium font-mono ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{p.user.rate}%</span>
+                    <span className={`absolute inset-y-0 right-2 flex items-center text-[10px] font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{p.user.rate}%</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-7 text-[9px] text-slate-500 font-medium shrink-0">Opp</span>
                   <div className="flex-1 h-[18px] bg-slate-900/80 rounded-[4px] relative overflow-hidden">
                     <div className="bar-fill absolute inset-y-0 left-0 rounded-[4px] bg-gradient-to-r from-slate-500/50 to-slate-400/35" style={{ width: `${p.opponent.rate}%` }} />
-                    <span className="absolute inset-y-0 right-2 flex items-center text-[10px] font-medium text-slate-400 font-mono">{p.opponent.rate}%</span>
+                    <span className="absolute inset-y-0 right-2 flex items-center text-[10px] font-medium text-slate-300">{p.opponent.rate}%</span>
                   </div>
                 </div>
               </div>
@@ -598,10 +598,10 @@ function ThemeRow({ t }: { t: ThemeStats }) {
   return (
     <div className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
       <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
-      <span className="w-10 text-center text-[11px] font-mono text-slate-500">{t.user.total}</span>
-      <span className={`w-12 text-center text-[13px] font-mono font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
-      <span className="w-12 text-center text-[13px] font-mono font-medium text-slate-400">{t.opponent.rate}%</span>
-      <span className={`w-10 text-right text-[12px] font-mono font-semibold ${edgeColor}`}>
+      <span className="w-10 text-center text-[11px] text-slate-400">{t.user.total}</span>
+      <span className={`w-12 text-center text-[13px] font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
+      <span className="w-12 text-center text-[13px] font-medium text-slate-300">{t.opponent.rate}%</span>
+      <span className={`w-10 text-right text-[12px] font-semibold ${edgeColor}`}>
         {edge > 0 ? '+' : ''}{edge.toFixed(0)}
       </span>
     </div>
@@ -613,10 +613,10 @@ function ThemeSectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-baseline gap-3 px-1 mb-2">
       <span className="flex-1 text-xs font-medium text-slate-400 uppercase tracking-wider">{title}</span>
-      <span className="w-10 text-center text-[10px] text-slate-500 font-medium">Games</span>
-      <span className="w-12 text-center text-[10px] text-slate-500 font-medium">You</span>
-      <span className="w-12 text-center text-[10px] text-slate-500 font-medium">Opp</span>
-      <span className="w-10 text-right text-[10px] text-slate-500 font-medium">Edge</span>
+      <span className="w-10 text-center text-[10px] text-slate-400 font-medium">Games</span>
+      <span className="w-12 text-center text-[10px] text-slate-400 font-medium">You</span>
+      <span className="w-12 text-center text-[10px] text-slate-400 font-medium">Opp</span>
+      <span className="w-10 text-right text-[10px] text-slate-400 font-medium">Edge</span>
     </div>
   );
 }
