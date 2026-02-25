@@ -542,7 +542,7 @@ function CleanestLinesList({ lines }: { lines: CleanLine[] }) {
               </div>
             </div>
             <span className="text-sm font-bold text-emerald-400 font-mono whitespace-nowrap ml-3">
-              ~{c.avgCpLoss} cp
+              {c.cleanDepth} moves
             </span>
           </button>
         ))}
