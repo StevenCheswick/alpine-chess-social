@@ -209,7 +209,6 @@ export default function DashboardPage() {
           {latestRating ? (
             <>
               <p className="text-3xl font-bold text-white font-mono leading-none">{latestRating}</p>
-              <p className="text-[11px] text-slate-600 mt-1.5">Rapid</p>
             </>
           ) : (
             <p className="text-sm text-slate-600">No rating data</p>
@@ -333,7 +332,6 @@ export default function DashboardPage() {
           <div className="card p-5">
             <div className="flex items-baseline justify-between mb-4">
               <h2 className="text-sm font-semibold text-white">Rating Over Time</h2>
-              <span className="text-[10px] text-slate-600 font-mono">Rapid</span>
             </div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
