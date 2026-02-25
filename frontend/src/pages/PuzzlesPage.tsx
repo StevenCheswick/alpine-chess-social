@@ -613,6 +613,7 @@ const MATE_THEMES = new Set([
   'blindSwineMate', 'cornerMate', 'hookMate', 'killBoxMate',
   'morphysMate', 'operaMate', 'pillsburysMate', 'triangleMate',
   'vukovicMate', 'doubleCheckmate',
+  'mateIn1', 'mateIn2', 'mateIn3', 'mateIn4', 'mateIn5',
 ]);
 
 /** Theme + Mate breakdown - clean numeric grids sorted by edge */

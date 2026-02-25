@@ -31,6 +31,8 @@ export const TAG_DISPLAY: Record<string, string> = {
   pawnEndgame: 'Pawn Endgame', knightEndgame: 'Knight Endgame',
   bishopEndgame: 'Bishop Endgame', rookEndgame: 'Rook Endgame',
   queenEndgame: 'Queen Endgame', queenRookEndgame: 'Queen + Rook Endgame',
+  // Game-level tags
+  queen_sacrifice: 'Queen Sacrifice',
   // Titled opponent tags
   titled: 'Titled',
   GM: 'GM', IM: 'IM', FM: 'FM', CM: 'CM', NM: 'NM',
@@ -62,8 +64,7 @@ export function isGameTag(tag: string): boolean {
 /** Filter for puzzle page — show tactic/theme tags, hide meta tags */
 const HIDDEN_PUZZLE_TAGS = new Set([
   // Evaluation
-  'mate', 'mateIn1', 'mateIn2', 'mateIn3', 'mateIn4', 'mateIn5',
-  'crushing', 'advantage', 'equality',
+  'mate', 'crushing', 'advantage', 'equality',
   // Puzzle length
   'oneMove', 'short', 'long', 'veryLong',
   // Endgame types
