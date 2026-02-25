@@ -229,14 +229,7 @@ export default function DashboardPage() {
           <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Rating</p>
           {latestRating ? (
             <>
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-bold text-white font-mono leading-none">{latestRating}</p>
-                {ratingTrend !== null && (
-                  <span className={`text-xs font-mono font-semibold ${ratingTrend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {ratingTrend >= 0 ? '+' : ''}{ratingTrend}
-                  </span>
-                )}
-              </div>
+              <p className="text-3xl font-bold text-white font-mono leading-none">{latestRating}</p>
               <p className="text-[11px] text-slate-600 mt-1.5">Rapid</p>
             </>
           ) : (
