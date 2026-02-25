@@ -198,28 +198,25 @@ export default function DashboardPage() {
         </div>
 
         {/* Games Analyzed */}
-        <div className="card p-5">
+        <div className="card p-5 flex flex-col items-center justify-center text-center">
           <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Games Analyzed</p>
           <p className="text-3xl font-bold text-white font-mono leading-none">{stats.totalAnalyzedGames}</p>
         </div>
 
         {/* Rating */}
-        <div className="card p-5">
+        <div className="card p-5 flex flex-col items-center justify-center text-center">
           <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Rating</p>
           {latestRating ? (
-            <>
-              <p className="text-3xl font-bold text-white font-mono leading-none">{latestRating}</p>
-            </>
+            <p className="text-3xl font-bold text-white font-mono leading-none">{latestRating}</p>
           ) : (
             <p className="text-sm text-slate-600">No rating data</p>
           )}
         </div>
 
         {/* Win Rate */}
-        <div className="card p-5">
+        <div className="card p-5 flex flex-col items-center justify-center text-center">
           <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Win Rate</p>
           <p className="text-3xl font-bold text-emerald-400 font-mono leading-none">{Math.round(stats.winRate)}%</p>
-          <p className="text-[11px] text-slate-600 mt-1.5">{stats.wins}W / {stats.losses}L / {stats.draws}D</p>
         </div>
       </div>
 
