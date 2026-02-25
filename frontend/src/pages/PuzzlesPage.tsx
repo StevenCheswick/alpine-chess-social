@@ -578,45 +578,76 @@ function PositionBreakdown({ positions }: { positions: PositionStats[] }) {
   );
 }
 
-/** Theme breakdown - clean numeric grid sorted by edge */
+/** Shared grid row for theme/mate tables */
+function ThemeRow({ t }: { t: ThemeStats }) {
+  const edge = t.user.rate - t.opponent.rate;
+  const losing = edge < 0;
+  const edgeColor = edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400/80' : 'text-slate-600';
+  return (
+    <div className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
+      <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
+      <span className={`w-12 text-center text-[13px] font-mono font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
+      <span className="w-12 text-center text-[13px] font-mono font-medium text-slate-400">{t.opponent.rate}%</span>
+      <span className={`w-10 text-right text-[12px] font-mono font-semibold ${edgeColor}`}>
+        {edge > 0 ? '+' : ''}{edge.toFixed(0)}
+      </span>
+    </div>
+  );
+}
+
+/** Column headers for theme/mate grids */
+function ThemeGridHeader() {
+  return (
+    <div className="flex items-center gap-3 px-1 mb-2">
+      <span className="flex-1 text-[10px] text-slate-600 font-medium">Theme</span>
+      <span className="w-12 text-center text-[10px] text-slate-600 font-medium">You</span>
+      <span className="w-12 text-center text-[10px] text-slate-600 font-medium">Opp</span>
+      <span className="w-10 text-right text-[10px] text-slate-600 font-medium">Edge</span>
+    </div>
+  );
+}
+
+const MATE_THEMES = new Set([
+  'backRankMate', 'smotheredMate', 'anastasiaMate', 'arabianMate',
+  'bodenMate', 'dovetailMate', 'doubleBishopMate', 'balestraMate',
+  'blindSwineMate', 'cornerMate', 'hookMate', 'killBoxMate',
+  'morphysMate', 'operaMate', 'pillsburysMate', 'triangleMate',
+  'vukovicMate', 'doubleCheckmate',
+]);
+
+/** Theme + Mate breakdown - clean numeric grids sorted by edge */
 function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
-  // Only show visible themes with enough data, sorted by edge (descending)
-  const filtered = themes
-    .filter(t => isVisibleTag(t.theme) && t.user.total >= 50)
+  const eligible = themes.filter(t => isVisibleTag(t.theme) && t.user.total >= 50);
+  const tactics = eligible
+    .filter(t => !MATE_THEMES.has(t.theme))
+    .sort((a, b) => (b.user.rate - b.opponent.rate) - (a.user.rate - a.opponent.rate));
+  const mates = eligible
+    .filter(t => MATE_THEMES.has(t.theme))
     .sort((a, b) => (b.user.rate - b.opponent.rate) - (a.user.rate - a.opponent.rate));
 
-  if (filtered.length === 0) return null;
-
-  const getEdgeColor = (edge: number) =>
-    edge > 5 ? 'text-emerald-400' : edge < -5 ? 'text-red-400/80' : 'text-slate-600';
+  if (tactics.length === 0 && mates.length === 0) return null;
 
   return (
-    <div className="mt-6 pt-5 border-t border-slate-800/80">
-      <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">By Theme</h3>
-      {/* Column headers */}
-      <div className="flex items-center gap-3 px-1 mb-2">
-        <span className="flex-1 text-[10px] text-slate-600 font-medium">Theme</span>
-        <span className="w-12 text-center text-[10px] text-slate-600 font-medium">You</span>
-        <span className="w-12 text-center text-[10px] text-slate-600 font-medium">Opp</span>
-        <span className="w-10 text-right text-[10px] text-slate-600 font-medium">Edge</span>
-      </div>
-      <div>
-        {filtered.map((t) => {
-          const edge = t.user.rate - t.opponent.rate;
-          const losing = edge < 0;
-          return (
-            <div key={t.theme} className="flex items-center gap-3 px-1 py-2 hover:bg-slate-800/20 rounded-md transition-colors">
-              <span className="flex-1 text-[13px] text-slate-300">{tagDisplayName(t.theme)}</span>
-              <span className={`w-12 text-center text-[13px] font-mono font-medium ${losing ? 'text-red-400' : 'text-emerald-400'}`}>{t.user.rate}%</span>
-              <span className="w-12 text-center text-[13px] font-mono font-medium text-slate-400">{t.opponent.rate}%</span>
-              <span className={`w-10 text-right text-[12px] font-mono font-semibold ${getEdgeColor(edge)}`}>
-                {edge > 0 ? '+' : ''}{edge.toFixed(0)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <>
+      {tactics.length > 0 && (
+        <div className="mt-6 pt-5 border-t border-slate-800/80">
+          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">By Tactic</h3>
+          <ThemeGridHeader />
+          <div>
+            {tactics.map(t => <ThemeRow key={t.theme} t={t} />)}
+          </div>
+        </div>
+      )}
+      {mates.length > 0 && (
+        <div className="mt-6 pt-5 border-t border-slate-800/80">
+          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">By Checkmate Pattern</h3>
+          <ThemeGridHeader />
+          <div>
+            {mates.map(t => <ThemeRow key={t.theme} t={t} />)}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
