@@ -222,7 +222,6 @@ export default function DashboardPage() {
         <div className="card p-5">
           <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Games Analyzed</p>
           <p className="text-3xl font-bold text-white font-mono leading-none">{stats.totalAnalyzedGames}</p>
-          {earliestDate && <p className="text-[11px] text-slate-600 mt-1.5">Since {earliestDate}</p>}
         </div>
 
         {/* Rating */}
