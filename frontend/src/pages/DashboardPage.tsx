@@ -4,9 +4,6 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  BarChart,
-  Bar,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -15,17 +12,19 @@ import {
 import { useAuthStore } from '../stores/authStore';
 import { getStats, type DashboardStats, type GameSummary, type OpeningBlunder, type CleanLine } from '../services/dashboardService';
 
-const CLASSIFICATION_COLORS: Record<string, string> = {
+const QUALITY_ORDER = ['book', 'best', 'excellent', 'good', 'inaccuracy', 'mistake', 'blunder'] as const;
+
+const QUALITY_COLORS: Record<string, string> = {
   book: '#06b6d4',
-  best: '#22c55e',
-  excellent: '#4ade80',
-  good: '#86efac',
-  inaccuracy: '#facc15',
-  mistake: '#f97316',
-  blunder: '#ef4444',
+  best: '#10b981',
+  excellent: 'rgba(52, 211, 153, 0.8)',
+  good: 'rgba(110, 231, 183, 0.6)',
+  inaccuracy: 'rgba(251, 191, 36, 0.8)',
+  mistake: 'rgba(249, 115, 22, 0.8)',
+  blunder: 'rgba(239, 68, 68, 0.8)',
 };
 
-const CLASSIFICATION_LABELS: Record<string, string> = {
+const QUALITY_LABEL: Record<string, string> = {
   book: 'Book',
   best: 'Best',
   excellent: 'Excellent',
@@ -35,15 +34,32 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
   blunder: 'Blunder',
 };
 
+const QUALITY_SHORT: Record<string, string> = {
+  book: '',
+  best: 'Best',
+  excellent: 'Exc',
+  good: 'Good',
+  inaccuracy: 'Inacc',
+  mistake: '',
+  blunder: '',
+};
+
+const DARK_TEXT_KEYS = new Set(['good', 'inaccuracy']);
+
 const MIN_GAMES = 100;
+const GAUGE_R = 50;
+const GAUGE_C = 2 * Math.PI * GAUGE_R;
+
+const RESULT_LABEL: Record<string, string> = { W: 'Won', L: 'Lost', D: 'Draw' };
+const RESULT_COLOR: Record<string, string> = { W: 'text-emerald-400', L: 'text-red-400', D: 'text-slate-400' };
 
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm">
-      <p className="text-slate-400 mb-1">{label}</p>
+    <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 shadow-xl">
+      <p className="text-slate-400 text-[11px] mb-1">{label}</p>
       {payload.map((entry, i) => (
-        <p key={i} className="text-white font-medium">
+        <p key={i} className="text-white font-mono text-xs">
           {entry.name}: {entry.value}
         </p>
       ))}
@@ -64,7 +80,6 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
-
     getStats()
       .then(setStats)
       .catch((err) => setError(err.message))
@@ -81,7 +96,7 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-5xl mx-auto p-6">
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400">
           Failed to load dashboard: {error}
         </div>
@@ -91,9 +106,9 @@ export default function DashboardPage() {
 
   if (!hasLinkedAccount) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-5xl mx-auto p-6">
         <h1 className="text-2xl font-bold text-white mb-6">Dashboard</h1>
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
+        <div className="card p-8 text-center">
           <svg className="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
@@ -116,9 +131,9 @@ export default function DashboardPage() {
     const count = stats?.totalAnalyzedGames ?? 0;
     const percent = Math.round((count / MIN_GAMES) * 100);
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-5xl mx-auto p-6">
         <h1 className="text-2xl font-bold text-white mb-6">Dashboard</h1>
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
+        <div className="card p-8 text-center">
           <svg className="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
@@ -149,280 +164,282 @@ export default function DashboardPage() {
     );
   }
 
-  const smoothedAccuracy = stats.accuracyOverTime;
-  const smoothedPhase = stats.phaseAccuracyOverTime;
-  const smoothedInaccuracy = stats.firstInaccuracyOverTime;
+  // Derived data
+  const avgAccuracy = Math.round(
+    stats.accuracyOverTime.reduce((s, d) => s + d.accuracy, 0) / stats.accuracyOverTime.length
+  );
+  const gaugeOffset = GAUGE_C * (1 - avgAccuracy / 100);
 
-  const QUALITY_ORDER = ['book', 'best', 'excellent', 'good', 'inaccuracy', 'mistake', 'blunder'] as const;
-  const moveQualityData = QUALITY_ORDER.map((key) => ({
-    name: CLASSIFICATION_LABELS[key] || key,
-    value: stats.moveQualityBreakdown[key] || 0,
-    color: CLASSIFICATION_COLORS[key] || '#94a3b8',
-  }));
+  const latestRating = stats.ratingOverTime.length > 0
+    ? stats.ratingOverTime[stats.ratingOverTime.length - 1].rating
+    : null;
+  const firstRating = stats.ratingOverTime.length > 1
+    ? stats.ratingOverTime[0].rating
+    : null;
+  const ratingTrend = latestRating && firstRating ? latestRating - firstRating : null;
+
+  const earliestDate = stats.accuracyOverTime.length > 0
+    ? stats.accuracyOverTime[0].date
+    : '';
+
+  // Move quality percentages
+  const mqTotal = QUALITY_ORDER.reduce((s, k) => s + (stats.moveQualityBreakdown[k] || 0), 0);
+  const mqSegments = QUALITY_ORDER.map((key) => {
+    const raw = stats.moveQualityBreakdown[key] || 0;
+    const pct = mqTotal > 0 ? (raw / mqTotal) * 100 : 0;
+    return { key, pct };
+  }).filter(s => s.pct > 0);
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <span className="text-sm text-slate-400">
-          {stats.totalAnalyzedGames} analyzed games
-        </span>
+    <div className="max-w-5xl mx-auto p-4 sm:p-6">
+      {/* Hero Metrics Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        {/* Overall Accuracy — gauge */}
+        <div className="card p-5">
+          <div className="flex items-center gap-4">
+            <div className="relative w-20 h-20 shrink-0">
+              <svg className="w-full h-full" viewBox="0 0 120 120" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="60" cy="60" r={GAUGE_R} fill="none" strokeWidth="7" stroke="rgba(51,65,85,0.5)" />
+                <circle cx="60" cy="60" r={GAUGE_R} fill="none" strokeWidth="7"
+                  stroke="#34d399" strokeLinecap="round"
+                  strokeDasharray={GAUGE_C} strokeDashoffset={gaugeOffset}
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xl font-bold text-emerald-400 font-mono">
+                  {avgAccuracy}<span className="text-sm">%</span>
+                </span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-1">Accuracy</p>
+              <p className="text-[11px] text-slate-600">Across all games</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Games Analyzed */}
+        <div className="card p-5">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Games Analyzed</p>
+          <p className="text-3xl font-bold text-white font-mono leading-none">{stats.totalAnalyzedGames}</p>
+          {earliestDate && <p className="text-[11px] text-slate-600 mt-1.5">Since {earliestDate}</p>}
+        </div>
+
+        {/* Rating */}
+        <div className="card p-5">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Rating</p>
+          {latestRating ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <p className="text-3xl font-bold text-white font-mono leading-none">{latestRating}</p>
+                {ratingTrend !== null && (
+                  <span className={`text-xs font-mono font-semibold ${ratingTrend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {ratingTrend >= 0 ? '+' : ''}{ratingTrend}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 mt-1.5">Rapid</p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">No rating data</p>
+          )}
+        </div>
+
+        {/* Win Rate */}
+        <div className="card p-5">
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-2">Win Rate</p>
+          <p className="text-3xl font-bold text-emerald-400 font-mono leading-none">{Math.round(stats.winRate)}%</p>
+          <p className="text-[11px] text-slate-600 mt-1.5">{stats.wins}W / {stats.losses}L / {stats.draws}D</p>
+        </div>
       </div>
 
-      <div className="space-y-6">
+      {/* Move Quality Breakdown */}
+      <div className="card p-5 mb-4">
+        <h2 className="text-sm font-semibold text-white mb-4">Move Quality Breakdown</h2>
+        <div className="flex items-center gap-1 h-8 rounded-lg overflow-hidden">
+          {mqSegments.map((seg, i) => {
+            const textCls = DARK_TEXT_KEYS.has(seg.key) ? 'text-slate-800/80' : 'text-white/90';
+            const pctStr = `${Math.round(seg.pct)}%`;
+            const short = QUALITY_SHORT[seg.key];
+            const showLabel = seg.pct >= 10 && short;
+            const showPct = seg.pct >= 4;
+            const rounded = i === 0 ? 'rounded-l-md' : i === mqSegments.length - 1 ? 'rounded-r-md' : '';
+            return (
+              <div
+                key={seg.key}
+                className={`h-full relative cursor-default ${rounded}`}
+                style={{ width: `${seg.pct}%`, backgroundColor: QUALITY_COLORS[seg.key] }}
+              >
+                {showPct && (
+                  <div className={`absolute inset-0 flex items-center justify-center font-mono font-semibold ${textCls} ${showLabel ? 'text-[10px]' : 'text-[9px]'}`}>
+                    {showLabel ? `${short} ${pctStr}` : pctStr}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex gap-4 mt-3 text-[10px] text-slate-500 justify-center flex-wrap">
+          {QUALITY_ORDER.map(key => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: QUALITY_COLORS[key] }} />
+              {QUALITY_LABEL[key]}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Charts — 2-column grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Accuracy Over Time */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-          <h2 className="text-lg font-semibold text-white mb-4">Accuracy Over Time</h2>
-          <div className="h-64">
+        <div className="card p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="text-sm font-semibold text-white">Accuracy Over Time</h2>
+            <span className="text-[10px] text-slate-600 font-mono">Last {stats.accuracyOverTime.length} games</span>
+          </div>
+          <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={smoothedAccuracy}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickLine={{ stroke: '#475569' }}
-                  axisLine={{ stroke: '#475569' }}
-                />
-                <YAxis
-                  domain={[50, 100]}
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickLine={{ stroke: '#475569' }}
-                  axisLine={{ stroke: '#475569' }}
-                />
+              <LineChart data={stats.accuracyOverTime}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.25)" />
+                <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <YAxis domain={[50, 100]} tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="accuracy"
-                  name="Accuracy"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  isAnimationActive={false}
-                />
+                <Line type="monotone" dataKey="accuracy" name="Accuracy" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Accuracy by Phase */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-          <h2 className="text-lg font-semibold text-white mb-1">Accuracy by Phase</h2>
-          <p className="text-sm text-slate-500 mb-4">Opening (moves 1-10) / Middlegame (11-25) / Endgame (26+)</p>
-          <div className="h-64">
+        <div className="card p-5">
+          <div className="flex items-baseline justify-between mb-1">
+            <h2 className="text-sm font-semibold text-white">Accuracy by Phase</h2>
+          </div>
+          <div className="flex gap-4 mb-3 text-[10px] text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-blue-400 inline-block rounded" />Opening</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-amber-400 inline-block rounded" />Middlegame</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-red-400 inline-block rounded" />Endgame</span>
+          </div>
+          <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={smoothedPhase}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickLine={{ stroke: '#475569' }}
-                  axisLine={{ stroke: '#475569' }}
-                />
-                <YAxis
-                  domain={[50, 100]}
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickLine={{ stroke: '#475569' }}
-                  axisLine={{ stroke: '#475569' }}
-                />
+              <LineChart data={stats.phaseAccuracyOverTime}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.25)" />
+                <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <YAxis domain={[50, 100]} tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} />
-                <Line type="monotone" dataKey="opening" name="Opening" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-                <Line type="monotone" dataKey="middlegame" name="Middlegame" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-                <Line type="monotone" dataKey="endgame" name="Endgame" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                <Line type="monotone" dataKey="opening" name="Opening" stroke="#60a5fa" strokeWidth={1.5} dot={false} connectNulls activeDot={{ r: 3 }} isAnimationActive={false} />
+                <Line type="monotone" dataKey="middlegame" name="Middlegame" stroke="#fbbf24" strokeWidth={1.5} dot={false} connectNulls activeDot={{ r: 3 }} isAnimationActive={false} />
+                <Line type="monotone" dataKey="endgame" name="Endgame" stroke="#f87171" strokeWidth={1.5} dot={false} connectNulls activeDot={{ r: 3 }} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex gap-4 mt-3 justify-center text-xs text-slate-400">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-500 inline-block rounded" /> Opening</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-amber-500 inline-block rounded" /> Middlegame</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-500 inline-block rounded" /> Endgame</span>
-          </div>
         </div>
+      </div>
 
-        {/* Earliest Inaccuracy / Mistake / Blunder Over Time */}
-        {smoothedInaccuracy.length > 0 && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-            <h2 className="text-lg font-semibold text-white mb-1">Earliest Mistake</h2>
-            <p className="text-sm text-slate-500 mb-4">Move number of first inaccuracy / mistake / blunder (higher is better)</p>
-            <div className="h-64">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {/* Earliest Mistake */}
+        {stats.firstInaccuracyOverTime.length > 0 && (
+          <div className="card p-5">
+            <div className="flex items-baseline justify-between mb-1">
+              <h2 className="text-sm font-semibold text-white">Earliest Mistake</h2>
+            </div>
+            <p className="text-[10px] text-slate-600 mb-3">Move # of first error &mdash; higher is better</p>
+            <div className="flex gap-4 mb-3 text-[10px] text-slate-500">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-amber-400 inline-block rounded" />Inaccuracy</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-orange-400 inline-block rounded" />Mistake</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-red-400 inline-block rounded" />Blunder</span>
+            </div>
+            <div className="h-44">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={smoothedInaccuracy}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: '#94a3b8', fontSize: 12 }}
-                    tickLine={{ stroke: '#475569' }}
-                    axisLine={{ stroke: '#475569' }}
-                  />
-                  <YAxis
-                    domain={[0, 'auto']}
-                    tick={{ fill: '#94a3b8', fontSize: 12 }}
-                    tickLine={{ stroke: '#475569' }}
-                    axisLine={{ stroke: '#475569' }}
-                    label={{ value: 'Move #', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }}
-                  />
+                <LineChart data={stats.firstInaccuracyOverTime}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.25)" />
+                  <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis domain={[0, 'auto']} tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="moveNumber"
-                    name="Inaccuracy"
-                    stroke="#f59e0b"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="mistakeMoveNumber"
-                    name="Mistake"
-                    stroke="#f97316"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="blunderMoveNumber"
-                    name="Blunder"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
+                  <Line type="monotone" dataKey="moveNumber" name="Inaccuracy" stroke="#fbbf24" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="mistakeMoveNumber" name="Mistake" stroke="#fb923c" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
+                  <Line type="monotone" dataKey="blunderMoveNumber" name="Blunder" stroke="#f87171" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex gap-4 mt-3 justify-center text-xs text-slate-400">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-amber-500 inline-block rounded" /> Inaccuracy</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-orange-500 inline-block rounded" /> Mistake</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-500 inline-block rounded" /> Blunder</span>
-            </div>
           </div>
         )}
-
-        {/* Move Quality Breakdown */}
-        <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-          <h2 className="text-lg font-semibold text-white mb-4">Move Quality Breakdown</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={moveQualityData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-                <XAxis
-                  type="number"
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickLine={{ stroke: '#475569' }}
-                  axisLine={{ stroke: '#475569' }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={80}
-                  tick={{ fill: '#94a3b8', fontSize: 12 }}
-                  tickLine={{ stroke: '#475569' }}
-                  axisLine={{ stroke: '#475569' }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="value" name="Moves" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                  {moveQualityData.map((entry, index) => (
-                    <Cell key={index} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
         {/* Rating Over Time */}
         {stats.ratingOverTime.length > 0 && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-            <h2 className="text-lg font-semibold text-white mb-4">Rating Over Time</h2>
-            <div className="h-64">
+          <div className="card p-5">
+            <div className="flex items-baseline justify-between mb-4">
+              <h2 className="text-sm font-semibold text-white">Rating Over Time</h2>
+              <span className="text-[10px] text-slate-600 font-mono">Rapid</span>
+            </div>
+            <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={stats.ratingOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: '#94a3b8', fontSize: 12 }}
-                    tickLine={{ stroke: '#475569' }}
-                    axisLine={{ stroke: '#475569' }}
-                  />
-                  <YAxis
-                    domain={['auto', 'auto']}
-                    tick={{ fill: '#94a3b8', fontSize: 12 }}
-                    tickLine={{ stroke: '#475569' }}
-                    axisLine={{ stroke: '#475569' }}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.25)" />
+                  <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis domain={['auto', 'auto']} tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="rating"
-                    name="Rating"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
+                  <Line type="monotone" dataKey="rating" name="Rating" stroke="#a78bfa" strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         )}
+      </div>
 
-        {/* Most & Least Accurate Games */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <GameAccuracyList title="Most Accurate Games" games={stats.mostAccurateGames} accent="emerald" />
-          <GameAccuracyList title="Least Accurate Games" games={stats.leastAccurateGames} accent="red" />
-        </div>
+      {/* Game Lists — 2-column */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <GameAccuracyList title="Most Accurate Games" games={stats.mostAccurateGames} accent="emerald" />
+        <GameAccuracyList title="Least Accurate Games" games={stats.leastAccurateGames} accent="red" />
+      </div>
 
-        {/* Opening Blunders + Cleanest Lines */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {stats.openingBlunders && stats.openingBlunders.length > 0 && (
-            <OpeningBlundersList blunders={stats.openingBlunders} />
-          )}
-          {stats.cleanestLines && stats.cleanestLines.length > 0 && (
-            <CleanestLinesList lines={stats.cleanestLines} />
-          )}
-        </div>
+      {/* Opening Habits — 2-column (Deepest Prep left, Costliest Habits right) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {stats.cleanestLines && stats.cleanestLines.length > 0 && (
+          <CleanestLinesList lines={stats.cleanestLines} />
+        )}
+        {stats.openingBlunders && stats.openingBlunders.length > 0 && (
+          <OpeningBlundersList blunders={stats.openingBlunders} />
+        )}
       </div>
     </div>
   );
 }
 
-const RESULT_LABEL: Record<string, string> = { W: 'Won', L: 'Lost', D: 'Draw' };
-const RESULT_COLOR: Record<string, string> = { W: 'text-emerald-400', L: 'text-red-400', D: 'text-slate-400' };
-
 function GameAccuracyList({ title, games, accent }: { title: string; games: GameSummary[]; accent: 'emerald' | 'red' }) {
   const accentColor = accent === 'emerald' ? 'text-emerald-400' : 'text-red-400';
+  const dividerBg = accent === 'emerald' ? 'rgba(51,65,85,0.4)' : 'rgba(239,68,68,0.25)';
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-      <h2 className="text-lg font-semibold text-white mb-4">{title}</h2>
-      <div className="space-y-2">
+    <div className="card p-5">
+      <h2 className="text-sm font-semibold text-white mb-3">{title}</h2>
+      <div className="h-px mb-3" style={{ background: dividerBg }} />
+      <div className="space-y-0">
         {games.map((game, i) => (
           <Link
             key={game.gameId}
             to={`/games/${game.gameId}`}
-            className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-700/50 transition-colors group"
+            className="flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-slate-700/25 transition-colors"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-sm text-slate-500 w-5 text-right">{i + 1}.</span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-white text-sm font-medium truncate">vs {game.opponent}</span>
+            <div className="flex items-center gap-2.5">
+              <span className="text-[11px] text-slate-600 font-mono w-4 text-right">{i + 1}</span>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[13px] text-white font-medium">vs {game.opponent}</span>
                   {game.opponentRating && (
-                    <span className="text-slate-500 text-xs">({game.opponentRating})</span>
+                    <span className="text-[10px] text-slate-600 font-mono">({game.opponentRating})</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="flex items-center gap-2 text-[10px]">
                   <span className={RESULT_COLOR[game.result] || 'text-slate-400'}>
                     {RESULT_LABEL[game.result] || game.result}
                   </span>
-                  <span>{game.date}</span>
+                  <span className="text-slate-700">&middot;</span>
+                  <span className="text-slate-600">{game.date}</span>
                 </div>
               </div>
             </div>
-            <span className={`text-sm font-semibold ${accentColor} whitespace-nowrap`}>
-              {game.accuracy}%
-            </span>
+            <span className={`text-sm font-bold ${accentColor} font-mono`}>{game.accuracy}%</span>
           </Link>
         ))}
       </div>
@@ -447,10 +464,11 @@ function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
   };
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-      <h2 className="text-lg font-semibold text-white mb-1">Costliest Opening Habits</h2>
-      <p className="text-sm text-slate-500 mb-4">Opening mistakes you keep repeating</p>
-      <div className="space-y-2">
+    <div className="card p-5">
+      <h2 className="text-sm font-semibold text-white mb-1">Costliest Opening Habits</h2>
+      <p className="text-[10px] text-slate-600 mb-3">Mistakes you keep repeating</p>
+      <div className="h-px mb-3" style={{ background: 'rgba(239,68,68,0.25)' }} />
+      <div className="space-y-0">
         {blunders.map((b, i) => {
           const lastSpace = b.line.lastIndexOf(' ');
           const prefix = lastSpace > 0 ? b.line.slice(0, lastSpace) : '';
@@ -460,21 +478,21 @@ function OpeningBlundersList({ blunders }: { blunders: OpeningBlunder[] }) {
             <button
               key={`${b.ply}-${b.line}`}
               onClick={() => openGame(b)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-700/50 transition-colors text-left cursor-pointer"
+              className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-slate-700/25 transition-colors text-left cursor-pointer"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-sm text-slate-500 w-5 text-right shrink-0">{i + 1}.</span>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="text-[11px] text-slate-600 font-mono w-4 text-right shrink-0">{i + 1}</span>
                 <div className="min-w-0">
-                  <div className="text-sm leading-relaxed">
+                  <div className="text-[13px] leading-relaxed">
                     {prefix && <span className="text-slate-400">{prefix} </span>}
-                    <span className="text-orange-400 font-semibold">{blunderMove}</span>
+                    <span className="text-red-400 font-semibold">{blunderMove}</span>
                   </div>
-                  <div className="text-xs text-slate-500">
-                    Repeated {b.mistakeCount} times as {b.color}
+                  <div className="text-[10px] text-slate-600">
+                    Repeated {b.mistakeCount}&times; as {b.color}
                   </div>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-orange-400 whitespace-nowrap ml-3">
+              <span className="text-sm font-bold text-red-400 font-mono whitespace-nowrap ml-3">
                 -{b.avgCpLoss} cp
               </span>
             </button>
@@ -501,28 +519,29 @@ function CleanestLinesList({ lines }: { lines: CleanLine[] }) {
   };
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-5">
-      <h2 className="text-lg font-semibold text-white mb-1">Deepest Opening Prep</h2>
-      <p className="text-sm text-slate-500 mb-4">Your longest lines with no inaccuracies</p>
-      <div className="space-y-2">
+    <div className="card p-5">
+      <h2 className="text-sm font-semibold text-white mb-1">Deepest Opening Prep</h2>
+      <p className="text-[10px] text-slate-600 mb-3">Longest lines with no inaccuracies</p>
+      <div className="h-px mb-3" style={{ background: 'rgba(51,65,85,0.4)' }} />
+      <div className="space-y-0">
         {lines.map((c, i) => (
           <button
             key={`${c.cleanDepth}-${c.line}`}
             onClick={() => openGame(c)}
-            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-700/50 transition-colors text-left cursor-pointer"
+            className="w-full flex items-center justify-between px-2 py-2.5 rounded-lg hover:bg-slate-700/25 transition-colors text-left cursor-pointer"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-sm text-slate-500 w-5 text-right shrink-0">{i + 1}.</span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="text-[11px] text-slate-600 font-mono w-4 text-right shrink-0">{i + 1}</span>
               <div className="min-w-0">
-                <div className="text-sm leading-relaxed text-emerald-400 font-medium truncate">
+                <div className="text-[13px] leading-relaxed text-emerald-400 font-medium truncate">
                   {c.line}
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-[10px] text-slate-600">
                   {c.cleanDepth} moves deep as {c.color} &middot; {c.gameCount} {c.gameCount === 1 ? 'game' : 'games'}
                 </div>
               </div>
             </div>
-            <span className="text-sm font-semibold text-emerald-400 whitespace-nowrap ml-3">
+            <span className="text-sm font-bold text-emerald-400 font-mono whitespace-nowrap ml-3">
               ~{c.avgCpLoss} cp
             </span>
           </button>
