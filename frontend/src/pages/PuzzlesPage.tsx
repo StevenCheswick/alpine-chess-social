@@ -241,7 +241,7 @@ export default function PuzzlesPage() {
 
   // --- List mode ---
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl mx-auto">
       {/* Puzzle Performance Stats */}
       {stats && stats.user.total + stats.opponent.total > 0 && (() => {
         const edge = stats.user.rate - stats.opponent.rate;
@@ -274,11 +274,11 @@ export default function PuzzlesPage() {
                   </defs>
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-emerald-400 font-mono">{stats.user.rate}<span className="text-lg">%</span></span>
+                  <span className="text-2xl font-bold text-emerald-400">{stats.user.rate}<span className="text-lg">%</span></span>
                 </div>
               </div>
               <p className="text-xs font-medium text-slate-400 mb-0.5">Your Find Rate</p>
-              <p className="text-[11px] text-slate-600">{stats.user.found} of {stats.user.total} found</p>
+              <p className="text-[11px] text-slate-400">{stats.user.found} of {stats.user.total} found</p>
             </div>
 
             {/* Opponent Find Rate gauge */}
@@ -297,11 +297,11 @@ export default function PuzzlesPage() {
                   </defs>
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold text-slate-300 font-mono">{stats.opponent.rate}<span className="text-lg">%</span></span>
+                  <span className="text-2xl font-bold text-slate-300">{stats.opponent.rate}<span className="text-lg">%</span></span>
                 </div>
               </div>
               <p className="text-xs font-medium text-slate-400 mb-0.5">Opponent Find Rate</p>
-              <p className="text-[11px] text-slate-600">{stats.opponent.found} of {stats.opponent.total} found</p>
+              <p className="text-[11px] text-slate-400">{stats.opponent.found} of {stats.opponent.total} found</p>
             </div>
 
             {/* Tactical Edge hero */}
