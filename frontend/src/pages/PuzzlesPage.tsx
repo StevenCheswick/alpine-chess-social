@@ -635,10 +635,10 @@ function ThemeBreakdown({ themes }: { themes: ThemeStats[] }) {
   const eligible = themes.filter(t => isVisibleTag(t.theme) && t.user.total >= 50);
   const tactics = eligible
     .filter(t => !MATE_THEMES.has(t.theme))
-    .sort((a, b) => (b.user.rate - b.opponent.rate) - (a.user.rate - a.opponent.rate));
+    .sort((a, b) => tagDisplayName(a.theme).localeCompare(tagDisplayName(b.theme)));
   const mates = eligible
     .filter(t => MATE_THEMES.has(t.theme))
-    .sort((a, b) => (b.user.rate - b.opponent.rate) - (a.user.rate - a.opponent.rate));
+    .sort((a, b) => tagDisplayName(a.theme).localeCompare(tagDisplayName(b.theme)));
 
   if (tactics.length === 0 && mates.length === 0) return null;
 
