@@ -335,7 +335,6 @@ export default function DashboardPage() {
             <div className="flex items-baseline justify-between mb-1">
               <h2 className="text-sm font-semibold text-white">Earliest Mistake</h2>
             </div>
-            <p className="text-[10px] text-slate-600 mb-3">Move # of first error &mdash; higher is better</p>
             <div className="flex gap-4 mb-3 text-[10px] text-slate-500">
               <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-amber-400 inline-block rounded" />Inaccuracy</span>
               <span className="flex items-center gap-1.5"><span className="w-2 h-[2px] bg-orange-400 inline-block rounded" />Mistake</span>
