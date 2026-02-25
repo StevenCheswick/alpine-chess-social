@@ -16,6 +16,7 @@ import { useAuthStore } from '../stores/authStore';
 import { getStats, type DashboardStats, type GameSummary, type OpeningBlunder, type CleanLine } from '../services/dashboardService';
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
+  book: '#06b6d4',
   best: '#22c55e',
   excellent: '#4ade80',
   good: '#86efac',
@@ -25,6 +26,7 @@ const CLASSIFICATION_COLORS: Record<string, string> = {
 };
 
 const CLASSIFICATION_LABELS: Record<string, string> = {
+  book: 'Book',
   best: 'Best',
   excellent: 'Excellent',
   good: 'Good',
@@ -151,9 +153,10 @@ export default function DashboardPage() {
   const smoothedPhase = stats.phaseAccuracyOverTime;
   const smoothedInaccuracy = stats.firstInaccuracyOverTime;
 
-  const moveQualityData = Object.entries(stats.moveQualityBreakdown).map(([key, value]) => ({
+  const QUALITY_ORDER = ['book', 'best', 'excellent', 'good', 'inaccuracy', 'mistake', 'blunder'] as const;
+  const moveQualityData = QUALITY_ORDER.map((key) => ({
     name: CLASSIFICATION_LABELS[key] || key,
-    value,
+    value: stats.moveQualityBreakdown[key] || 0,
     color: CLASSIFICATION_COLORS[key] || '#94a3b8',
   }));
 

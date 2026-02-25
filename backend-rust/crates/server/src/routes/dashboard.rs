@@ -70,9 +70,13 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     let mut rating_over_time = Vec::new();
     let mut move_quality_breakdown: HashMap<String, i64> = HashMap::new();
 
-    for key in ["best", "excellent", "good", "inaccuracy", "mistake", "blunder"] {
+    for key in ["book", "best", "excellent", "good", "inaccuracy", "mistake", "blunder"] {
         move_quality_breakdown.insert(key.to_string(), 0);
     }
+
+    let mut wins = 0i64;
+    let mut losses = 0i64;
+    let mut draws = 0i64;
 
     let mut raw_accuracy = Vec::new();
     let mut raw_opening = Vec::new();
@@ -86,6 +90,13 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         let date = game["date"].as_str().unwrap_or("");
         let game_id = game["id"].as_i64().unwrap_or(0);
         let accuracy = game["accuracy"].as_f64().unwrap_or(0.0);
+
+        match game["result"].as_str().unwrap_or("") {
+            "W" => wins += 1,
+            "L" => losses += 1,
+            "D" => draws += 1,
+            _ => {}
+        }
 
         accuracy_over_time.push(serde_json::json!({"date": date, "gameId": game_id}));
         raw_accuracy.push((accuracy * 10.0).round() / 10.0);
@@ -106,7 +117,7 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         }
 
         let classifications = &game["classifications"];
-        for key in ["best", "excellent", "good", "inaccuracy", "mistake", "blunder"] {
+        for key in ["book", "best", "excellent", "good", "inaccuracy", "mistake", "blunder"] {
             if let Some(count) = classifications.get(key).and_then(|v| v.as_i64()) {
                 *move_quality_breakdown.entry(key.to_string()).or_insert(0) += count;
             }
@@ -225,8 +236,15 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         })
         .collect();
 
+    let total_games = stats.len() as f64;
+    let win_rate = if total_games > 0.0 { (wins as f64 / total_games * 1000.0).round() / 10.0 } else { 0.0 };
+
     Ok(serde_json::json!({
         "totalAnalyzedGames": stats.len(),
+        "winRate": win_rate,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
         "accuracyOverTime": accuracy_over_time,
         "phaseAccuracyOverTime": phase_accuracy_over_time,
         "firstInaccuracyOverTime": first_inaccuracy_over_time,

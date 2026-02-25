@@ -29,6 +29,7 @@ export interface RatingDataPoint {
 }
 
 export interface MoveQualityBreakdown {
+  book: number;
   best: number;
   excellent: number;
   good: number;
@@ -70,6 +71,10 @@ export interface CleanLine {
 
 export interface DashboardStats {
   totalAnalyzedGames: number;
+  winRate: number;
+  wins: number;
+  losses: number;
+  draws: number;
   accuracyOverTime: AccuracyDataPoint[];
   phaseAccuracyOverTime: PhaseAccuracyDataPoint[];
   firstInaccuracyOverTime: FirstInaccuracyDataPoint[];
