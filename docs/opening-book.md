@@ -44,8 +44,10 @@ Spaces in the FEN become `+` in the URL.
 
 ### 3. Insert into prod Postgres
 
+Set `PROD_DATABASE_URL` from `AWS_CREDENTIALS.md` (not checked into git).
+
 ```bash
-docker exec chess-postgres psql "postgresql://chess_admin:AlpineChess2026@chess-analysis-db.cohk6egmirrt.us-east-1.rds.amazonaws.com:5432/alpine_chess?sslmode=require" -c "
+docker exec chess-postgres psql "$PROD_DATABASE_URL" -c "
 INSERT INTO opening_book (parent_fen, move_san, result_fen, games, white_wins, draws, black_wins)
 VALUES (
   '<parent_fen>',
