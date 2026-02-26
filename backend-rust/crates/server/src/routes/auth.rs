@@ -12,14 +12,14 @@ use crate::error::AppError;
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
     pub username: String,
-    pub email: String,
+    pub email: Option<String>,
     pub password: String,
     pub chess_com_username: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    pub email: String,
+    pub username: String,
     pub password: String,
 }
 
@@ -95,7 +95,8 @@ pub async fn register(
     }
 
     // Check uniqueness
-    if accounts::email_exists(&pool, &req.email).await? {
+    let email = req.email.clone().unwrap_or_else(|| format!("{}@placeholder.local", req.username.to_lowercase()));
+    if accounts::email_exists(&pool, &email).await? {
         return Err(AppError::BadRequest("Email already registered".into()));
     }
     if accounts::username_exists(&pool, &req.username).await? {
@@ -109,7 +110,7 @@ pub async fn register(
     let account_id = accounts::create_account(
         &pool,
         &req.username,
-        &req.email,
+        &email,
         &hash,
         req.chess_com_username.as_deref().unwrap_or(""),
     )
@@ -133,15 +134,29 @@ pub async fn login(
     Extension(config): Extension<Config>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, AppError> {
-    let account = accounts::get_account_by_email(&pool, &req.email)
+    let has_whitespace = req.username != req.username.trim() || req.password != req.password.trim();
+    tracing::info!(
+        username = %req.username,
+        username_len = req.username.len(),
+        password_len = req.password.len(),
+        has_whitespace,
+        username_repr = ?req.username,
+        "Login attempt"
+    );
+
+    let account = accounts::get_account_by_username(&pool, &req.username)
         .await?
-        .ok_or(AppError::BadRequest("Invalid email or password".into()))?;
+        .ok_or_else(|| {
+            tracing::warn!(username = ?req.username, "Login failed: username not found");
+            AppError::BadRequest("Invalid username or password".into())
+        })?;
 
     let (valid, needs_rehash) = password::verify_password(&req.password, &account.password_hash)
         .map_err(|e| AppError::Internal(format!("Password verify error: {e}")))?;
 
     if !valid {
-        return Err(AppError::BadRequest("Invalid email or password".into()));
+        tracing::warn!(username = ?req.username, account_id = account.id, password_len = req.password.len(), password_repr = ?req.password, "Login failed: wrong password");
+        return Err(AppError::BadRequest("Invalid username or password".into()));
     }
 
     // Transparently rehash bcrypt -> argon2 on successful login
