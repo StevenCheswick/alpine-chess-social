@@ -10,7 +10,7 @@ use crate::db::trainer;
 use crate::error::AppError;
 
 /// Verify the X-Admin-Secret header matches the configured ADMIN_SECRET.
-fn check_admin_secret(headers: &HeaderMap, config: &Config) -> Result<(), AppError> {
+pub fn check_admin_secret(headers: &HeaderMap, config: &Config) -> Result<(), AppError> {
     let secret = config
         .admin_secret
         .as_deref()

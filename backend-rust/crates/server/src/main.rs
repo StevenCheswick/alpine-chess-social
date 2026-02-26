@@ -110,6 +110,7 @@ async fn main() {
         .route("/api/opening-tree", get(routes::opening_tree::get_opening_tree))
         // Opening book (master games)
         .route("/api/opening-book/check", get(routes::opening_book::check_book_move))
+        .route("/api/admin/opening-book/reclassify", post(routes::opening_book::reclassify_book_moves))
         // Trainer
         .route("/api/trainer/openings", get(routes::trainer::list_openings))
         .route("/api/trainer/puzzles", get(routes::trainer::get_puzzles))

@@ -483,29 +483,36 @@ pub async fn get_cleanest_lines(
              SELECT
                gfm.game_id,
                gfm.color,
-               -- End line on user's last clean move:
-               -- With a mistake: mistake ply is always a user ply, so -1 ends on prior user move
-               -- No mistake: default cap is 29 for white (odd→last ply even), 30 for black (even→last ply odd)
-               CASE
-                 WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
-                 WHEN gfm.color = 'white' THEN 29
-                 ELSE 30
-               END AS clean_up_to,
+               -- End line on user's last clean move, capped at actual game length:
+               LEAST(
+                 CASE
+                   WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
+                   WHEN gfm.color = 'white' THEN 29
+                   ELSE 30
+                 END,
+                 jsonb_array_length(ga.moves)
+               ) AS clean_up_to,
                (SELECT string_agg(elem->>'move', ' ' ORDER BY o)
                 FROM jsonb_array_elements(ga.moves) WITH ORDINALITY AS y(elem, o)
-                WHERE (o - 1) < CASE
-                  WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
-                  WHEN gfm.color = 'white' THEN 29
-                  ELSE 30
-                END
+                WHERE (o - 1) < LEAST(
+                  CASE
+                    WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
+                    WHEN gfm.color = 'white' THEN 29
+                    ELSE 30
+                  END,
+                  jsonb_array_length(ga.moves)
+                )
                ) AS line,
                (SELECT COALESCE(AVG((elem->>'cp_loss')::float8), 0)
                 FROM jsonb_array_elements(ga.moves) WITH ORDINALITY AS y(elem, o)
-                WHERE (o - 1) < CASE
-                  WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
-                  WHEN gfm.color = 'white' THEN 29
-                  ELSE 30
-                END
+                WHERE (o - 1) < LEAST(
+                  CASE
+                    WHEN gfm.first_mistake_ply IS NOT NULL THEN gfm.first_mistake_ply - 1
+                    WHEN gfm.color = 'white' THEN 29
+                    ELSE 30
+                  END,
+                  jsonb_array_length(ga.moves)
+                )
                   AND (
                     (gfm.color = 'white' AND (o - 1) % 2 = 0)
                     OR (gfm.color = 'black' AND (o - 1) % 2 = 1)

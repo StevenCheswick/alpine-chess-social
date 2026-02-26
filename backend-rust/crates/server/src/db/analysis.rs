@@ -280,7 +280,7 @@ pub async fn backfill_first_bad_moves(pool: &PgPool) -> Result<u64, AppError> {
 
 // ---- Pre-computed stats helpers ----
 
-fn phase_accuracy(moves: &JsonValue, is_white: bool) -> JsonValue {
+pub fn phase_accuracy(moves: &JsonValue, is_white: bool) -> JsonValue {
     let arr = match moves.as_array() {
         Some(a) => a,
         None => return serde_json::json!({"opening": null, "middlegame": null, "endgame": null}),
@@ -883,7 +883,7 @@ pub async fn get_user_puzzle_stats(
     }))
 }
 
-fn first_bad_move(moves: &JsonValue, is_white: bool, bad: &[&str]) -> i64 {
+pub fn first_bad_move(moves: &JsonValue, is_white: bool, bad: &[&str]) -> i64 {
     let arr = match moves.as_array() {
         Some(a) => a,
         None => return 0,
