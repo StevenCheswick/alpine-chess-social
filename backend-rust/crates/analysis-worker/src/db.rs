@@ -118,10 +118,14 @@ pub async fn save_game_analysis(
         .execute(&mut *tx)
         .await?;
 
-    // 3. Replace tags: delete old + batch insert new (2 queries instead of N+1)
+    // 3. Replace analysis tags only (preserve title tags like "titled", "GM", etc.)
     if let Some(tags) = tags {
-        sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
+        let analysis_tags = &["queen_sacrifice", "rook_sacrifice", "smothered_mate"];
+        sqlx::query(
+            "DELETE FROM game_tags WHERE game_id = $1 AND tag = ANY($2::text[])"
+        )
             .bind(game_id)
+            .bind(analysis_tags)
             .execute(&mut *tx)
             .await?;
 
