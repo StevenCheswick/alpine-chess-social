@@ -1060,7 +1060,7 @@ function switchPage(name, skipHash) {
   document.querySelector(`.sidebar-item[data-page="${name}"]`)?.classList.add('active');
   document.querySelector(`.mobile-nav-item[data-page="${name}"]`)?.classList.add('active');
 
-  if (!skipHash) location.hash = name;
+  if (!skipHash) history.pushState(null, '', '/' + (name === 'dashboard' ? '' : name));
 
   // Re-trigger animations
   document.querySelectorAll('#page-' + name + ' .fade-up').forEach(el => {
@@ -1082,9 +1082,9 @@ function switchPage(name, skipHash) {
   setTimeout(resizeBoards, 50);
 }
 
-// Handle browser back/forward + hash links
-window.addEventListener('hashchange', () => {
-  const page = location.hash.slice(1) || 'dashboard';
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+  const page = location.pathname.slice(1) || 'dashboard';
   if (document.getElementById('page-' + page)) switchPage(page, true);
 });
 
@@ -3643,12 +3643,8 @@ function showApp() {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('app-shell').style.display = 'flex';
   document.getElementById('mobile-nav').style.display = '';
-  const page = location.hash.slice(1);
-  if (page && document.getElementById('page-' + page)) {
-    switchPage(page, true);
-  } else {
-    switchPage('dashboard', true);
-  }
+  const page = location.pathname.slice(1) || 'dashboard';
+  switchPage(page, true);
 }
 
 function showLogin() {
@@ -3727,10 +3723,10 @@ window.registerUser = async function(username, password) {
   }
 })();
 
-// Navigate to hash on initial load (must be after all variable declarations)
+// Navigate to path on initial load (must be after all variable declarations)
 (function() {
-  const page = location.hash.slice(1);
-  if (page && document.getElementById('page-' + page)) switchPage(page, true);
+  const page = location.pathname.slice(1) || 'dashboard';
+  if (document.getElementById('page-' + page)) switchPage(page, true);
 })();
 </script>
 
