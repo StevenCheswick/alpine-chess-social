@@ -2632,6 +2632,7 @@ let _gamesCache = {}; // id -> game object (with SAN moves from stored endpoint)
 const TAG_DISPLAY = {
   // Game-level tags
   queen_sacrifice:'Queen Sacrifice', rook_sacrifice:'Rook Sacrifice', smothered_mate:'Smothered Mate',
+  king_mate:'King Mate', castling_mate:'Castling Mate', en_passant_mate:'En Passant Mate',
   titled:'Titled', GM:'GM', IM:'IM', FM:'FM', CM:'CM', NM:'NM',
   WGM:'WGM', WIM:'WIM', WFM:'WFM', WCM:'WCM', WNM:'WNM',
   'Chess.com':'Chess.com', 'Lichess':'Lichess',
@@ -2684,6 +2685,7 @@ const GAME_PAGE_TAGS = new Set([
   'Chess.com', 'Lichess',
   'Win', 'Loss', 'Draw',
   'queen_sacrifice', 'rook_sacrifice', 'smothered_mate',
+  'king_mate', 'castling_mate', 'en_passant_mate',
   'titled', 'GM', 'IM', 'FM', 'CM', 'NM',
   'WGM', 'WIM', 'WFM', 'WCM', 'WNM',
 ]);
@@ -2702,6 +2704,7 @@ const HIDDEN_PUZZLE_TAGS = new Set([
   'oneMove','short','long','veryLong',
   'pawnEndgame','knightEndgame','bishopEndgame','rookEndgame','queenEndgame','queenRookEndgame',
   'queen_sacrifice','rook_sacrifice','smothered_mate',
+  'king_mate','castling_mate','en_passant_mate',
   'Chess.com','Lichess','Win','Loss','Draw','titled',
   'GM','IM','FM','CM','NM','WGM','WIM','WFM','WCM','WNM',
 ]);
