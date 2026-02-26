@@ -113,7 +113,8 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         raw_blunder.push(game["first_blunder"].as_f64().unwrap_or(0.0));
 
         if let Some(rating) = game["user_rating"].as_i64() {
-            rating_over_time.push(serde_json::json!({"date": date, "rating": rating, "gameId": game_id}));
+            let tc = game["time_control"].as_str().unwrap_or("");
+            rating_over_time.push(serde_json::json!({"date": date, "rating": rating, "gameId": game_id, "timeControl": tc}));
         }
 
         let classifications = &game["classifications"];

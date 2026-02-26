@@ -161,7 +161,7 @@ pub async fn get_user_game_stats(
 
     let rows = sqlx::query(
         r#"SELECT ug.id, ug.date, ug.user_rating, ug.result, ug.user_color,
-                  ug.opponent, ug.opponent_rating,
+                  ug.opponent, ug.opponent_rating, ug.time_control,
                   ga.white_accuracy, ga.black_accuracy,
                   ga.white_classifications, ga.black_classifications,
                   ga.phase_accuracy, ga.first_inaccuracy_move
@@ -223,6 +223,7 @@ pub async fn get_user_game_stats(
                 "opponent": r.try_get::<String, _>("opponent").unwrap_or_default(),
                 "opponent_rating": r.try_get::<Option<i32>, _>("opponent_rating").unwrap_or(None),
                 "user_color": user_color,
+                "time_control": r.try_get::<Option<String>, _>("time_control").unwrap_or(None),
                 "accuracy": accuracy,
                 "classifications": classifications,
                 "phase_accuracy": phase_acc,
