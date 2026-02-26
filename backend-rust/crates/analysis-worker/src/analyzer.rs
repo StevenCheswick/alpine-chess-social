@@ -507,10 +507,22 @@ pub async fn analyze_game(
         all_tags.push("rook_sacrifice".to_string());
     }
 
-    // Smothered mate detection (check final position)
+    // Final-position detectors (smothered mate, king mate, castling mate, en passant mate)
     let final_board = boards_before.last().copied().unwrap_or_default();
     if crate::smothered_mate::detect_smothered_mate(&final_board, user_color) {
         all_tags.push("smothered_mate".to_string());
+    }
+    if let Some(&last_move) = chess_moves.last() {
+        let board_before_last = boards_before.get(chess_moves.len() - 1).copied().unwrap_or_default();
+        if crate::king_mate::detect_king_mate(&final_board, &board_before_last, last_move, user_color) {
+            all_tags.push("king_mate".to_string());
+        }
+        if crate::castling_mate::detect_castling_mate(&final_board, &board_before_last, last_move, user_color) {
+            all_tags.push("castling_mate".to_string());
+        }
+        if crate::en_passant_mate::detect_en_passant_mate(&final_board, &board_before_last, last_move, user_color) {
+            all_tags.push("en_passant_mate".to_string());
+        }
     }
 
     // Build final analysis JSON

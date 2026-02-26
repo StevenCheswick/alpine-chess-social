@@ -35,6 +35,9 @@ export const TAG_DISPLAY: Record<string, string> = {
   queen_sacrifice: 'Queen Sacrifice',
   rook_sacrifice: 'Rook Sacrifice',
   smothered_mate: 'Smothered Mate',
+  king_mate: 'King Mate',
+  castling_mate: 'Castling Mate',
+  en_passant_mate: 'En Passant Mate',
   // Titled opponent tags
   titled: 'Titled',
   GM: 'GM', IM: 'IM', FM: 'FM', CM: 'CM', NM: 'NM',
@@ -57,6 +60,9 @@ const GAME_PAGE_TAGS = new Set([
   'queen_sacrifice',
   'rook_sacrifice',
   'smothered_mate',
+  'king_mate',
+  'castling_mate',
+  'en_passant_mate',
   'titled', 'GM', 'IM', 'FM', 'CM', 'NM',
   'WGM', 'WIM', 'WFM', 'WCM', 'WNM',
 ]);

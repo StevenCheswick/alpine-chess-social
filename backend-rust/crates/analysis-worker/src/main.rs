@@ -14,7 +14,10 @@ mod stockfish;
 // Re-declare lib modules so the binary can use them via `crate::`
 mod analysis;
 mod board_utils;
+mod castling_mate;
+mod en_passant_mate;
 mod endgame;
+mod king_mate;
 mod puzzle;
 mod queen_sac;
 mod rook_sac;
