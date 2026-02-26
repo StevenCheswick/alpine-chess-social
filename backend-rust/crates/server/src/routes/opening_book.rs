@@ -330,6 +330,9 @@ pub async fn reclassify_book_moves(
         .await
         .map_err(AppError::Sqlx)?;
 
+        // Refresh precomputed opening stats for this game
+        crate::db::analysis::precompute_opening_stats(&pool, *game_id).await?;
+
         games_updated += 1;
     }
 

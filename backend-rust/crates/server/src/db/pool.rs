@@ -191,4 +191,30 @@ CREATE TABLE IF NOT EXISTS trainer_progress (
     PRIMARY KEY (user_id, puzzle_id)
 );
 CREATE INDEX IF NOT EXISTS idx_trainer_progress_user ON trainer_progress (user_id);
+
+-- Precomputed opening mistakes (one row per mistake per game)
+CREATE TABLE IF NOT EXISTS game_opening_mistakes (
+    game_id     BIGINT NOT NULL REFERENCES user_games(id) ON DELETE CASCADE,
+    user_id     BIGINT NOT NULL,
+    ply         SMALLINT NOT NULL,
+    move_san    TEXT NOT NULL,
+    cp_loss     DOUBLE PRECISION NOT NULL,
+    best_move   TEXT,
+    color       TEXT NOT NULL,
+    line        TEXT NOT NULL,
+    PRIMARY KEY (game_id, ply)
+);
+CREATE INDEX IF NOT EXISTS idx_gom_user_id ON game_opening_mistakes (user_id);
+
+-- Precomputed clean opening depth per game
+CREATE TABLE IF NOT EXISTS game_opening_clean_plies (
+    game_id         BIGINT PRIMARY KEY REFERENCES user_games(id) ON DELETE CASCADE,
+    user_id         BIGINT NOT NULL,
+    color           TEXT NOT NULL,
+    clean_up_to     SMALLINT NOT NULL,
+    clean_depth     SMALLINT NOT NULL,
+    line            TEXT NOT NULL,
+    avg_cp_loss     DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gocp_user_id ON game_opening_clean_plies (user_id);
 "#;

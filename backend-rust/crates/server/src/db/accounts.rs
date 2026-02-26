@@ -49,6 +49,16 @@ pub async fn get_account_by_id(pool: &PgPool, id: i64) -> Result<Option<Account>
     .map_err(AppError::Sqlx)
 }
 
+pub async fn get_account_by_username(pool: &PgPool, username: &str) -> Result<Option<Account>, AppError> {
+    sqlx::query_as::<_, Account>(
+        "SELECT id, username, email, password_hash, display_name, chess_com_username, bio, avatar_url, created_at FROM accounts WHERE LOWER(username) = LOWER($1)",
+    )
+    .bind(username)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Sqlx)
+}
+
 pub async fn get_account_by_email(pool: &PgPool, email: &str) -> Result<Option<Account>, AppError> {
     sqlx::query_as::<_, Account>(
         "SELECT id, username, email, password_hash, display_name, chess_com_username, bio, avatar_url, created_at FROM accounts WHERE LOWER(email) = LOWER($1)",

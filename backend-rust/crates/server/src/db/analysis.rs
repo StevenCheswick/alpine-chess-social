@@ -109,6 +109,9 @@ pub async fn save_game_analysis(
     // Enrich opening stats with eval data from this analysis
     opening_moves::enrich_opening_evals(pool, game_id).await?;
 
+    // Precompute opening stats for dashboard
+    precompute_opening_stats(pool, game_id).await?;
+
     Ok(())
 }
 
@@ -881,6 +884,191 @@ pub async fn get_user_puzzle_stats(
         "byTheme": by_theme,
         "byPosition": by_position,
     }))
+}
+
+/// Precompute opening mistake and clean-line rows for a single game.
+/// Populates `game_opening_mistakes` and `game_opening_clean_plies` tables
+/// so the dashboard can query them with simple GROUP BY instead of JSONB explosions.
+pub async fn precompute_opening_stats(pool: &PgPool, game_id: i64) -> Result<(), AppError> {
+    use sqlx::Row;
+
+    // Fetch game info + analysis moves
+    let row = sqlx::query(
+        r#"SELECT ug.user_id, ug.user_color, ga.moves
+           FROM user_games ug
+           INNER JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE ug.id = $1"#,
+    )
+    .bind(game_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let row = match row {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
+    let user_id: i64 = row.try_get("user_id").unwrap_or(0);
+    let user_color: String = row.try_get("user_color").unwrap_or_default();
+    let color = user_color.to_lowercase();
+    let is_white = color == "white";
+    let moves_json: JsonValue = row.try_get("moves").unwrap_or(JsonValue::Null);
+
+    let moves_arr = match moves_json.as_array() {
+        Some(a) => a,
+        None => return Ok(()),
+    };
+
+    let max_ply = moves_arr.len().min(30);
+
+    // Delete old rows for this game
+    sqlx::query("DELETE FROM game_opening_mistakes WHERE game_id = $1")
+        .bind(game_id)
+        .execute(pool)
+        .await
+        .map_err(AppError::Sqlx)?;
+
+    // Walk moves, collect mistakes and find first_mistake_ply
+    let mut first_mistake_ply: Option<usize> = None;
+    let mut mistake_rows: Vec<(i16, String, f64, Option<String>, String)> = Vec::new();
+
+    for ply in 0..max_ply {
+        let mv = &moves_arr[ply];
+        let is_user_move = (ply % 2 == 0) == is_white;
+        if !is_user_move {
+            continue;
+        }
+
+        let classification = mv.get("classification").and_then(|c| c.as_str()).unwrap_or("");
+        if classification == "book" || classification == "forced" {
+            continue;
+        }
+
+        let cp_loss = mv.get("cp_loss").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+        if cp_loss >= 50.0 {
+            if first_mistake_ply.is_none() {
+                first_mistake_ply = Some(ply);
+            }
+
+            // Build line string: space-separated UCI moves up to this ply (inclusive)
+            let line: String = moves_arr[..=ply]
+                .iter()
+                .filter_map(|m| m.get("move").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            let move_san = mv.get("move").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let best_move = mv.get("best_move").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+            mistake_rows.push((ply as i16, move_san, cp_loss, best_move, line));
+        }
+    }
+
+    // Batch insert mistakes
+    for (ply, move_san, cp_loss, best_move, line) in &mistake_rows {
+        sqlx::query(
+            r#"INSERT INTO game_opening_mistakes (game_id, user_id, ply, move_san, cp_loss, best_move, color, line)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (game_id, ply) DO UPDATE SET
+                   move_san = EXCLUDED.move_san,
+                   cp_loss = EXCLUDED.cp_loss,
+                   best_move = EXCLUDED.best_move,
+                   color = EXCLUDED.color,
+                   line = EXCLUDED.line"#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .bind(*ply)
+        .bind(move_san)
+        .bind(*cp_loss)
+        .bind(best_move.as_deref())
+        .bind(&color)
+        .bind(line)
+        .execute(pool)
+        .await
+        .map_err(AppError::Sqlx)?;
+    }
+
+    // Compute clean_up_to
+    let total_moves = moves_arr.len();
+    let clean_up_to = match first_mistake_ply {
+        Some(fmp) if fmp > 0 => (fmp - 1).min(total_moves),
+        Some(_) => 0, // first move is a mistake
+        None => {
+            let max_clean = if is_white { 29 } else { 30 };
+            max_clean.min(total_moves)
+        }
+    };
+
+    // Build line string for clean range
+    let line = if clean_up_to > 0 {
+        moves_arr[..clean_up_to]
+            .iter()
+            .filter_map(|m| m.get("move").and_then(|v| v.as_str()))
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        String::new()
+    };
+
+    // Compute avg_cp_loss of user moves within clean range (skip book/forced)
+    let mut cp_sum = 0.0;
+    let mut cp_count = 0;
+    for ply in 0..clean_up_to {
+        let mv = &moves_arr[ply];
+        let is_user_move = (ply % 2 == 0) == is_white;
+        if !is_user_move {
+            continue;
+        }
+        let classification = mv.get("classification").and_then(|c| c.as_str()).unwrap_or("");
+        if classification == "book" || classification == "forced" {
+            continue;
+        }
+        let cp_loss = mv.get("cp_loss").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        cp_sum += cp_loss;
+        cp_count += 1;
+    }
+    let avg_cp_loss = if cp_count > 0 {
+        (cp_sum / cp_count as f64 * 10.0).round() / 10.0
+    } else {
+        0.0
+    };
+
+    let clean_depth = (clean_up_to / 2 + clean_up_to % 2) as i16;
+
+    // Only insert if we have a non-empty line
+    if !line.is_empty() {
+        sqlx::query(
+            r#"INSERT INTO game_opening_clean_plies (game_id, user_id, color, clean_up_to, clean_depth, line, avg_cp_loss)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (game_id) DO UPDATE SET
+                   clean_up_to = EXCLUDED.clean_up_to,
+                   clean_depth = EXCLUDED.clean_depth,
+                   line = EXCLUDED.line,
+                   avg_cp_loss = EXCLUDED.avg_cp_loss"#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .bind(&color)
+        .bind(clean_up_to as i16)
+        .bind(clean_depth)
+        .bind(&line)
+        .bind(avg_cp_loss)
+        .execute(pool)
+        .await
+        .map_err(AppError::Sqlx)?;
+    } else {
+        // No clean line — delete any existing row
+        sqlx::query("DELETE FROM game_opening_clean_plies WHERE game_id = $1")
+            .bind(game_id)
+            .execute(pool)
+            .await
+            .map_err(AppError::Sqlx)?;
+    }
+
+    Ok(())
 }
 
 pub fn first_bad_move(moves: &JsonValue, is_white: bool, bad: &[&str]) -> i64 {
