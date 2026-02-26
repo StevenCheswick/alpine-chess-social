@@ -353,7 +353,6 @@ fn find_candidates(
                     recapture_idx = Some(i);
                     continue;
                 } else {
-                    // Opponent didn't recapture — rook wasn't taken
                     potential = None;
                     potential_square = None;
                     continue;
