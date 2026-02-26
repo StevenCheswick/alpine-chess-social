@@ -12,9 +12,9 @@ Before doing any development, testing, or debugging, **all three services must b
    ```
    cd backend-rust && cargo run -p server --bin server
    ```
-3. **Frontend** (React/Vite, port 5173):
+3. **Frontend** (static site, port 5174):
    ```
-   cd frontend && npm run dev
+   cd frontend && python -m http.server 5174
    ```
 
 Start them in this order — backend needs Postgres, frontend needs backend.
