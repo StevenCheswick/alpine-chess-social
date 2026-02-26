@@ -1094,11 +1094,7 @@ window.addEventListener('hashchange', () => {
   if (document.getElementById('page-' + page)) switchPage(page, true);
 });
 
-// Navigate to hash on initial load
-(function() {
-  const page = location.hash.slice(1);
-  if (page && document.getElementById('page-' + page)) switchPage(page, true);
-})();
+// Navigate to hash on initial load — deferred to end of script (see bottom)
 
 // ══════════════════════════════════════════
 // DESIGN TOKEN READER
@@ -3571,7 +3567,11 @@ document.getElementById('edit-profile-form').addEventListener('submit', async (e
     // If Chess.com was newly linked, trigger game sync in background
     const wasLinked = profile?.chessComUsername;
     if (!wasLinked && data.chessComUsername) {
-      fetch(API_URL + `/api/games?username=${encodeURIComponent(data.chessComUsername)}`)
+      fetch(API_URL + '/api/games/sync', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: '{}',
+      })
         .then(() => console.log('Initial games sync started'))
         .catch(err => console.error('Failed to start games sync:', err));
     }
@@ -3718,6 +3718,12 @@ window.registerUser = async function(username, password) {
     localStorage.removeItem('alpine_user');
     showLogin();
   }
+})();
+
+// Navigate to hash on initial load (must be after all variable declarations)
+(function() {
+  const page = location.hash.slice(1);
+  if (page && document.getElementById('page-' + page)) switchPage(page, true);
 })();
 </script>
 
