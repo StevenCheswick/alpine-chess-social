@@ -432,7 +432,7 @@ tailwind.config = {
     </div>
     <div onclick="switchPage('puzzles')" class="sidebar-item" data-page="puzzles">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      Puzzles
+      Tactics
     </div>
     <div onclick="switchPage('endgames')" class="sidebar-item" data-page="endgames">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -657,7 +657,7 @@ tailwind.config = {
   <!-- Back button -->
   <button onclick="closePuzzleSolve()" class="flex items-center gap-2 text-muted hover:text-white transition-colors mb-5">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-    Back to Puzzles
+    Back to Tactics
   </button>
 
   <div class="flex flex-col lg:flex-row gap-6">
@@ -1060,7 +1060,8 @@ function switchPage(name, skipHash) {
   document.querySelector(`.sidebar-item[data-page="${name}"]`)?.classList.add('active');
   document.querySelector(`.mobile-nav-item[data-page="${name}"]`)?.classList.add('active');
 
-  if (!skipHash) history.pushState(null, '', '/' + (name === 'dashboard' ? '' : name));
+  const urlName = name === 'dashboard' ? '' : name === 'puzzles' ? 'tactics' : name;
+  if (!skipHash) history.pushState(null, '', '/' + urlName);
 
   // Re-trigger animations
   document.querySelectorAll('#page-' + name + ' .fade-up').forEach(el => {
@@ -1084,7 +1085,8 @@ function switchPage(name, skipHash) {
 
 // Handle browser back/forward
 window.addEventListener('popstate', () => {
-  const page = location.pathname.slice(1) || 'dashboard';
+  let page = location.pathname.slice(1) || 'dashboard';
+  if (page === 'tactics') page = 'puzzles';
   if (document.getElementById('page-' + page)) switchPage(page, true);
 });
 
@@ -1538,8 +1540,8 @@ function renderPuzzleGrid() {
         <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M12 2C9.5 2 8 3.5 8 5.5c0 1.5.5 2 1 2.5L8 10h8l-1-2c.5-.5 1-1 1-2.5C16 3.5 14.5 2 12 2z"/><rect x="7" y="10" width="10" height="2" rx="0.5"/><path d="M8 12v7a3 3 0 003 3h2a3 3 0 003-3v-7"/></svg>
         </div>
-        <h2 class="text-lg font-semibold text-white mb-2">No puzzles yet</h2>
-        <p class="text-body text-muted mb-5">Puzzles are automatically extracted when you analyze your games.</p>
+        <h2 class="text-lg font-semibold text-white mb-2">No tactics yet</h2>
+        <p class="text-body text-muted mb-5">Tactics are automatically extracted when you analyze your games.</p>
         <button onclick="switchPage('games')" class="px-5 py-2.5 rounded-lg font-medium text-white text-body bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-300 hover:to-blue-400 shadow-[0_0_12px_rgba(56,189,248,0.3)] transition-all">Go to Games</button>
       </div>`;
     return;
@@ -1549,7 +1551,7 @@ function renderPuzzleGrid() {
 
   countBar.innerHTML = `
     <p class="text-label text-muted">
-      <span class="text-white font-mono">${total}</span> puzzles from your games
+      <span class="text-white font-mono">${total}</span> tactics from your games
       ${_puzzleSelectedTheme ? `<span class="text-accent ml-1">— ${tagDisplayName(_puzzleSelectedTheme)} <button onclick="selectPuzzleTheme('${_puzzleSelectedTheme}')" class="ml-1 text-muted hover:text-white transition-colors">&times;</button></span>` : ''}
     </p>
     ${totalPages > 1 ? `<p class="text-label text-muted">Showing ${start + 1}–${Math.min(start + PUZZLES_PER_PAGE, total)}</p>` : ''}`;
@@ -3643,7 +3645,8 @@ function showApp() {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('app-shell').style.display = 'flex';
   document.getElementById('mobile-nav').style.display = '';
-  const page = location.pathname.slice(1) || 'dashboard';
+  let page = location.pathname.slice(1) || 'dashboard';
+  if (page === 'tactics') page = 'puzzles';
   switchPage(page, true);
 }
 
@@ -3725,7 +3728,8 @@ window.registerUser = async function(username, password) {
 
 // Navigate to path on initial load (must be after all variable declarations)
 (function() {
-  const page = location.pathname.slice(1) || 'dashboard';
+  let page = location.pathname.slice(1) || 'dashboard';
+  if (page === 'tactics') page = 'puzzles';
   if (document.getElementById('page-' + page)) switchPage(page, true);
 })();
 </script>
@@ -3738,7 +3742,7 @@ window.registerUser = async function(username, password) {
   </button>
   <button onclick="switchPage('puzzles')" class="mobile-nav-item" data-page="puzzles">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-    <span class="text-[10px] mt-0.5">Puzzles</span>
+    <span class="text-[10px] mt-0.5">Tactics</span>
   </button>
   <button onclick="switchPage('trainer')" class="mobile-nav-item" data-page="trainer">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19h16M4 15h16M4 11h8"/></svg>
