@@ -1485,7 +1485,7 @@ async function loadPuzzleGrid(theme) {
     const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
     if (!res.ok) throw new Error('Failed');
     const data = await res.json();
-    _allPuzzles = data.puzzles || [];
+    _allPuzzles = (data.puzzles || []).filter(p => (p.themes || []).some(isVisibleTag));
     _puzzleThemes = data.themes || {};
   } catch {
     _allPuzzles = [];
