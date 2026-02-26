@@ -83,7 +83,7 @@ const gameTypeConfig: Record<GameType, { label: string; color: string; icon: Rea
   },
   rapid: {
     label: 'Rapid',
-    color: 'text-emerald-400',
+    color: 'text-green-400',
     icon: (
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="12" cy="12" r="9" />
@@ -368,7 +368,7 @@ export default function GamesPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-white">My Games</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-muted text-sm mt-1">
             Analyze your games to discover patterns and tag notable moments
           </p>
         </div>
@@ -378,12 +378,12 @@ export default function GamesPage() {
             <span className="text-3xl">&#9823;</span>
           </div>
           <h2 className="text-xl font-semibold text-white mb-2">Link your Chess.com account</h2>
-          <p className="text-slate-400 mb-6">
+          <p className="text-muted mb-6">
             Connect your Chess.com account to sync and analyze your games.
           </p>
           <Link
             to={user ? `/u/${user.username}?settings=true` : '/'}
-            className="inline-block px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-medium transition-all duration-200 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+            className="btn btn-primary"
           >
             Go to Profile Settings
           </Link>
@@ -397,7 +397,7 @@ export default function GamesPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">My Games</h1>
-        <p className="text-slate-400 text-sm mt-1">
+        <p className="text-muted text-sm mt-1">
           Analyze your games to discover patterns and tag notable moments
         </p>
       </div>
@@ -407,11 +407,11 @@ export default function GamesPage() {
         <button
           onClick={syncAllGames}
           disabled={syncing || loading}
-          className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
         >
           {syncing ? (
             <>
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              <span className="w-4 h-4 border-2 border-slate-600 border-t-sky-400 rounded-full animate-spin"></span>
               Syncing...
             </>
           ) : (
@@ -428,7 +428,7 @@ export default function GamesPage() {
           <button
             onClick={loadMoreHistory}
             disabled={backfilling || syncing || loading}
-            className="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-400 hover:to-purple-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+            className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
             {backfilling ? (
               <>
@@ -451,7 +451,7 @@ export default function GamesPage() {
             onClick={serverAnalyzeGames}
             disabled={serverAnalyzing || syncing || loading}
             title="Queue for server analysis - no need to keep tab open"
-            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+            className="btn btn-primary px-3 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {serverAnalyzing ? (
               <>
@@ -470,8 +470,8 @@ export default function GamesPage() {
         )}
 
         {chessComUsername && totalGames > 0 && !hasMoreHistory && (
-          <span className="flex items-center gap-2 text-sm text-slate-500">
-            <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="flex items-center gap-2 text-sm text-dim">
+            <svg className="w-4 h-4 text-good" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
             All history loaded
@@ -481,7 +481,7 @@ export default function GamesPage() {
         {!chessComUsername && (
           <Link
             to={user ? `/u/${user.username}?settings=true` : '/'}
-            className="text-sm text-emerald-400 hover:text-emerald-300"
+            className="text-sm text-accent hover:text-accent-bright"
           >
             + Link Chess.com account
           </Link>
@@ -535,10 +535,10 @@ export default function GamesPage() {
       {(games.length > 0 || totalGames > 0) && (
         <>
           {/* Stats */}
-          <p className="text-slate-400 text-sm">
+          <p className="text-muted text-sm">
             {totalGames} {totalGames === 1 ? 'game' : 'games'}
             {totalAnalyzed > 0 && (
-              <span className="ml-2 text-emerald-400">
+              <span className="ml-2 text-good">
                 ({totalAnalyzed} analyzed)
               </span>
             )}
@@ -554,10 +554,10 @@ export default function GamesPage() {
                     <button
                       key={tag}
                       onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      className={`px-2 py-1 text-xs font-medium rounded-md border transition-colors ${
                         isSelected
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          ? 'bg-sky-500/20 text-white border-sky-400/50'
+                          : 'bg-transparent text-slate-300 border-slate-700 hover:border-slate-500'
                       }`}
                     >
                       {tagDisplayName(tag)} ({allTags.get(tag)})
@@ -568,7 +568,7 @@ export default function GamesPage() {
               {selectedTags.size > 0 && (
                 <button
                   onClick={clearTags}
-                  className="text-sm text-slate-400 hover:text-white transition-colors"
+                  className="text-sm text-muted hover:text-white transition-colors"
                 >
                   Clear filters
                 </button>
@@ -578,7 +578,7 @@ export default function GamesPage() {
 
           {/* Pagination Info */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between text-sm text-slate-400">
+            <div className="flex items-center justify-between text-sm text-muted">
               <span>
                 Showing {startIndex + 1}-{endIndex} of {totalGames}
               </span>
@@ -592,7 +592,7 @@ export default function GamesPage() {
               <Link
                 key={game.id}
                 to={`/games/${game.id}`}
-                className="card block p-4 hover:border-emerald-500/60 transition-all duration-200 group"
+                className="card block p-4 hover:border-sky-400/50 transition-all duration-200 group"
               >
                 <div className="flex items-start gap-3 sm:gap-5">
                   {/* Mini Board — hidden on very small screens to prevent overflow */}
@@ -609,11 +609,11 @@ export default function GamesPage() {
                     {/* Top row: Opponent + Result */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                        <h3 className="text-lg font-semibold text-white group-hover:text-accent transition-colors">
                           vs {game.opponent}
                         </h3>
                         {game.opponentRating && (
-                          <span className="px-2 py-0.5 bg-slate-800 rounded text-sm text-slate-400 font-medium">
+                          <span className="px-2 py-0.5 bg-slate-800 rounded text-sm text-muted font-medium">
                             {game.opponentRating}
                           </span>
                         )}
@@ -632,12 +632,12 @@ export default function GamesPage() {
                             ? 'bg-green-500/20 text-green-400'
                             : game.result === 'L'
                             ? 'bg-red-500/20 text-red-400'
-                            : 'bg-slate-500/20 text-slate-400'
+                            : 'bg-slate-500/20 text-muted'
                         }`}>
                           {resultLabels[game.result]}
                         </span>
                         <svg
-                          className="w-5 h-5 text-slate-600 group-hover:text-emerald-500 transition-colors"
+                          className="w-5 h-5 text-dim group-hover:text-accent transition-colors"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -659,13 +659,13 @@ export default function GamesPage() {
                           </span>
                         );
                       })()}
-                      <span className="flex items-center gap-1.5 text-slate-400">
-                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <span className="flex items-center gap-1.5 text-muted">
+                        <svg className="w-4 h-4 text-dim" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
                         {Math.ceil(game.moves.length / 2)} moves
                       </span>
-                      <span className="text-slate-500">
+                      <span className="text-dim">
                         as <span className="text-slate-300 capitalize">{game.userColor}</span>
                       </span>
                       {/* Analysis accuracy badge */}
@@ -687,7 +687,7 @@ export default function GamesPage() {
                             key={tag}
                             className="px-2.5 py-1 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-full text-xs font-medium text-amber-400"
                           >
-                            {tag}
+                            {tagDisplayName(tag)}
                           </span>
                         ))}
                       </div>
@@ -698,7 +698,7 @@ export default function GamesPage() {
             ))}
 
             {games.length === 0 && (
-              <div className="text-center py-12 text-slate-500">
+              <div className="text-center py-12 text-dim">
                 No games on this page
               </div>
             )}
@@ -721,7 +721,7 @@ export default function GamesPage() {
               >
                 Previous
               </button>
-              <span className="px-4 py-2 text-slate-400">
+              <span className="px-4 py-2 text-muted">
                 {currentPage} / {totalPages}
               </span>
               <button
@@ -745,7 +745,7 @@ export default function GamesPage() {
 
       {/* Empty State */}
       {totalGames === 0 && !error && (
-        <div className="text-center py-12 text-slate-500">
+        <div className="text-center py-12 text-dim">
           No games found. Click a sync button above to download your games.
         </div>
       )}
