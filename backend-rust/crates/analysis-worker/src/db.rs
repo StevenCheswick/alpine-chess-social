@@ -120,7 +120,10 @@ pub async fn save_game_analysis(
 
     // 3. Replace analysis tags only (preserve title tags like "titled", "GM", etc.)
     if let Some(tags) = tags {
-        let analysis_tags = &["queen_sacrifice", "rook_sacrifice", "smothered_mate"];
+        let analysis_tags = &[
+            "queen_sacrifice", "rook_sacrifice", "smothered_mate",
+            "king_mate", "castling_mate", "en_passant_mate",
+        ];
         sqlx::query(
             "DELETE FROM game_tags WHERE game_id = $1 AND tag = ANY($2::text[])"
         )
