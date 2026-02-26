@@ -1399,7 +1399,7 @@ async function initPuzzles() {
     const oRate = Math.round(p.opponent?.rate || 0);
     return `<div>
       <div class="flex items-center justify-between mb-1.5">
-        <span class="text-label text-muted">${posLabels[p.position] || p.position}</span>
+        <span class="text-label text-white font-medium">${posLabels[p.position] || p.position}</span>
         <span class="text-meta text-muted font-mono">${p.user?.total || 0} puzzles</span>
       </div>
       <div class="flex items-center gap-2 mb-1">
