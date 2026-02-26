@@ -3646,7 +3646,12 @@ function showApp() {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('app-shell').style.display = 'flex';
   document.getElementById('mobile-nav').style.display = '';
-  initDashboard();
+  const page = location.hash.slice(1);
+  if (page && document.getElementById('page-' + page)) {
+    switchPage(page, true);
+  } else {
+    switchPage('dashboard', true);
+  }
 }
 
 function showLogin() {
