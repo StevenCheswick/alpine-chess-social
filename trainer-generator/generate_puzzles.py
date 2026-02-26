@@ -19,8 +19,8 @@ from pathlib import Path
 
 STOCKFISH_PATH = "../backend-rust/stockfish.exe"
 MAIA_DIR = Path("C:/Users/steve/OneDrive/Desktop/maia")
-TREE_DB = "move_tree.duckdb"
-EVALS_DB = "lichess_evals.duckdb"
+TREE_DB = "../data/database/move_tree.duckdb"
+EVALS_DB = "../data/database/lichess_evals.duckdb"
 SF_NODES = 200_000
 MAIA_RATING = 1900
 MAIA_OPP_NODES = 100
@@ -46,7 +46,7 @@ def games_column_expr(min_rating):
     return " + ".join(buckets)
 
 
-def find_mistakes(eco_codes, side, min_rating, threshold):
+def find_mistakes(eco_codes, side, min_rating, threshold, moves_prefix=None):
     """Find common mistakes from move_tree + lichess_evals."""
     tree_con = duckdb.connect(TREE_DB, read_only=False)
     evals_con = duckdb.connect(EVALS_DB, read_only=True)
@@ -156,9 +156,14 @@ def find_mistakes(eco_codes, side, min_rating, threshold):
 
     # Find mistakes matching criteria
     eco_set = set(eco_codes)
+    seq_prefix = "|".join(moves_prefix.split()) + "|" if moves_prefix else None
+    if seq_prefix:
+        print(f"  Moves filter: {moves_prefix} (prefix: {seq_prefix[:-1]})")
     mistakes = []
     for parent_key, child_key, move, games, eco, seq, before_fen, after_fen in pairs:
         if eco not in eco_set:
+            continue
+        if seq_prefix and not seq.startswith(seq_prefix):
             continue
         eval_before = get_eval(parent_key, before_fen)
         eval_after = get_eval(child_key, after_fen)
@@ -617,7 +622,7 @@ async def generate_puzzles(args):
     eco_label = ",".join(eco_codes)
 
     # Phase 1: Find mistakes (DuckDB only)
-    mistakes = find_mistakes(eco_codes, side, args.min_rating, args.threshold)
+    mistakes = find_mistakes(eco_codes, side, args.min_rating, args.threshold, args.moves)
     if not mistakes:
         print("No mistakes found. Exiting.")
         return
@@ -771,6 +776,8 @@ def main():
                         help="Minimum rating filter (default: 1800)")
     parser.add_argument("--threshold", type=int, default=200,
                         help="Minimum cp loss to qualify as mistake (default: 200)")
+    parser.add_argument("--moves",
+                        help="Required opening moves prefix (space-separated, e.g. 'e4 c5 d4 cxd4')")
     args = parser.parse_args()
     asyncio.run(generate_puzzles(args))
 

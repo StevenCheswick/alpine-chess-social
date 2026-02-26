@@ -23,6 +23,9 @@
 ## Costliest Opening Habits
 - [ ] Filter out known opening theory from results — currently established lines like the Evans Gambit show up as "blunders" because they lose some eval, but they're legitimate theory moves, not repeated mistakes
 
+## Deepest Opening
+- [ ] Add ECO code support for deepest opening feature
+
 ## Endgame Type Detection
 - [ ] Detect and tag common endgame types during analysis:
   - KP vs K (King + Pawn vs King)
@@ -34,8 +37,19 @@
   - Opposite-color bishop endgames
 
 ## Opening Mistake Trainer
+- [ ] Fix eval bar in trainer
 - [ ] Deduplicate puzzles: if puzzle A's post-mistake FEN appears as a node inside puzzle B's tree, drop puzzle A (it's a subset)
 - [ ] Phase 1 eval writeback: write found evals back to move_tree.duckdb so lookups don't repeat
+
+## Dashboard
+- [ ] Add "Choke Rate" metric — track how often a player loses a winning position
+
+## Performance
+- [ ] Speed up Games page load — 5 parallel API calls on mount (~435ms each). Options: prefetch on nav hover, skeleton UI, or edge caching via CloudFront
+
+## UI Polish
+- [ ] Remove rank/file labels (letters and numbers) from the React chessboard
+- [ ] Don't touch chessboard design/colors until mockup redesign is applied to prod — react-chessboard handles rendering, style it there not in the mockup
 
 ## Chess Sounds
 - [ ] Implement move/game sounds using `frontend/src/utils/chessSounds.ts` (already stubbed out, just needs to be wired up)
