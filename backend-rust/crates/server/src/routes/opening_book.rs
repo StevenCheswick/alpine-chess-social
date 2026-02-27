@@ -5,7 +5,7 @@ use shakmaty::{Chess, Position, uci::UciMove, san::San};
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
 
-use crate::book_cache::{self, BOOK_CACHE};
+use crate::book_cache;
 use crate::config::Config;
 use crate::db::analysis::{first_bad_move, phase_accuracy};
 use crate::error::AppError;
@@ -35,7 +35,7 @@ pub async fn check_book_move(
     Query(q): Query<BookCheckQuery>,
 ) -> Result<Json<BookCheckResponse>, AppError> {
     // Try in-memory cache first (instant lookup)
-    if !BOOK_CACHE.is_empty() {
+    if !book_cache::is_empty() {
         if let Some(stats) = book_cache::lookup(&q.fen, &q.san) {
             return Ok(Json(BookCheckResponse {
                 is_book: true,
@@ -86,6 +86,28 @@ pub async fn check_book_move(
             black_wins: None,
         })),
     }
+}
+
+/// POST /api/admin/opening-book/reload
+/// Hot-reload the opening book cache from the database.
+pub async fn reload_book(
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
+) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
+
+    book_cache::load_from_db(&pool).await;
+
+    let cache = book_cache::BOOK_CACHE.read().unwrap();
+    let positions = cache.len();
+    let moves: usize = cache.values().map(|m| m.len()).sum();
+    drop(cache);
+
+    Ok(Json(serde_json::json!({
+        "positions": positions,
+        "moves": moves,
+    })))
 }
 
 /// Classify a move by cp_loss using the same thresholds as the analysis worker.

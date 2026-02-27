@@ -1,3 +1,4 @@
+use server::book_cache;
 use server::clients;
 use server::config;
 use server::db;
@@ -30,6 +31,9 @@ async fn main() {
     db::pool::run_migrations(&pool)
         .await
         .expect("Failed to run migrations");
+
+    // Load opening book from DB into in-memory cache
+    book_cache::load_from_db(&pool).await;
 
     // Initialize SQS client for server-side analysis (optional)
     let analysis_queue = clients::sqs::AnalysisQueue::new(&config).await;
@@ -110,6 +114,7 @@ async fn main() {
         .route("/api/opening-tree", get(routes::opening_tree::get_opening_tree))
         // Opening book (master games)
         .route("/api/opening-book/check", get(routes::opening_book::check_book_move))
+        .route("/api/admin/opening-book/reload", post(routes::opening_book::reload_book))
         .route("/api/admin/opening-book/reclassify", post(routes::opening_book::reclassify_book_moves))
         // Trainer
         .route("/api/trainer/openings", get(routes::trainer::list_openings))

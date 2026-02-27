@@ -52,9 +52,6 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/server /app/server
 
-# Opening book cache for instant lookups
-COPY data/opening_book.bin /app/data/opening_book.bin
-
 ENV HOST=0.0.0.0
 ENV PORT=8000
 ENV RUST_LOG=info
