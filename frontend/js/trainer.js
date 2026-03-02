@@ -116,6 +116,7 @@ let _trainerOpponentOrder = new Map();
 let _trainerRestartTimer = null;
 let _trainerAnimTimer = null;
 let _trainerGen = 0;
+let _trainerDeepStartVisited = 0;
 
 // ── Tree utility functions (match React TrainerBoard.tsx) ──
 
@@ -586,7 +587,8 @@ function trainerPuzzleComplete(leaf, message) {
       }
     }
 
-    const doneMsg = _trainerDrillMode === 'main' ? 'Main line complete!' : `Completed all ${total} variation${total !== 1 ? 's' : ''}.`;
+    const deepCount = _trainerDrillMode === 'deep' ? total - _trainerDeepStartVisited : total;
+    const doneMsg = _trainerDrillMode === 'main' ? 'Main line complete!' : `Completed all ${deepCount} variation${deepCount !== 1 ? 's' : ''}.`;
     setTrainerStatus(doneMsg, message || 'Well done!', 'success');
     updateTrainerButtons();
   } else {
@@ -750,6 +752,7 @@ function resetTrainerVariationState() {
   const puzzle = _trainerPuzzles[_trainerPuzzleIdx];
   _trainerTotalLeaves = puzzle ? countMainLineLeaves(puzzle.tree) : 1;
   _trainerVariationsCompleted = 0;
+  _trainerDeepStartVisited = 0;
   _trainerIsFirstAttempt = true;
 }
 
@@ -762,6 +765,7 @@ function startDeepDrill() {
   _trainerDrillMode = 'deep';
   _trainerTotalLeaves = countLeaves(puzzle.tree);
   _trainerVariationsCompleted = countVisitedLeaves(puzzle.tree, _trainerVisitedLeaves);
+  _trainerDeepStartVisited = _trainerVariationsCompleted;
   _trainerIsFirstAttempt = true;
   _trainerMistakeThisRun = false;
   setTimeout(() => startTrainerPuzzle(), 600);
@@ -787,7 +791,8 @@ function updateTrainerButtons() {
     const showDeep = _trainerPhase === 'done' && allDone && _trainerDrillMode === 'main' && puzzle && treeHasDeepVariations(puzzle.tree);
     deepBtn.style.display = showDeep ? '' : 'none';
     if (showDeep) {
-      deepBtn.textContent = `Drill Deeper (${countLeaves(puzzle.tree)} variations)`;
+      const remaining = countLeaves(puzzle.tree) - countVisitedLeaves(puzzle.tree, _trainerVisitedLeaves);
+      deepBtn.textContent = `Drill Deeper (${remaining} variation${remaining !== 1 ? 's' : ''})`;
     }
   }
 
@@ -795,8 +800,10 @@ function updateTrainerButtons() {
   const varCounter = document.getElementById('trainerVarCounter');
   if (varCounter) {
     if (_trainerDrillMode === 'deep' && _trainerTotalLeaves > 1) {
-      const current = Math.min(_trainerVariationsCompleted + (_trainerPhase !== 'done' && _trainerPhase !== 'idle' ? 1 : 0), _trainerTotalLeaves);
-      varCounter.textContent = `Variation ${current} / ${_trainerTotalLeaves}`;
+      const deepTotal = _trainerTotalLeaves - _trainerDeepStartVisited;
+      const deepDone = _trainerVariationsCompleted - _trainerDeepStartVisited;
+      const current = Math.min(deepDone + (_trainerPhase !== 'done' && _trainerPhase !== 'idle' ? 1 : 0), deepTotal);
+      varCounter.textContent = `Variation ${current} / ${deepTotal}`;
       varCounter.style.display = '';
     } else if (_trainerDrillMode === 'main') {
       varCounter.textContent = 'Main line';
