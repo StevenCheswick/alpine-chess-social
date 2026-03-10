@@ -7,8 +7,6 @@ async function initDashboard() {
     const existing = Chart.getChart(document.getElementById(id));
     if (existing) existing.destroy();
   });
-  window._dashInit = true;
-
   // ── Auth ──
   const token = localStorage.getItem('alpine_token');
   if (!token) { console.warn('No auth token'); return; }
@@ -24,6 +22,7 @@ async function initDashboard() {
     console.error('Dashboard fetch error (is backend running?):', err.message);
     return;
   }
+  window._dashInit = true;
 
   // ── MIN_GAMES gate (same as React frontend) ──
   const MIN_GAMES = 100;
