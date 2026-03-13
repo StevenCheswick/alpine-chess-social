@@ -42,14 +42,14 @@ function switchPage(name, skipHash) {
     clearTimeout(_trainerRestartTimer);
     ++_trainerGen;
     _trainerPhase = 'idle';
+    const drillView = document.getElementById('trainerDrillView');
+    if (drillView) drillView.style.display = 'none';
     if (typeof _hmGen !== 'undefined') {
       clearTimeout(_hmAnimTimer);
       clearTimeout(_hmRestartTimer);
       ++_hmGen;
       _hmPhase = 'idle';
       _trainerIsHardMoveMode = false;
-      const hmView = document.getElementById('hmDrillView');
-      if (hmView) hmView.style.display = 'none';
     }
   }
 

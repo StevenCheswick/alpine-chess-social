@@ -2,6 +2,7 @@
 // DASHBOARD INIT
 // ══════════════════════════════════════════
 async function initDashboard() {
+  window._dashInit = true;
   // Destroy existing charts if re-initing
   ['accuracyChart', 'phaseChart', 'mistakeChart', 'ratingChart'].forEach(id => {
     const existing = Chart.getChart(document.getElementById(id));
@@ -22,7 +23,6 @@ async function initDashboard() {
     console.error('Dashboard fetch error (is backend running?):', err.message);
     return;
   }
-  window._dashInit = true;
 
   // ── MIN_GAMES gate (same as React frontend) ──
   const MIN_GAMES = 100;

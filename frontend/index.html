@@ -729,65 +729,8 @@ tailwind.config = {
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-3" id="trainerGrid"></div>
   </div>
 
-  <!-- Drill view -->
-  <div id="trainerDrillView" style="display:none">
-    <div class="flex items-center justify-between mb-4 fade-up">
-      <button onclick="exitTrainerDrill()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        Back to Openings
-      </button>
-    </div>
-
-    <div class="flex flex-col lg:flex-row gap-4">
-      <div class="fade-up w-full lg:max-w-[520px]" style="animation-delay: 0.1s">
-        <div class="w-full aspect-square rounded-lg overflow-hidden" id="trainerBoardWrap">
-          <div id="trainerBoard" class="w-full h-full"></div>
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-3 w-full lg:flex-1">
-        <div class="card p-4 fade-up" style="animation-delay: 0.12s">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <button onclick="trainerPrevPuzzle()" id="btnTrainerPrev" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
-              <span class="text-label text-white font-medium" id="trainerDrillCounter"></span>
-              <button onclick="trainerNextPuzzle()" id="btnTrainerNextPuzzle" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
-            </div>
-            <span class="text-meta text-muted" id="trainerVarCounter" style="display:none">Main line</span>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="trainerHint()" id="btnTrainerHint" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Hint</button>
-            <button onclick="trainerSkip()" id="btnTrainerSkip" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Skip</button>
-            <button onclick="trainerRetry()" id="btnTrainerRetry" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Retry</button>
-            <button onclick="startDeepDrill()" id="btnTrainerDeepDrill" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 hover:border-sky-400/60 transition-colors" style="display:none">Drill Deeper</button>
-            <button onclick="trainerNext()" id="btnTrainerNext" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next Puzzle</button>
-          </div>
-          <div class="mt-3">
-            <div class="flex items-center justify-between text-meta text-muted mb-1">
-              <span id="trainerProgressLabel">0/0 completed</span>
-              <span class="font-mono" id="trainerProgressPct">0%</span>
-            </div>
-            <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
-              <div class="h-full rounded-full transition-all" style="background: var(--accent)" id="trainerProgressBar"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card p-4 fade-up" style="animation-delay: 0.14s">
-          <h3 class="text-xs font-semibold text-white mb-2.5">Moves</h3>
-          <div class="overflow-y-auto pr-1 text-body font-mono leading-relaxed" style="max-height: 200px;" id="trainerMoveList"></div>
-        </div>
-
-        <div class="card p-3 fade-up" id="trainerStatusCard" style="animation-delay: 0.16s; min-height: 52px;">
-          <h3 class="text-sm font-semibold" id="trainerStatusTitle"></h3>
-          <p class="text-muted text-sm mt-0.5" id="trainerStatusMsg"></p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Hard move drill view (centered on page, no scroll) -->
-  <div id="hmDrillView" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:40; background:var(--bg-primary); overflow:hidden;">
+  <!-- Drill view (centered fullscreen overlay) -->
+  <div id="trainerDrillView" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:40; background:var(--bg-primary); overflow:hidden;">
     <div style="height:100vh; display:flex; flex-direction:column; align-items:center; padding:12px 16px;">
       <!-- Back button -->
       <div class="w-full" style="max-width:min(480px, 90vw);">
@@ -799,39 +742,45 @@ tailwind.config = {
 
       <!-- Status (above board) -->
       <div class="card p-2.5 mb-2 w-full" style="max-width:min(480px, 90vw);">
-        <h3 class="text-sm font-semibold" id="hmStatusTitle"></h3>
-        <p class="text-muted text-sm mt-0.5" id="hmStatusMsg"></p>
+        <h3 class="text-sm font-semibold" id="trainerStatusTitle"></h3>
+        <p class="text-muted text-sm mt-0.5" id="trainerStatusMsg"></p>
       </div>
 
       <!-- Board (fills available space) -->
       <div class="flex-1 flex items-center justify-center w-full" style="min-height:0;">
-        <div id="hmBoard" class="rounded-lg overflow-hidden" style="width:min(480px, 90vw, calc(100vh - 220px)); height:min(480px, 90vw, calc(100vh - 220px));"></div>
+        <div id="trainerBoardWrap" class="rounded-lg overflow-hidden" style="width:min(480px, 90vw, calc(100vh - 220px)); height:min(480px, 90vw, calc(100vh - 220px));">
+          <div id="trainerBoard" class="w-full h-full"></div>
+        </div>
       </div>
 
       <!-- Nav + buttons (below board) -->
       <div class="card p-2.5 mt-2 w-full" style="max-width:min(480px, 90vw);">
         <div class="flex items-center justify-between mb-1.5">
           <div class="flex items-center gap-2">
-            <button onclick="trainerPrevPuzzle()" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
-            <span class="text-label text-white font-medium" id="hmDrillCounter"></span>
-            <button onclick="trainerNextPuzzle()" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
+            <button onclick="trainerPrevPuzzle()" id="btnTrainerPrev" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
+            <span class="text-label text-white font-medium" id="trainerDrillCounter"></span>
+            <button onclick="trainerNextPuzzle()" id="btnTrainerNextPuzzle" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="trainerHint()" id="btnHmHint" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Hint</button>
-            <button onclick="trainerRetry()" id="btnHmRetry" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Retry</button>
-            <button onclick="trainerNext()" id="btnHmNext" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next</button>
+          <div class="flex items-center gap-2">
+            <span class="text-meta text-muted" id="trainerVarCounter" style="display:none">Main line</span>
+            <button onclick="trainerHint()" id="btnTrainerHint" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Hint</button>
+            <button onclick="trainerSkip()" id="btnTrainerSkip" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Skip</button>
+            <button onclick="trainerRetry()" id="btnTrainerRetry" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Retry</button>
+            <button onclick="startDeepDrill()" id="btnTrainerDeepDrill" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 hover:border-sky-400/60 transition-colors" style="display:none">Drill Deeper</button>
+            <button onclick="trainerNext()" id="btnTrainerNext" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next Puzzle</button>
           </div>
         </div>
         <div class="flex items-center justify-between text-meta text-muted mb-1">
-          <span id="hmProgressLabel">0/0 completed</span>
-          <span class="font-mono" id="hmProgressPct">0%</span>
+          <span id="trainerProgressLabel">0/0 completed</span>
+          <span class="font-mono" id="trainerProgressPct">0%</span>
         </div>
         <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
-          <div class="h-full rounded-full transition-all" style="background: #f59e0b" id="hmProgressBar"></div>
+          <div class="h-full rounded-full transition-all" style="background: var(--accent)" id="trainerProgressBar"></div>
         </div>
       </div>
     </div>
   </div>
+
 </div>
 
 <!-- ╔══════════════════════════════════════════╗ -->

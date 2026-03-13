@@ -304,7 +304,6 @@ async function openTrainerOpening(name) {
   document.getElementById('trainerSelectView').style.display = 'none';
   document.getElementById('trainerDrillView').style.display = '';
   setTrainerStatus('Loading puzzles...', '', 'info');
-  document.getElementById('trainerMoveList').innerHTML = '';
 
   try {
     const res = await fetch(API_URL + '/api/trainer/puzzles?opening=' + encodeURIComponent(name), {
@@ -334,7 +333,6 @@ async function openTrainerOpening(name) {
 
 function exitTrainerDrill() {
   document.getElementById('trainerDrillView').style.display = 'none';
-  document.getElementById('hmDrillView').style.display = 'none';
   document.getElementById('trainerSelectView').style.display = '';
   clearTimeout(_trainerAnimTimer);
   clearTimeout(_trainerRestartTimer);
@@ -625,6 +623,7 @@ function trainerPuzzleComplete(leaf, message) {
 
 function renderTrainerMoves() {
   const ml = document.getElementById('trainerMoveList');
+  if (!ml) return;
   const puzzle = _trainerPuzzles[_trainerPuzzleIdx];
   if (!puzzle) { ml.innerHTML = ''; return; }
 
@@ -817,8 +816,8 @@ function _formatCp(cp) {
 }
 
 function setHmStatus(title, msg, type) {
-  const titleEl = document.getElementById('hmStatusTitle');
-  const msgEl = document.getElementById('hmStatusMsg');
+  const titleEl = document.getElementById('trainerStatusTitle');
+  const msgEl = document.getElementById('trainerStatusMsg');
   titleEl.textContent = title;
   msgEl.textContent = msg || '';
   titleEl.className = 'text-sm font-semibold' + (
@@ -835,7 +834,7 @@ async function openHardMoveOpening(name) {
   if (!token || !Chess) return;
 
   document.getElementById('trainerSelectView').style.display = 'none';
-  document.getElementById('hmDrillView').style.display = '';
+  document.getElementById('trainerDrillView').style.display = '';
   setHmStatus('Loading...', '', 'info');
 
   try {
@@ -866,10 +865,10 @@ function updateHmProgress() {
   const total = _hmMoves.length;
   const done = _hmCompletedIds.size;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  document.getElementById('hmProgressLabel').textContent = `${done}/${total} completed`;
-  document.getElementById('hmProgressPct').textContent = `${pct}%`;
-  document.getElementById('hmProgressBar').style.width = `${pct}%`;
-  document.getElementById('hmDrillCounter').textContent = `${_hmOpeningName} — Position ${_hmIdx + 1} / ${total}`;
+  document.getElementById('trainerProgressLabel').textContent = `${done}/${total} completed`;
+  document.getElementById('trainerProgressPct').textContent = `${pct}%`;
+  document.getElementById('trainerProgressBar').style.width = `${pct}%`;
+  document.getElementById('trainerDrillCounter').textContent = `${_hmOpeningName} — Position ${_hmIdx + 1} / ${total}`;
 }
 
 function startHardMove() {
@@ -884,7 +883,7 @@ function startHardMove() {
   _hmPhase = 'show_mistake';
 
   _trainerGame = new Chess(hm.fen);
-  setTrainerBoard(hm.fen, _hmSolverColor, false, 'hmBoard');
+  setTrainerBoard(hm.fen, _hmSolverColor, false);
   updateHmProgress();
   updateHmButtons();
 
@@ -906,13 +905,13 @@ function startHardMove() {
     if (!mistakeResult) return;
 
     // Show the mistake on the board
-    setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false, 'hmBoard');
+    setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false);
 
     setHmStatus('Common mistake', `${hm.mistake_move} shifts the eval from ${bestEval} to ${mistakeEval}.`, 'error');
 
     // Highlight the mistake squares AFTER board is rendered
     setTimeout(() => {
-      const boardEl = document.getElementById('hmBoard');
+      const boardEl = document.getElementById('trainerBoard');
       if (!boardEl) return;
       const cgWrap = boardEl.querySelector('cg-container') || boardEl;
       cgWrap.style.position = 'relative';
@@ -934,7 +933,7 @@ function startHardMove() {
       if (gen !== _hmGen || _hmPhase !== 'show_mistake') return;
       _trainerGame.undo();
       _hmPhase = 'solver_turn';
-      setTrainerBoard(hm.fen, _hmSolverColor, true, 'hmBoard');
+      setTrainerBoard(hm.fen, _hmSolverColor, true);
       setHmStatus('Find the better move!', `${hm.mistake_move} shifts eval to ${mistakeEval}. Find the move that keeps it at ${bestEval}.`, 'info');
       updateHmButtons();
     }, 3500);
@@ -984,7 +983,7 @@ function hmOnMove(orig, dest) {
     } catch {}
   }
   if (!moveResult) {
-    setTrainerBoard(hm.fen, _hmSolverColor, true, 'hmBoard');
+    setTrainerBoard(hm.fen, _hmSolverColor, true);
     return;
   }
 
@@ -994,7 +993,7 @@ function hmOnMove(orig, dest) {
   if (isCorrect) {
     _hmPhase = 'done';
     _trainerGame.move(hm.best_move);
-    setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false, 'hmBoard');
+    setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false);
 
     const maiaPct = hm.best_maia_pct ? ` Only ${hm.best_maia_pct}% of players find this move.` : '';
     setHmStatus('Correct!', `${hm.best_move} is the best move!${maiaPct}`, 'success');
@@ -1017,7 +1016,7 @@ function hmOnMove(orig, dest) {
     // Wrong move
     _hmMistakeThisRun = true;
     _hmPhase = 'showing_correction';
-    setTrainerBoard(hm.fen, _hmSolverColor, false, 'hmBoard');
+    setTrainerBoard(hm.fen, _hmSolverColor, false);
     setHmStatus('Wrong move', `You played ${moveResult.san}. That's not the best move.`, 'error');
 
     const corrGen = _hmGen;
@@ -1026,7 +1025,7 @@ function hmOnMove(orig, dest) {
       const showGame = new Chess(hm.fen);
       try {
         showGame.move(hm.best_move);
-        setTrainerBoard(showGame.fen(), _hmSolverColor, false, 'hmBoard');
+        setTrainerBoard(showGame.fen(), _hmSolverColor, false);
       } catch {}
       setHmStatus('Wrong move', `The best move was ${hm.best_move}. Try again.`, 'error');
 
@@ -1034,7 +1033,7 @@ function hmOnMove(orig, dest) {
         if (corrGen !== _hmGen || _hmPhase !== 'showing_correction') return;
         _trainerGame = new Chess(hm.fen);
         _hmPhase = 'solver_turn';
-        setTrainerBoard(hm.fen, _hmSolverColor, true, 'hmBoard');
+        setTrainerBoard(hm.fen, _hmSolverColor, true);
         setHmStatus('Try again', 'Find the best move.', 'info');
         updateHmButtons();
       }, 2500);
@@ -1053,7 +1052,7 @@ function hmHint() {
   if (!bestResult) return;
 
   const from = bestResult.from;
-  const boardEl = document.getElementById('hmBoard');
+  const boardEl = document.getElementById('trainerBoard');
   if (!boardEl) return;
 
   const existing = boardEl.querySelector('.trainer-hint-highlight');
@@ -1112,9 +1111,14 @@ function hmNext() {
 function updateHmButtons() {
   const allDone = _hmPhase === 'done';
   const hasNext = _hmMoves.length > 1;
-  document.getElementById('btnHmHint').style.display = _hmPhase === 'solver_turn' ? '' : 'none';
-  document.getElementById('btnHmRetry').style.display = allDone ? '' : 'none';
-  document.getElementById('btnHmNext').style.display = (allDone && hasNext) ? '' : 'none';
+  document.getElementById('btnTrainerHint').style.display = _hmPhase === 'solver_turn' ? '' : 'none';
+  document.getElementById('btnTrainerSkip').style.display = 'none';
+  document.getElementById('btnTrainerRetry').style.display = allDone ? '' : 'none';
+  const deepBtn = document.getElementById('btnTrainerDeepDrill');
+  if (deepBtn) deepBtn.style.display = 'none';
+  document.getElementById('btnTrainerNext').style.display = (allDone && hasNext) ? '' : 'none';
+  const varCounter = document.getElementById('trainerVarCounter');
+  if (varCounter) varCounter.style.display = 'none';
 }
 
 function updateTrainerButtons() {
@@ -1152,8 +1156,7 @@ function updateTrainerButtons() {
       varCounter.textContent = `Variation ${current} / ${deepTotal}`;
       varCounter.style.display = '';
     } else if (_trainerDrillMode === 'main') {
-      varCounter.textContent = 'Main line';
-      varCounter.style.display = '';
+      varCounter.style.display = 'none';
     } else {
       varCounter.style.display = 'none';
     }
