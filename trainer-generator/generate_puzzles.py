@@ -3,15 +3,15 @@
 All-in-one puzzle generation pipeline: find mistakes → Maia filter → build trees.
 
 Usage:
-  python -u generate_puzzles.py --eco C51,C52 --side black --count 100 -o puzzles.json
+  python -u generate_puzzles.py --play e2e4,e7e5,g1f3,g8f6,f3e5,b8c6,e5c6,d7c6 --side white --count 100 -o puzzles.json
 """
 
 import argparse
 import asyncio
 import chess
 import chess.engine
-import duckdb
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,8 +19,9 @@ from pathlib import Path
 
 STOCKFISH_PATH = "../backend-rust/stockfish.exe"
 MAIA_DIR = Path("C:/Users/steve/OneDrive/Desktop/maia")
-TREE_DB = "../data/database/move_tree.duckdb"
-EVALS_DB = "../data/database/lichess_evals.duckdb"
+FIND_MISTAKES_BIN = Path(__file__).parent.parent / "lila-openingexplorer" / "target" / "release" / "find-mistakes.exe"
+EXPLORER_DB = Path(__file__).parent.parent / "lila-openingexplorer" / "_db"
+MIN_GAMES = 2
 SF_NODES = 200_000
 MAIA_RATING = 1900
 MAIA_OPP_NODES = 100
@@ -33,177 +34,35 @@ OPP_FLAT = 50
 # ── Phase 1: Find Mistakes ──────────────────────────────────────────────────
 
 
-def games_column_expr(min_rating):
-    """Build SQL expression for summing relevant rating bucket columns."""
-    if min_rating <= 0:
-        return "games"
-    buckets = []
-    if min_rating <= 0: buckets.append("games_0")
-    if min_rating <= 1000: buckets.append("games_1000")
-    if min_rating <= 1400: buckets.append("games_1400")
-    if min_rating <= 1800: buckets.append("games_1800")
-    buckets.append("games_2200")
-    return " + ".join(buckets)
+def find_mistakes(play, side, threshold, eco="", target=100):
+    """Find common mistakes by shelling out to the Rust find-mistakes binary."""
+    stop_at = target * 3
+    print(f"Phase 1: Finding mistakes via Rust binary (RocksDB direct)")
+    print(f"  Binary: {FIND_MISTAKES_BIN}")
+    print(f"  DB: {EXPLORER_DB}")
 
+    if not FIND_MISTAKES_BIN.exists():
+        print(f"ERROR: {FIND_MISTAKES_BIN} not found. Build it with:")
+        print(f"  cd lila-openingexplorer && cargo build --release --bin find-mistakes")
+        sys.exit(1)
 
-def find_mistakes(eco_codes, side, min_rating, threshold, moves_prefix=None):
-    """Find common mistakes from move_tree + lichess_evals."""
-    tree_con = duckdb.connect(TREE_DB, read_only=False)
-    evals_con = duckdb.connect(EVALS_DB, read_only=True)
+    cmd = [
+        str(FIND_MISTAKES_BIN),
+        "--play", play,
+        "--side", side,
+        "--threshold", str(threshold),
+        "--target", str(stop_at),
+        "--min-games", str(MIN_GAMES),
+        "--eco", eco,
+        "--db", str(EXPLORER_DB),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    mistakes = json.loads(result.stdout)
 
-    games_expr = games_column_expr(min_rating)
-    rating_label = f"{min_rating}+" if min_rating > 0 else "all ratings"
-    print(f"Phase 1: Finding mistakes")
-    print(f"  ECO: {','.join(eco_codes)}")
-    print(f"  Side: {side} (mistakes)")
-    print(f"  Rating: {rating_label}")
-    print(f"  Threshold: {threshold}cp")
+    # stderr has progress/lopsided logging
+    if result.stderr:
+        print(result.stderr, end="")
 
-    # Get all sequences with FENs and 2+ games in the rating range
-    rows = tree_con.execute(f"""
-        SELECT eco, sequence, move, ply, ({games_expr}) as filtered_games, fen, eval_cp
-        FROM move_tree
-        WHERE fen IS NOT NULL AND ({games_expr}) >= 2 AND ply >= 1
-        ORDER BY filtered_games DESC
-    """).fetchall()
-
-    # Build lookups
-    fen_by_key = {}
-    eval_by_key = {}
-    games_by_key = {}
-    for eco, seq, move, ply, filtered_games, fen, eval_cp in rows:
-        fen_by_key[(eco, seq)] = fen
-        games_by_key[(eco, seq)] = filtered_games
-        if eval_cp is not None:
-            eval_by_key[(eco, seq)] = eval_cp
-
-    # Include ply-0 rows
-    ply0 = tree_con.execute(f"""
-        SELECT eco, sequence, fen, eval_cp, ({games_expr}) as filtered_games
-        FROM move_tree
-        WHERE fen IS NOT NULL AND ply = 0
-    """).fetchall()
-    for eco, seq, fen, eval_cp, filtered_games in ply0:
-        fen_by_key[(eco, seq)] = fen
-        games_by_key[(eco, seq)] = filtered_games
-        if eval_cp is not None:
-            eval_by_key[(eco, seq)] = eval_cp
-
-    has_inline = len(eval_by_key)
-    total_keys = len(fen_by_key)
-    print(f"  Inline evals: {has_inline:,}/{total_keys:,} ({100*has_inline/total_keys:.1f}%)")
-
-    # Build parent-child pairs
-    pairs = []
-    for eco, seq, move, ply, filtered_games, fen, eval_cp in rows:
-        parts = seq.split("|")
-        if len(parts) < 2:
-            continue
-        parent_seq = "|".join(parts[:-1])
-        parent_key = (eco, parent_seq)
-        child_key = (eco, seq)
-        parent_fen = fen_by_key.get(parent_key)
-        if parent_fen is None:
-            continue
-        pairs.append((parent_key, child_key, move, filtered_games, eco, seq, parent_fen, fen))
-
-    # Find positions needing external eval
-    need_external = set()
-    for parent_key, child_key, move, games, eco, seq, before_fen, after_fen in pairs:
-        if parent_key not in eval_by_key:
-            need_external.add(before_fen)
-        if child_key not in eval_by_key:
-            need_external.add(after_fen)
-
-    # Batch lookup from lichess_evals
-    external_evals = {}
-    if need_external:
-        print(f"  Looking up {len(need_external):,} external evals...")
-        fen_list = list(need_external)
-        CHUNK = 5000
-        for i in range(0, len(fen_list), CHUNK):
-            chunk = fen_list[i:i+CHUNK]
-            results = evals_con.execute(
-                "SELECT DISTINCT ON (fen) fen, cp, mate FROM positions WHERE fen = ANY($1)",
-                [chunk]
-            ).fetchall()
-            for fen, cp, mate in results:
-                if mate is not None:
-                    external_evals[fen] = 10000 if mate > 0 else -10000
-                elif cp is not None:
-                    external_evals[fen] = cp
-        print(f"  Found {len(external_evals):,}/{len(need_external):,} external evals")
-
-        # Write found evals back to move_tree so future runs don't need external lookup
-        writeback = []
-        for (eco, seq), fen in fen_by_key.items():
-            if (eco, seq) not in eval_by_key and fen in external_evals:
-                writeback.append((eco, seq, external_evals[fen]))
-        if writeback:
-            tree_con.execute("CREATE TEMP TABLE _wb (eco VARCHAR, sequence VARCHAR, eval_cp INTEGER)")
-            tree_con.executemany("INSERT INTO _wb VALUES ($1, $2, $3)", writeback)
-            tree_con.execute("""
-                UPDATE move_tree SET eval_cp = _wb.eval_cp
-                FROM _wb WHERE move_tree.eco = _wb.eco AND move_tree.sequence = _wb.sequence
-            """)
-            tree_con.execute("DROP TABLE _wb")
-            print(f"  Wrote {len(writeback):,} evals back to move_tree")
-
-    def get_eval(key, fen):
-        if key in eval_by_key:
-            return eval_by_key[key]
-        return external_evals.get(fen)
-
-    # Find mistakes matching criteria
-    eco_set = set(eco_codes)
-    seq_prefix = "|".join(moves_prefix.split()) + "|" if moves_prefix else None
-    if seq_prefix:
-        print(f"  Moves filter: {moves_prefix} (prefix: {seq_prefix[:-1]})")
-    mistakes = []
-    for parent_key, child_key, move, games, eco, seq, before_fen, after_fen in pairs:
-        if eco not in eco_set:
-            continue
-        if seq_prefix and not seq.startswith(seq_prefix):
-            continue
-        eval_before = get_eval(parent_key, before_fen)
-        eval_after = get_eval(child_key, after_fen)
-        if eval_before is None or eval_after is None:
-            continue
-
-        white_to_move = " w " in before_fen
-        if white_to_move:
-            cp_loss = eval_before - eval_after
-        else:
-            cp_loss = eval_after - eval_before
-
-        # Position after mistake must be >= 200cp for the solver
-        solver_eval = -eval_after if white_to_move else eval_after
-        if solver_eval < 200:
-            continue
-
-        mistake_side = "white" if white_to_move else "black"
-        if mistake_side != side:
-            continue
-
-        if cp_loss >= threshold:
-            mistakes.append({
-                "fen": before_fen,
-                "move": move,
-                "sequence": seq,
-                "eco": eco,
-                "cp_loss": cp_loss,
-                "games": games,
-                "eval_before": eval_before,
-                "eval_after": eval_after,
-                "side": mistake_side,
-            })
-
-    mistakes.sort(key=lambda x: x["games"], reverse=True)
-
-    tree_con.close()
-    evals_con.close()
-
-    print(f"  Found {len(mistakes)} mistakes with >= {threshold}cp loss")
     return mistakes
 
 
@@ -480,6 +339,20 @@ def _subtree_depth(node):
     return 1 + max(depths) if depths else 0
 
 
+def is_mate_in_1(tree):
+    """Return True if every solver move at root leads to immediate checkmate."""
+    if not isinstance(tree, dict) or tree.get("type") != "solver":
+        return False
+    moves = tree.get("moves", {})
+    if not moves:
+        return False
+    for m in moves.values():
+        result = m.get("result", {})
+        if result.get("type") != "terminal" or result.get("status") != "checkmate":
+            return False
+    return True
+
+
 def _subtree_nodes(node):
     if not isinstance(node, dict) or node.get("type") == "cutoff" or "moves" not in node:
         return 0
@@ -615,14 +488,14 @@ def dedup_puzzles(puzzles):
 
 
 async def generate_puzzles(args):
-    eco_codes = [e.strip() for e in args.eco.split(",")]
+    eco = args.eco or "opening"
     side = args.side
     count = args.count
-    output = args.output or f"puzzles_{'_'.join(eco_codes)}.json"
-    eco_label = ",".join(eco_codes)
+    output = args.output or f"puzzles_{eco}.json"
+    eco_label = eco
 
-    # Phase 1: Find mistakes (DuckDB only)
-    mistakes = find_mistakes(eco_codes, side, args.min_rating, args.threshold, args.moves)
+    # Phase 1: Find mistakes via explorer API
+    mistakes = find_mistakes(args.play, side, args.threshold, eco=eco, target=count)
     if not mistakes:
         print("No mistakes found. Exiting.")
         return
@@ -694,6 +567,10 @@ async def generate_puzzles(args):
             n_trimmed = trim_opponent_leaves(tree)
             n = count_nodes(tree)
 
+            if is_mate_in_1(tree):
+                print(f"  [W{worker_id}] #{idx+1} {eco_code}_{mistake_san} SKIPPED — mate in 1")
+                continue
+
             flag = ""
             if n_pruned > 0: flag += f" (pruned {n_pruned}, was {n_before})"
             if n_trimmed > 0: flag += f" (trimmed {n_trimmed} opp-leaves)"
@@ -764,20 +641,18 @@ async def generate_puzzles(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate opening punishment puzzles")
-    parser.add_argument("--eco", required=True,
-                        help="ECO codes (comma-separated, e.g. C51,C52)")
+    parser.add_argument("--play", required=True,
+                        help="Starting position as UCI moves (comma-separated, e.g. e2e4,e7e5,g1f3)")
+    parser.add_argument("--eco",
+                        help="ECO code for labeling (optional, e.g. C42)")
     parser.add_argument("--side", required=True, choices=["white", "black"],
                         help="Which side makes the mistake (solver is the other side)")
     parser.add_argument("--count", type=int, default=100,
                         help="Number of puzzles to generate (default: 100)")
     parser.add_argument("-o", "--output",
                         help="Output file (default: puzzles_{eco}.json)")
-    parser.add_argument("--min-rating", type=int, default=1800,
-                        help="Minimum rating filter (default: 1800)")
     parser.add_argument("--threshold", type=int, default=200,
                         help="Minimum cp loss to qualify as mistake (default: 200)")
-    parser.add_argument("--moves",
-                        help="Required opening moves prefix (space-separated, e.g. 'e4 c5 d4 cxd4')")
     args = parser.parse_args()
     asyncio.run(generate_puzzles(args))
 

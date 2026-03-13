@@ -147,3 +147,103 @@ pub async fn upload_puzzles(
         "opening_name": body.opening_name,
     })))
 }
+
+// ── Hard Moves ──────────────────────────────────────────────────────
+
+/// GET /api/trainer/hard-moves/openings
+pub async fn list_hard_move_openings(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+) -> Result<Json<JsonValue>, AppError> {
+    let openings = trainer::list_hard_move_openings(&pool).await?;
+    let progress = trainer::get_hard_move_user_progress(&pool, user.id).await?;
+
+    let progress_map: HashMap<String, i64> = progress.into_iter().collect();
+
+    let result: Vec<JsonValue> = openings
+        .into_iter()
+        .map(|o| {
+            let completed_count = progress_map.get(&o.opening_name).copied().unwrap_or(0);
+            serde_json::json!({
+                "opening_name": o.opening_name,
+                "count": o.count,
+                "completed_count": completed_count,
+                "sample_fen": o.sample_fen,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!(result)))
+}
+
+/// GET /api/trainer/hard-moves?opening=Sicilian+Dragon
+pub async fn get_hard_moves(
+    Extension(pool): Extension<PgPool>,
+    Query(q): Query<PuzzlesQuery>,
+    user: AuthUser,
+) -> Result<Json<JsonValue>, AppError> {
+    let moves = trainer::get_hard_moves_by_opening(&pool, &q.opening).await?;
+    let completed_ids = trainer::get_completed_hard_move_ids(&pool, user.id, &q.opening).await?;
+    Ok(Json(serde_json::json!({
+        "moves": moves,
+        "completed_ids": completed_ids,
+    })))
+}
+
+/// POST /api/trainer/hard-moves/progress
+pub async fn mark_hard_move_complete(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+    Json(body): Json<MarkCompleteBody>,
+) -> Result<Json<JsonValue>, AppError> {
+    trainer::mark_hard_move_complete(&pool, user.id, &body.puzzle_id).await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// GET /api/admin/trainer/hard-moves/list
+pub async fn admin_list_hard_moves(
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
+) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
+    let openings = trainer::list_hard_move_openings(&pool).await?;
+    let result: Vec<JsonValue> = openings
+        .into_iter()
+        .map(|o| serde_json::json!({
+            "opening_name": o.opening_name,
+            "count": o.count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!(result)))
+}
+
+/// POST /api/admin/trainer/hard-moves/upload
+pub async fn upload_hard_moves(
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
+    Json(body): Json<UploadBody>,
+) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
+    let count = trainer::upsert_hard_moves(&pool, &body.opening_name, &body.puzzles).await?;
+    Ok(Json(serde_json::json!({
+        "uploaded": count,
+        "opening_name": body.opening_name,
+    })))
+}
+
+/// POST /api/admin/trainer/hard-moves/delete
+pub async fn delete_hard_moves(
+    headers: HeaderMap,
+    Extension(pool): Extension<PgPool>,
+    Extension(config): Extension<Config>,
+    Json(body): Json<DeleteBody>,
+) -> Result<Json<JsonValue>, AppError> {
+    check_admin_secret(&headers, &config)?;
+    let deleted = trainer::delete_hard_moves_by_opening(&pool, &body.opening_name).await?;
+    Ok(Json(serde_json::json!({
+        "deleted": deleted,
+        "opening_name": body.opening_name,
+    })))
+}

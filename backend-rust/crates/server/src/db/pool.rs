@@ -217,4 +217,37 @@ CREATE TABLE IF NOT EXISTS game_opening_clean_plies (
     avg_cp_loss     DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gocp_user_id ON game_opening_clean_plies (user_id);
+
+-- Hard move anti-puzzles (single correct move positions)
+CREATE TABLE IF NOT EXISTS trainer_hard_moves (
+    id               TEXT PRIMARY KEY,
+    opening_name     TEXT NOT NULL,
+    fen              TEXT NOT NULL,
+    sequence         TEXT NOT NULL,
+    ply              SMALLINT NOT NULL,
+    side             TEXT NOT NULL,
+    games            INTEGER NOT NULL DEFAULT 0,
+    best_move        TEXT NOT NULL,
+    best_eval_cp     INTEGER NOT NULL,
+    best_maia_pct    REAL,
+    second_move      TEXT,
+    second_eval_cp   INTEGER,
+    gap_cp           INTEGER NOT NULL,
+    mistake_move     TEXT NOT NULL,
+    mistake_eval_cp  INTEGER NOT NULL,
+    mistake_maia_pct REAL,
+    eval_loss_cp     INTEGER NOT NULL,
+    maia_top_3       JSONB,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trainer_hard_moves_opening ON trainer_hard_moves (opening_name);
+
+-- Per-user hard move completion tracking
+CREATE TABLE IF NOT EXISTS trainer_hard_move_progress (
+    user_id      BIGINT NOT NULL REFERENCES accounts(id),
+    hard_move_id TEXT NOT NULL REFERENCES trainer_hard_moves(id) ON DELETE CASCADE,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, hard_move_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trainer_hm_progress_user ON trainer_hard_move_progress (user_id);
 "#;

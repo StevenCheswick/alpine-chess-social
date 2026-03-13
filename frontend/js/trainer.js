@@ -51,45 +51,60 @@ async function initTrainer() {
   const token = localStorage.getItem('alpine_token');
   if (!token) return;
 
-  let openings;
-  try {
-    const res = await fetch(API_URL + '/api/trainer/openings', { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!res.ok) throw new Error('Failed');
-    openings = await res.json();
-  } catch (err) {
-    document.getElementById('trainerGrid').innerHTML = '<div class="col-span-3 text-center text-label text-muted py-8">No trainer openings available yet.</div>';
-    return;
-  }
-
-  if (!openings || openings.length === 0) {
-    document.getElementById('trainerGrid').innerHTML = '<div class="col-span-3 text-center text-label text-muted py-8">No trainer openings available yet.</div>';
-    return;
-  }
-
   const grid = document.getElementById('trainerGrid');
-  grid.innerHTML = openings.map(o => {
-    const pct = o.puzzle_count > 0 ? Math.round((o.completed_count / o.puzzle_count) * 100) : 0;
+
+  // Fetch both opening types in parallel
+  const [puzzleRes, hmRes] = await Promise.allSettled([
+    fetch(API_URL + '/api/trainer/openings', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : []),
+    fetch(API_URL + '/api/trainer/hard-moves/openings', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : []),
+  ]);
+
+  const puzzleOpenings = puzzleRes.status === 'fulfilled' ? (puzzleRes.value || []) : [];
+  const hardMoveOpenings = hmRes.status === 'fulfilled' ? (hmRes.value || []) : [];
+
+  if (puzzleOpenings.length === 0 && hardMoveOpenings.length === 0) {
+    grid.innerHTML = '<div class="col-span-3 text-center text-label text-muted py-8">No trainer openings available yet.</div>';
+    return;
+  }
+
+  function trainerCard(o, type) {
+    const count = type === 'puzzle' ? o.puzzle_count : o.count;
+    const pct = count > 0 ? Math.round((o.completed_count / count) * 100) : 0;
     const done = pct === 100;
     const boardHtml = o.sample_fen ? fenToMiniBoard(o.sample_fen) : '<div class="aspect-square bg-slate-900/50 rounded"></div>';
+    const isPuzzle = type === 'puzzle';
+    const onclick = isPuzzle
+      ? `openTrainerOpening('${o.opening_name.replace(/'/g, "\\'")}')`
+      : `openHardMoveOpening('${o.opening_name.replace(/'/g, "\\'")}')`;
+    const hoverBorder = isPuzzle ? 'hover:border-sky-400/40' : 'hover:border-amber-400/40';
+    const badge = isPuzzle
+      ? '<span class="inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 mb-1.5">Punish Mistakes</span>'
+      : '<span class="inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 mb-1.5">Find the Move</span>';
+    const barColor = done ? 'var(--good)' : (isPuzzle ? 'var(--accent)' : '#f59e0b');
 
     return `
-    <div class="card p-0 cursor-pointer transition-all hover:border-sky-400/40 group" style="border-radius:10px" onclick="openTrainerOpening('${o.opening_name.replace(/'/g, "\\'")}')">
+    <div class="card p-0 cursor-pointer transition-all ${hoverBorder} group" style="border-radius:10px" onclick="${onclick}">
       ${boardHtml}
       <div class="p-3">
         <div class="flex items-center gap-1.5 mb-0.5">
           <span class="text-body text-white font-medium group-hover:text-white transition-colors">${o.opening_name}</span>
           ${done ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--good)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>' : ''}
         </div>
+        ${badge}
         <div class="flex items-center justify-between mb-1.5">
-          <span class="text-meta text-muted">${o.completed_count}/${o.puzzle_count} completed</span>
+          <span class="text-meta text-muted">${o.completed_count}/${count} completed</span>
           <span class="text-meta font-mono ${done ? 'text-good' : 'text-muted'}">${pct}%</span>
         </div>
         <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
-          <div class="h-full rounded-full transition-all" style="width:${pct}%; background: ${done ? 'var(--good)' : 'var(--accent)'}"></div>
+          <div class="h-full rounded-full transition-all" style="width:${pct}%; background: ${barColor}"></div>
         </div>
       </div>
     </div>`;
-  }).join('');
+  }
+
+  grid.innerHTML =
+    puzzleOpenings.map(o => trainerCard(o, 'puzzle')).join('') +
+    hardMoveOpenings.map(o => trainerCard(o, 'hard-move')).join('');
 }
 
 // ══════════════════════════════════════════
@@ -246,9 +261,9 @@ function setTrainerStatus(title, msg, type) {
   );
 }
 
-function setTrainerBoard(fen, orientation, movable) {
+function setTrainerBoard(fen, orientation, movable, boardId) {
   if (!Chessground) return;
-  const el = document.getElementById('trainerBoard');
+  const el = document.getElementById(boardId || 'trainerBoard');
   const dests = movable ? getTrainerDests() : new Map();
   const turnColor = fen.split(' ')[1] === 'w' ? 'white' : 'black';
   // Always recreate to ensure events are bound correctly
@@ -264,7 +279,7 @@ function setTrainerBoard(fen, orientation, movable) {
       color: movable ? turnColor : undefined,
       dests,
       showDests: true,
-      events: { after: (orig, dest) => trainerOnMove(orig, dest) },
+      events: { after: (orig, dest) => _trainerIsHardMoveMode ? hmOnMove(orig, dest) : trainerOnMove(orig, dest) },
     },
     draggable: { enabled: true },
   });
@@ -319,11 +334,17 @@ async function openTrainerOpening(name) {
 
 function exitTrainerDrill() {
   document.getElementById('trainerDrillView').style.display = 'none';
+  document.getElementById('hmDrillView').style.display = 'none';
   document.getElementById('trainerSelectView').style.display = '';
   clearTimeout(_trainerAnimTimer);
   clearTimeout(_trainerRestartTimer);
+  clearTimeout(_hmAnimTimer);
+  clearTimeout(_hmRestartTimer);
   ++_trainerGen;
+  ++_hmGen;
   _trainerPhase = 'idle';
+  _hmPhase = 'idle';
+  _trainerIsHardMoveMode = false;
   window._trainerInit = false;
   initTrainer();
 }
@@ -627,6 +648,7 @@ function renderTrainerMoves() {
 }
 
 function trainerHint() {
+  if (_trainerIsHardMoveMode) return hmHint();
   if (_trainerPhase !== 'solver_turn' || !_trainerNode || !_trainerNode.moves) return;
   const bestUci = Object.keys(_trainerNode.moves).find(k => _trainerNode.moves[k].accepted);
   if (!bestUci) return;
@@ -708,6 +730,7 @@ function trainerSkip() {
 }
 
 function trainerPrevPuzzle() {
+  if (_trainerIsHardMoveMode) return hmPrevPuzzle();
   clearTimeout(_trainerRestartTimer);
   _trainerPuzzleIdx = (_trainerPuzzleIdx - 1 + _trainerPuzzles.length) % _trainerPuzzles.length;
   resetTrainerVariationState();
@@ -715,6 +738,7 @@ function trainerPrevPuzzle() {
 }
 
 function trainerNextPuzzle() {
+  if (_trainerIsHardMoveMode) return hmNextPuzzle();
   clearTimeout(_trainerRestartTimer);
   _trainerPuzzleIdx = (_trainerPuzzleIdx + 1) % _trainerPuzzles.length;
   resetTrainerVariationState();
@@ -722,11 +746,13 @@ function trainerNextPuzzle() {
 }
 
 function trainerRetry() {
+  if (_trainerIsHardMoveMode) return hmRetry();
   resetTrainerVariationState();
   startTrainerPuzzle();
 }
 
 function trainerNext() {
+  if (_trainerIsHardMoveMode) return hmNext();
   let next = -1;
   for (let i = _trainerPuzzleIdx + 1; i < _trainerPuzzles.length; i++) {
     if (!_trainerCompletedIds.has(_trainerPuzzles[i].id)) { next = i; break; }
@@ -769,6 +795,326 @@ function startDeepDrill() {
   _trainerIsFirstAttempt = true;
   _trainerMistakeThisRun = false;
   setTimeout(() => startTrainerPuzzle(), 600);
+}
+
+// ══════════════════════════════════════════
+// HARD MOVE DRILL ENGINE
+// ══════════════════════════════════════════
+let _hmMoves = [];
+let _hmCompletedIds = new Set();
+let _hmIdx = 0;
+let _hmPhase = 'idle';
+let _hmOpeningName = '';
+let _hmSolverColor = 'white';
+let _hmMistakeThisRun = false;
+let _hmAnimTimer = null;
+let _hmRestartTimer = null;
+let _hmGen = 0;
+let _trainerIsHardMoveMode = false;
+
+function _formatCp(cp) {
+  return (cp >= 0 ? '+' : '') + (cp / 100).toFixed(1);
+}
+
+function setHmStatus(title, msg, type) {
+  const titleEl = document.getElementById('hmStatusTitle');
+  const msgEl = document.getElementById('hmStatusMsg');
+  titleEl.textContent = title;
+  msgEl.textContent = msg || '';
+  titleEl.className = 'text-sm font-semibold' + (
+    type === 'success' ? ' text-good' :
+    type === 'error' ? ' text-bad' :
+    ' text-slate-300'
+  );
+}
+
+async function openHardMoveOpening(name) {
+  _hmOpeningName = name;
+  _trainerIsHardMoveMode = true;
+  const token = localStorage.getItem('alpine_token');
+  if (!token || !Chess) return;
+
+  document.getElementById('trainerSelectView').style.display = 'none';
+  document.getElementById('hmDrillView').style.display = '';
+  setHmStatus('Loading...', '', 'info');
+
+  try {
+    const res = await fetch(API_URL + '/api/trainer/hard-moves?opening=' + encodeURIComponent(name), {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    _hmMoves = data.moves || [];
+    _hmCompletedIds = new Set(data.completed_ids || []);
+  } catch (err) {
+    setHmStatus('Error', err.message, 'error');
+    return;
+  }
+
+  if (_hmMoves.length === 0) {
+    setHmStatus('No positions', 'No positions available for this opening.', 'info');
+    return;
+  }
+
+  _hmIdx = _hmMoves.findIndex(m => !_hmCompletedIds.has(m.id));
+  if (_hmIdx < 0) _hmIdx = 0;
+  updateHmProgress();
+  startHardMove();
+}
+
+function updateHmProgress() {
+  const total = _hmMoves.length;
+  const done = _hmCompletedIds.size;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('hmProgressLabel').textContent = `${done}/${total} completed`;
+  document.getElementById('hmProgressPct').textContent = `${pct}%`;
+  document.getElementById('hmProgressBar').style.width = `${pct}%`;
+  document.getElementById('hmDrillCounter').textContent = `${_hmOpeningName} — Position ${_hmIdx + 1} / ${total}`;
+}
+
+function startHardMove() {
+  const hm = _hmMoves[_hmIdx];
+  if (!hm) return;
+
+  clearTimeout(_hmAnimTimer);
+  clearTimeout(_hmRestartTimer);
+  const gen = ++_hmGen;
+  _hmSolverColor = hm.side === 'w' ? 'white' : 'black';
+  _hmMistakeThisRun = false;
+  _hmPhase = 'show_mistake';
+
+  _trainerGame = new Chess(hm.fen);
+  setTrainerBoard(hm.fen, _hmSolverColor, false, 'hmBoard');
+  updateHmProgress();
+  updateHmButtons();
+
+  const mistakePct = hm.mistake_maia_pct ? `${Math.round(hm.mistake_maia_pct)}%` : 'Many';
+  const bestEval = _formatCp(hm.best_eval_cp);
+  const mistakeEval = _formatCp(hm.mistake_eval_cp);
+  setHmStatus('Common mistake...', `${mistakePct} of players play ${hm.mistake_move} here.`, 'info');
+
+  // Pause to let user see the position, then animate the mistake
+  _hmAnimTimer = setTimeout(() => {
+    if (gen !== _hmGen || _hmPhase !== 'show_mistake') return;
+    let mistakeResult;
+    try {
+      mistakeResult = _trainerGame.move(hm.mistake_move);
+    } catch (e) {
+      console.warn('[HM] mistake move failed:', hm.mistake_move, e);
+      return;
+    }
+    if (!mistakeResult) return;
+
+    // Show the mistake on the board
+    setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false, 'hmBoard');
+
+    setHmStatus('Common mistake', `${hm.mistake_move} shifts the eval from ${bestEval} to ${mistakeEval}.`, 'error');
+
+    // Highlight the mistake squares AFTER board is rendered
+    setTimeout(() => {
+      const boardEl = document.getElementById('hmBoard');
+      if (!boardEl) return;
+      const cgWrap = boardEl.querySelector('cg-container') || boardEl;
+      cgWrap.style.position = 'relative';
+      for (const sq of [mistakeResult.from, mistakeResult.to]) {
+        const file = sq.charCodeAt(0) - 97;
+        const rank = parseInt(sq[1]) - 1;
+        const isFlipped = _hmSolverColor === 'black';
+        const x = isFlipped ? (7 - file) : file;
+        const y = isFlipped ? rank : (7 - rank);
+        const hl = document.createElement('div');
+        hl.className = 'hm-mistake-highlight';
+        hl.style.cssText = `position:absolute; left:${x * 12.5}%; top:${y * 12.5}%; width:12.5%; height:12.5%; background:rgba(220,38,38,0.75); box-shadow: inset 0 0 8px rgba(239,68,68,0.9); z-index:10; pointer-events:none; animation: hm-pulse 1s ease-in-out infinite;`;
+        cgWrap.appendChild(hl);
+      }
+    }, 100);
+
+    // Hold the mistake on screen, then undo and prompt user
+    _hmAnimTimer = setTimeout(() => {
+      if (gen !== _hmGen || _hmPhase !== 'show_mistake') return;
+      _trainerGame.undo();
+      _hmPhase = 'solver_turn';
+      setTrainerBoard(hm.fen, _hmSolverColor, true, 'hmBoard');
+      setHmStatus('Find the better move!', `${hm.mistake_move} shifts eval to ${mistakeEval}. Find the move that keeps it at ${bestEval}.`, 'info');
+      updateHmButtons();
+    }, 3500);
+  }, 2000);
+}
+
+function renderHmMoves(hm, currentSan, isCorrect) {
+  const ml = document.getElementById('trainerMoveList');
+  if (!hm) { ml.innerHTML = ''; return; }
+
+  // Show opening context from sequence (excluding last move = mistake)
+  const allMoves = hm.sequence ? hm.sequence.split('|') : [];
+  const contextMoves = allMoves.length > 0 ? allMoves.slice(0, -1) : [];
+
+  let html = '';
+  for (let i = 0; i < contextMoves.length; i++) {
+    if (i % 2 === 0) html += `<span class="text-secondary mr-1">${Math.floor(i / 2) + 1}.</span>`;
+    html += `<span class="text-slate-500">${contextMoves[i]}</span> `;
+  }
+
+  if (currentSan) {
+    const moveNum = Math.floor(contextMoves.length / 2) + 1;
+    if (contextMoves.length % 2 === 0) {
+      html += `<span class="text-secondary mr-1">${moveNum}.</span>`;
+    } else {
+      html += `<span class="text-secondary mr-1">${moveNum}...</span>`;
+    }
+    const cls = isCorrect ? 'text-good font-semibold' : 'text-bad font-semibold';
+    html += `<span class="${cls}">${currentSan}</span>`;
+  }
+
+  ml.innerHTML = html;
+  ml.scrollTop = ml.scrollHeight;
+}
+
+function hmOnMove(orig, dest) {
+  if (_hmPhase !== 'solver_turn') return;
+  const hm = _hmMoves[_hmIdx];
+  if (!hm) return;
+
+  // Try to make the move in chess.js
+  let moveResult;
+  for (const promo of [undefined, 'q', 'r', 'b', 'n']) {
+    try {
+      moveResult = _trainerGame.move({ from: orig, to: dest, promotion: promo });
+      if (moveResult) break;
+    } catch {}
+  }
+  if (!moveResult) {
+    setTrainerBoard(hm.fen, _hmSolverColor, true, 'hmBoard');
+    return;
+  }
+
+  const isCorrect = moveResult.san === hm.best_move;
+  _trainerGame.undo();
+
+  if (isCorrect) {
+    _hmPhase = 'done';
+    _trainerGame.move(hm.best_move);
+    setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false, 'hmBoard');
+
+    const maiaPct = hm.best_maia_pct ? ` Only ${hm.best_maia_pct}% of players find this move.` : '';
+    setHmStatus('Correct!', `${hm.best_move} is the best move!${maiaPct}`, 'success');
+
+    // Mark complete
+    if (!_hmCompletedIds.has(hm.id)) {
+      _hmCompletedIds.add(hm.id);
+      updateHmProgress();
+      const token = localStorage.getItem('alpine_token');
+      if (token) {
+        fetch(API_URL + '/api/trainer/hard-moves/progress', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ puzzle_id: hm.id }),
+        }).catch(() => {});
+      }
+    }
+    updateHmButtons();
+  } else {
+    // Wrong move
+    _hmMistakeThisRun = true;
+    _hmPhase = 'showing_correction';
+    setTrainerBoard(hm.fen, _hmSolverColor, false, 'hmBoard');
+    setHmStatus('Wrong move', `You played ${moveResult.san}. That's not the best move.`, 'error');
+
+    const corrGen = _hmGen;
+    _hmAnimTimer = setTimeout(() => {
+      if (corrGen !== _hmGen || _hmPhase !== 'showing_correction') return;
+      const showGame = new Chess(hm.fen);
+      try {
+        showGame.move(hm.best_move);
+        setTrainerBoard(showGame.fen(), _hmSolverColor, false, 'hmBoard');
+      } catch {}
+      setHmStatus('Wrong move', `The best move was ${hm.best_move}. Try again.`, 'error');
+
+      _hmAnimTimer = setTimeout(() => {
+        if (corrGen !== _hmGen || _hmPhase !== 'showing_correction') return;
+        _trainerGame = new Chess(hm.fen);
+        _hmPhase = 'solver_turn';
+        setTrainerBoard(hm.fen, _hmSolverColor, true, 'hmBoard');
+        setHmStatus('Try again', 'Find the best move.', 'info');
+        updateHmButtons();
+      }, 2500);
+    }, 1500);
+  }
+}
+
+function hmHint() {
+  if (_hmPhase !== 'solver_turn') return;
+  const hm = _hmMoves[_hmIdx];
+  if (!hm) return;
+
+  const game = new Chess(hm.fen);
+  let bestResult;
+  try { bestResult = game.move(hm.best_move); } catch { return; }
+  if (!bestResult) return;
+
+  const from = bestResult.from;
+  const boardEl = document.getElementById('hmBoard');
+  if (!boardEl) return;
+
+  const existing = boardEl.querySelector('.trainer-hint-highlight');
+  if (existing) existing.remove();
+
+  const file = from.charCodeAt(0) - 97;
+  const rank = parseInt(from[1]) - 1;
+  const isFlipped = _hmSolverColor === 'black';
+  const x = isFlipped ? (7 - file) : file;
+  const y = isFlipped ? rank : (7 - rank);
+  const highlight = document.createElement('div');
+  highlight.className = 'trainer-hint-highlight';
+  highlight.style.cssText = `position:absolute; left:${x * 12.5}%; top:${y * 12.5}%; width:12.5%; height:12.5%; background:rgba(21,189,89,0.45); border-radius:50%; z-index:10; pointer-events:none; transition:opacity 0.5s;`;
+  const cgWrap = boardEl.querySelector('cg-container') || boardEl;
+  cgWrap.style.position = 'relative';
+  cgWrap.appendChild(highlight);
+  setTimeout(() => {
+    highlight.style.opacity = '0';
+    setTimeout(() => highlight.remove(), 500);
+  }, 5000);
+}
+
+function hmPrevPuzzle() {
+  clearTimeout(_hmAnimTimer);
+  clearTimeout(_hmRestartTimer);
+  _hmIdx = (_hmIdx - 1 + _hmMoves.length) % _hmMoves.length;
+  startHardMove();
+}
+
+function hmNextPuzzle() {
+  clearTimeout(_hmAnimTimer);
+  clearTimeout(_hmRestartTimer);
+  _hmIdx = (_hmIdx + 1) % _hmMoves.length;
+  startHardMove();
+}
+
+function hmRetry() {
+  startHardMove();
+}
+
+function hmNext() {
+  let next = -1;
+  for (let i = _hmIdx + 1; i < _hmMoves.length; i++) {
+    if (!_hmCompletedIds.has(_hmMoves[i].id)) { next = i; break; }
+  }
+  if (next < 0) {
+    for (let i = 0; i < _hmIdx; i++) {
+      if (!_hmCompletedIds.has(_hmMoves[i].id)) { next = i; break; }
+    }
+  }
+  if (next < 0) next = (_hmIdx + 1) % _hmMoves.length;
+  _hmIdx = next;
+  startHardMove();
+}
+
+function updateHmButtons() {
+  const allDone = _hmPhase === 'done';
+  const hasNext = _hmMoves.length > 1;
+  document.getElementById('btnHmHint').style.display = _hmPhase === 'solver_turn' ? '' : 'none';
+  document.getElementById('btnHmRetry').style.display = allDone ? '' : 'none';
+  document.getElementById('btnHmNext').style.display = (allDone && hasNext) ? '' : 'none';
 }
 
 function updateTrainerButtons() {

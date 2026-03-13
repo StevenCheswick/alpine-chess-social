@@ -33,9 +33,15 @@
   - Queen vs Rook
   - Opposite-color bishop endgames
 
+## Explorer DB (lila-openingexplorer)
+- [ ] **Write evals back to RocksDB** — `backfill-evals` generates SF evals for missing positions but dumps to JSON. No write-back mechanism exists. Need to add a merge operation or new binary that updates the eval field in-place. Requires Rust build (currently broken on Windows due to stdbool.h/clang issue — try from VS Developer Command Prompt). ~100K+ moves with 2+ games are missing evals in the Dragon alone.
+
 ## Opening Mistake Trainer
 - [ ] Fix eval bar in trainer
 - [ ] Deduplicate puzzles: if puzzle A's post-mistake FEN appears as a node inside puzzle B's tree, drop puzzle A (it's a subset)
+- [ ] **Spaced repetition** — track which puzzles the user got wrong and resurface them more frequently
+- [ ] **Speed mode** — timed drills, see how fast the user can complete the main lines
+- [x] **Hard move evals to White's POV** — fixed: generator now outputs evals from White's POV
 
 ## Dashboard
 - [ ] Add "Choke Rate" metric — track how often a player loses a winning position

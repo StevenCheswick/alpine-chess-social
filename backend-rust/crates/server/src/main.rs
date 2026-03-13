@@ -123,6 +123,13 @@ async fn main() {
         .route("/api/admin/trainer/list", get(routes::trainer::admin_list_openings))
         .route("/api/admin/trainer/upload", post(routes::trainer::upload_puzzles))
         .route("/api/admin/trainer/delete", post(routes::trainer::delete_opening))
+        // Hard moves
+        .route("/api/trainer/hard-moves/openings", get(routes::trainer::list_hard_move_openings))
+        .route("/api/trainer/hard-moves", get(routes::trainer::get_hard_moves))
+        .route("/api/trainer/hard-moves/progress", post(routes::trainer::mark_hard_move_complete))
+        .route("/api/admin/trainer/hard-moves/list", get(routes::trainer::admin_list_hard_moves))
+        .route("/api/admin/trainer/hard-moves/upload", post(routes::trainer::upload_hard_moves))
+        .route("/api/admin/trainer/hard-moves/delete", post(routes::trainer::delete_hard_moves))
         // User profile (parameterized — must be last)
         .route("/api/users/{username}", get(routes::profile::get_user_profile))
         // Shared state

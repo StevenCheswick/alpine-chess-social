@@ -188,6 +188,10 @@ tailwind.config = {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes hm-pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+  }
 
   /* ─── Gauge ─── */
   .gauge-ring { transform: rotate(-90deg); }
@@ -417,7 +421,7 @@ tailwind.config = {
 <div id="app-shell" class="flex min-h-screen overflow-x-hidden" style="display:none">
 
   <!-- ─── Sidebar ─── -->
-  <aside class="w-56 border-r border-slate-800/50 p-4 hidden lg:flex flex-col gap-1 shrink-0 sticky top-0 h-screen">
+  <aside class="w-56 border-r border-slate-800/50 p-4 hidden lg:flex flex-col gap-1 shrink-0 sticky top-0 h-screen" style="z-index:45">
     <!-- Logo -->
     <div class="flex items-center gap-2.5 px-3 mb-6 mt-2">
       <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:rgba(125,211,252,0.12); border:1px solid rgba(125,211,252,0.3)">
@@ -777,6 +781,53 @@ tailwind.config = {
         <div class="card p-3 fade-up" id="trainerStatusCard" style="animation-delay: 0.16s; min-height: 52px;">
           <h3 class="text-sm font-semibold" id="trainerStatusTitle"></h3>
           <p class="text-muted text-sm mt-0.5" id="trainerStatusMsg"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hard move drill view (centered on page, no scroll) -->
+  <div id="hmDrillView" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:40; background:var(--bg-primary); overflow:hidden;">
+    <div style="height:100vh; display:flex; flex-direction:column; align-items:center; padding:12px 16px;">
+      <!-- Back button -->
+      <div class="w-full" style="max-width:min(480px, 90vw);">
+        <button onclick="exitTrainerDrill()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors mb-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          Back
+        </button>
+      </div>
+
+      <!-- Status (above board) -->
+      <div class="card p-2.5 mb-2 w-full" style="max-width:min(480px, 90vw);">
+        <h3 class="text-sm font-semibold" id="hmStatusTitle"></h3>
+        <p class="text-muted text-sm mt-0.5" id="hmStatusMsg"></p>
+      </div>
+
+      <!-- Board (fills available space) -->
+      <div class="flex-1 flex items-center justify-center w-full" style="min-height:0;">
+        <div id="hmBoard" class="rounded-lg overflow-hidden" style="width:min(480px, 90vw, calc(100vh - 220px)); height:min(480px, 90vw, calc(100vh - 220px));"></div>
+      </div>
+
+      <!-- Nav + buttons (below board) -->
+      <div class="card p-2.5 mt-2 w-full" style="max-width:min(480px, 90vw);">
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="flex items-center gap-2">
+            <button onclick="trainerPrevPuzzle()" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
+            <span class="text-label text-white font-medium" id="hmDrillCounter"></span>
+            <button onclick="trainerNextPuzzle()" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="trainerHint()" id="btnHmHint" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Hint</button>
+            <button onclick="trainerRetry()" id="btnHmRetry" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Retry</button>
+            <button onclick="trainerNext()" id="btnHmNext" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next</button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-meta text-muted mb-1">
+          <span id="hmProgressLabel">0/0 completed</span>
+          <span class="font-mono" id="hmProgressPct">0%</span>
+        </div>
+        <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
+          <div class="h-full rounded-full transition-all" style="background: #f59e0b" id="hmProgressBar"></div>
         </div>
       </div>
     </div>
