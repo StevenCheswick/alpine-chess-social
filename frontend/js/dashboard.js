@@ -49,14 +49,22 @@ async function initDashboard() {
   document.getElementById('dash-games').textContent = s.totalAnalyzedGames;
 
   const allRatings = s.ratingOverTime || [];
-  const ratings = allRatings.filter(r => {
-    const tc = r.timeControl || '';
-    const m = tc.match(/^(\d+)/);
-    if (!m) return false;
+  function tcCategory(tc) {
+    const m = (tc || '').match(/^(\d+)/);
+    if (!m) return null;
     let base = parseInt(m[1]);
     if (base > 60) base = base / 60;
-    return base >= 3 && base < 10; // Blitz only
-  });
+    if (base < 3) return 'Bullet';
+    if (base < 10) return 'Blitz';
+    if (base < 30) return 'Rapid';
+    return 'Classical';
+  }
+  const catCounts = {};
+  allRatings.forEach(r => { const c = tcCategory(r.timeControl); if (c) catCounts[c] = (catCounts[c] || 0) + 1; });
+  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
+  const modeName = topCat ? topCat[0] : 'Blitz';
+  const ratings = allRatings.filter(r => tcCategory(r.timeControl) === modeName);
+  document.getElementById('dash-rating-mode').textContent = modeName;
   if (ratings.length) {
     document.getElementById('dash-rating').textContent = ratings[ratings.length - 1].rating;
   }
