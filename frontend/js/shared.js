@@ -1,4 +1,47 @@
 // ══════════════════════════════════════════
+// MOVE SOUNDS
+// ══════════════════════════════════════════
+const _soundPool = {};
+const _soundNames = ['move-self', 'capture', 'castle', 'move-check', 'promote'];
+let _soundsPreloaded = false;
+
+function preloadSounds() {
+  if (_soundsPreloaded) return;
+  _soundsPreloaded = true;
+  for (const name of _soundNames) {
+    const a = new Audio(`sounds/${name}.mp3`);
+    a.preload = 'auto';
+    _soundPool[name] = [a];
+  }
+}
+
+function playSound(name) {
+  if (!name) return;
+  preloadSounds();
+  const pool = _soundPool[name] || [];
+  let audio = pool.find(a => a.paused || a.ended);
+  if (!audio) {
+    audio = new Audio(`sounds/${name}.mp3`);
+    pool.push(audio);
+    _soundPool[name] = pool;
+  }
+  try {
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+  } catch {}
+}
+
+function soundForMove(game, move) {
+  if (!move) return null;
+  const flags = move.flags || '';
+  if (game && typeof game.in_check === 'function' && game.in_check()) return 'move-check';
+  if (flags.includes('p') || move.promotion) return 'promote';
+  if (flags.includes('c') || flags.includes('e') || move.captured) return 'capture';
+  if (flags.includes('k') || flags.includes('q')) return 'castle';
+  return 'move-self';
+}
+
+// ══════════════════════════════════════════
 // RESPONSIVE BOARD RESIZE
 // ══════════════════════════════════════════
 function resizeBoards() {

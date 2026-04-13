@@ -391,6 +391,7 @@ function startTrainerPuzzle(fast) {
       if (moveResult) {
         _trainerMoveHistory.push({ san: moveResult.san, type: 'mistake' });
         renderTrainerMoves();
+        playSound(soundForMove(_trainerGame, moveResult));
       }
     } catch (e) {
       console.warn(`[TRAINER] mistake move failed (stale timeout?): ${uci}`, e);
@@ -436,8 +437,9 @@ function trainerOnMove(orig, dest) {
         const bestData = _trainerNode.moves[bestUci];
         const showGame = new Chess(_trainerGame.fen());
         try {
-          showGame.move({ from: bestUci.slice(0, 2), to: bestUci.slice(2, 4), promotion: bestUci[4] || undefined });
+          const shownMove = showGame.move({ from: bestUci.slice(0, 2), to: bestUci.slice(2, 4), promotion: bestUci[4] || undefined });
           setTrainerBoard(showGame.fen(), _trainerSolverColor, false);
+          if (shownMove) playSound(soundForMove(showGame, shownMove));
         } catch {}
         setTrainerStatus('Wrong move', `The best move was ${bestData.san}. Now play it.`, 'error');
       }
@@ -462,6 +464,7 @@ function trainerOnMove(orig, dest) {
   _trainerMoveHistory.push({ san: moveResult.san, type: 'solver' });
   renderTrainerMoves();
   setTrainerBoard(_trainerGame.fen(), _trainerSolverColor, false);
+  playSound(soundForMove(_trainerGame, moveResult));
   const accepted = Object.values(_trainerNode.moves).filter(m => m.accepted);
   if (accepted.length === 1) {
     setTrainerStatus('Correct!', `${moveResult.san} — the only winning move.`, 'success');
@@ -541,6 +544,7 @@ function playTrainerOpponentMove(node) {
 
     _trainerMoveHistory.push({ san: moveResult.san, type: 'opponent' });
     renderTrainerMoves();
+    playSound(soundForMove(_trainerGame, moveResult));
 
     const result = moveData.result;
     if (result.type === 'cutoff') {
@@ -906,6 +910,7 @@ function startHardMove() {
 
     // Show the mistake on the board
     setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false);
+    playSound(soundForMove(_trainerGame, mistakeResult));
 
     setHmStatus('Common mistake', `${hm.mistake_move} shifts the eval from ${bestEval} to ${mistakeEval}.`, 'error');
 
@@ -992,8 +997,9 @@ function hmOnMove(orig, dest) {
 
   if (isCorrect) {
     _hmPhase = 'done';
-    _trainerGame.move(hm.best_move);
+    const bestResult = _trainerGame.move(hm.best_move);
     setTrainerBoard(_trainerGame.fen(), _hmSolverColor, false);
+    if (bestResult) playSound(soundForMove(_trainerGame, bestResult));
 
     const maiaPct = hm.best_maia_pct ? ` Only ${hm.best_maia_pct}% of players find this move.` : '';
     setHmStatus('Correct!', `${hm.best_move} is the best move!${maiaPct}`, 'success');
@@ -1024,8 +1030,9 @@ function hmOnMove(orig, dest) {
       if (corrGen !== _hmGen || _hmPhase !== 'showing_correction') return;
       const showGame = new Chess(hm.fen);
       try {
-        showGame.move(hm.best_move);
+        const shownMove = showGame.move(hm.best_move);
         setTrainerBoard(showGame.fen(), _hmSolverColor, false);
+        if (shownMove) playSound(soundForMove(showGame, shownMove));
       } catch {}
       setHmStatus('Wrong move', `The best move was ${hm.best_move}. Try again.`, 'error');
 
