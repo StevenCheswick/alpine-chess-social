@@ -374,6 +374,41 @@ tailwind.config = {
   .mini-board .sq-dark  { background: #2c4a7c; }
   .mini-board .sq-piece { display: flex; align-items: center; justify-content: center; }
   .mini-board .sq-piece img { width: 85%; height: 85%; }
+
+  /* ─── Trainer Drill View (responsive) ─── */
+  #trainerDrillView .drill-inner {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 16px;
+  }
+  #trainerDrillView .drill-panel {
+    width: 100%;
+    max-width: min(480px, 90vw);
+  }
+  #trainerDrillView #trainerBoardWrap {
+    width: min(480px, 90vw, calc(100dvh - 220px));
+    aspect-ratio: 1 / 1;
+  }
+  @media (max-width: 767px) {
+    #trainerDrillView .drill-inner { padding: 6px 0; }
+    #trainerDrillView .drill-panel {
+      max-width: 100%;
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+    #trainerDrillView #trainerBoardWrap {
+      width: min(100%, calc(100dvh - 170px));
+      border-radius: 0;
+    }
+    #trainerDrillView .drill-actions {
+      flex-wrap: wrap;
+      gap: 6px;
+      row-gap: 4px;
+    }
+  }
 </style>
 </head>
 <body class="text-white">
@@ -730,10 +765,10 @@ tailwind.config = {
   </div>
 
   <!-- Drill view (centered fullscreen overlay) -->
-  <div id="trainerDrillView" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:40; background:var(--bg-primary); overflow:hidden;">
-    <div style="height:100vh; display:flex; flex-direction:column; align-items:center; padding:12px 16px;">
+  <div id="trainerDrillView" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:60; background:var(--bg-primary); overflow:hidden;">
+    <div class="drill-inner">
       <!-- Back button -->
-      <div class="w-full" style="max-width:min(480px, 90vw);">
+      <div class="drill-panel">
         <button onclick="exitTrainerDrill()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors mb-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
           Back
@@ -741,21 +776,21 @@ tailwind.config = {
       </div>
 
       <!-- Status (above board) -->
-      <div class="card p-2.5 mb-2 w-full" style="max-width:min(480px, 90vw);">
+      <div class="card p-2.5 mb-2 drill-panel">
         <h3 class="text-sm font-semibold" id="trainerStatusTitle"></h3>
         <p class="text-muted text-sm mt-0.5" id="trainerStatusMsg"></p>
       </div>
 
       <!-- Board (fills available space) -->
       <div class="flex-1 flex items-center justify-center w-full" style="min-height:0;">
-        <div id="trainerBoardWrap" class="rounded-lg overflow-hidden" style="width:min(480px, 90vw, calc(100vh - 220px)); height:min(480px, 90vw, calc(100vh - 220px));">
+        <div id="trainerBoardWrap" class="rounded-lg overflow-hidden">
           <div id="trainerBoard" class="w-full h-full"></div>
         </div>
       </div>
 
       <!-- Nav + buttons (below board) -->
-      <div class="card p-2.5 mt-2 w-full" style="max-width:min(480px, 90vw);">
-        <div class="flex items-center justify-between mb-1.5">
+      <div class="card p-2.5 mt-2 drill-panel">
+        <div class="flex items-center justify-between mb-1.5 drill-actions">
           <div class="flex items-center gap-2">
             <button onclick="trainerPrevPuzzle()" id="btnTrainerPrev" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
             <span class="text-label text-white font-medium" id="trainerDrillCounter"></span>
