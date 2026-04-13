@@ -417,6 +417,15 @@ tailwind.config = {
       height: 6.5rem;
       overflow: hidden;
     }
+    /* Flip on mobile: action card above board, status card below */
+    #trainerDrillView .drill-inner { gap: 8px; }
+    #trainerDrillView .drill-inner .card.drill-panel {
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+    #trainerDrillView .card.drill-panel.mt-2 { order: 2; }
+    #trainerDrillView .drill-inner > .flex-1 { order: 3; }
+    #trainerDrillView .card.drill-panel.mb-2 { order: 4; }
   }
 </style>
 </head>
