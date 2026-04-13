@@ -408,6 +408,15 @@ tailwind.config = {
       gap: 6px;
       row-gap: 4px;
     }
+    /* Fixed card heights so the board doesn't move as text/buttons change */
+    #trainerDrillView .card.drill-panel.mb-2 {
+      height: 4.5rem;
+      overflow: hidden;
+    }
+    #trainerDrillView .card.drill-panel.mt-2 {
+      height: 5.5rem;
+      overflow: hidden;
+    }
   }
 </style>
 </head>
