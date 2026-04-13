@@ -427,9 +427,24 @@ function trainerOnMove(orig, dest) {
     // Play sound for the wrong move (compute from a temp game so state stays clean)
     try {
       const tempGame = new Chess(_trainerGame.fen());
-      const wrongMove = tempGame.move({ from: orig, to: dest, promotion: promoChar || 'q' });
-      if (wrongMove) playSound(soundForMove(tempGame, wrongMove));
-    } catch {}
+      // Try without promotion first, then try queen promotion (for pawn-to-last-rank moves)
+      let wrongMove = null;
+      for (const promo of [promoChar || undefined, 'q', 'r', 'b', 'n']) {
+        try {
+          wrongMove = tempGame.move({ from: orig, to: dest, promotion: promo });
+          if (wrongMove) break;
+        } catch {}
+      }
+      if (wrongMove) {
+        const sound = soundForMove(tempGame, wrongMove);
+        console.log(`[TRAINER] WRONG MOVE SOUND | ${sound} san=${wrongMove.san} flags=${wrongMove.flags} isCheck=${tempGame.isCheck?.()}`);
+        playSound(sound);
+      } else {
+        console.warn(`[TRAINER] wrong move chess.js rejected: ${orig}${dest}`);
+      }
+    } catch (e) {
+      console.warn('[TRAINER] wrong move sound failed:', e);
+    }
 
     setTrainerStatus('Wrong move', 'That\'s not the best response.', 'error');
 
