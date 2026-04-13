@@ -34,7 +34,12 @@ function playSound(name) {
 function soundForMove(game, move) {
   if (!move) return null;
   const flags = move.flags || '';
-  if (game && typeof game.in_check === 'function' && game.in_check()) return 'move-check';
+  // chess.js v1 uses isCheck(); older versions used in_check(). Support both.
+  const inCheck = game && (
+    (typeof game.isCheck === 'function' && game.isCheck()) ||
+    (typeof game.in_check === 'function' && game.in_check())
+  );
+  if (inCheck) return 'move-check';
   if (flags.includes('p') || move.promotion) return 'promote';
   if (flags.includes('c') || flags.includes('e') || move.captured) return 'capture';
   if (flags.includes('k') || flags.includes('q')) return 'castle';
