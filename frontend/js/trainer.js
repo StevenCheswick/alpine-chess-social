@@ -424,11 +424,22 @@ function trainerOnMove(orig, dest) {
     _trainerMistakeThisRun = true;
     _trainerPhase = 'showing_correction';
 
-    // Reset board to actual position (undo visual move)
-    setTrainerBoard(_trainerGame.fen(), _trainerSolverColor, false);
+    // Play sound for the wrong move (compute from a temp game so state stays clean)
+    try {
+      const tempGame = new Chess(_trainerGame.fen());
+      const wrongMove = tempGame.move({ from: orig, to: dest, promotion: promoChar || 'q' });
+      if (wrongMove) playSound(soundForMove(tempGame, wrongMove));
+    } catch {}
+
     setTrainerStatus('Wrong move', 'That\'s not the best response.', 'error');
 
     const corrGen = _trainerGen;
+    // Hold the wrong move visible briefly so user sees it before the revert
+    setTimeout(() => {
+      if (corrGen !== _trainerGen || _trainerPhase !== 'showing_correction') return;
+      setTrainerBoard(_trainerGame.fen(), _trainerSolverColor, false);
+    }, 600);
+
     setTimeout(() => {
       if (corrGen !== _trainerGen || _trainerPhase !== 'showing_correction') return;
       // Show the best accepted move on the board
@@ -993,6 +1004,8 @@ function hmOnMove(orig, dest) {
   }
 
   const isCorrect = moveResult.san === hm.best_move;
+  // Capture sound for the attempted move BEFORE undoing (in_check needs post-move state)
+  const attemptedSound = soundForMove(_trainerGame, moveResult);
   _trainerGame.undo();
 
   if (isCorrect) {
@@ -1022,10 +1035,19 @@ function hmOnMove(orig, dest) {
     // Wrong move
     _hmMistakeThisRun = true;
     _hmPhase = 'showing_correction';
-    setTrainerBoard(hm.fen, _hmSolverColor, false);
+
+    // Play sound for the wrong move
+    playSound(attemptedSound);
+
     setHmStatus('Wrong move', `You played ${moveResult.san}. That's not the best move.`, 'error');
 
     const corrGen = _hmGen;
+    // Hold the wrong move visible briefly before reverting
+    setTimeout(() => {
+      if (corrGen !== _hmGen || _hmPhase !== 'showing_correction') return;
+      setTrainerBoard(hm.fen, _hmSolverColor, false);
+    }, 600);
+
     _hmAnimTimer = setTimeout(() => {
       if (corrGen !== _hmGen || _hmPhase !== 'showing_correction') return;
       const showGame = new Chess(hm.fen);
