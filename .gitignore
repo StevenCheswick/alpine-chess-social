@@ -52,3 +52,4 @@ Thumbs.db
 
 # Feature testing (large datasets, experimental code)
 feature-testing/
+frontend/stockfish/stockfish.wasm
