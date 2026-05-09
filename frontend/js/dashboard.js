@@ -379,15 +379,6 @@ async function initDashboard() {
               <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
               ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
             </div>
-            <div class="flex items-center gap-1.5 text-meta text-muted mt-0.5">
-              <span>as ${g.userColor}</span>
-              <span class="text-slate-700">&middot;</span>
-              <span>${g.date}</span>
-              <span class="text-slate-700">&middot;</span>
-              <span>+300 at move ${g.reachMove}</span>
-              <span class="text-slate-700">&middot;</span>
-              <span>${g.inaccuracies === 0 ? 'Perfect' : g.inaccuracies + ' inacc'}</span>
-            </div>
           </div>
         </div>
         <div class="flex flex-col items-end shrink-0">
