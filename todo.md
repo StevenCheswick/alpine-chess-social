@@ -44,7 +44,8 @@
 - [x] **Hard move evals to White's POV** — fixed: generator now outputs evals from White's POV
 
 ## Dashboard
-- [ ] Add "Choke Rate" metric — track how often a player loses a winning position
+- [x] Add "Choke Rate" metric — track how often a player loses a winning position
+- [ ] **Dashboard metrics table** — store all computed dashboard stats in a dedicated DB table so they persist across server restarts and only recompute on trigger (new game analyzed, manual refresh). Eliminates cold-cache ~8s loads.
 
 ## Performance
 - [ ] **Dashboard precompute tables** — Dashboard stats API takes ~8s (uncached). Create `game_opening_stats` and `game_opening_mistakes` tables with precomputed per-game opening data so dashboard queries are simple SELECTs instead of JSONB explosions. Populate on analysis save, one-time backfill via SQL for existing games.

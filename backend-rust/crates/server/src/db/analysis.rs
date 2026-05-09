@@ -750,6 +750,105 @@ pub async fn get_smoothest_wins(
     Ok(candidates.into_iter().take(limit).map(|(_, v)| v).collect())
 }
 
+pub async fn get_swindle_games(
+    pool: &PgPool,
+    user_id: i64,
+    limit: usize,
+) -> Result<Vec<JsonValue>, AppError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"SELECT ug.id, ug.opponent, ug.user_color, ug.user_rating, ug.opponent_rating,
+                  ug.date, ug.source, ug.chess_com_game_id, ga.moves
+           FROM user_games ug
+           INNER JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE ug.user_id = $1 AND ug.result = 'W'"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let mut candidates: Vec<(i64, JsonValue)> = Vec::new();
+
+    for row in &rows {
+        let game_id: i64 = row.try_get("id").unwrap_or(0);
+        let opponent: String = row.try_get("opponent").unwrap_or_default();
+        let user_color: String = row.try_get("user_color").unwrap_or_default();
+        let user_rating: Option<i32> = row.try_get("user_rating").unwrap_or(None);
+        let opp_rating: Option<i32> = row.try_get("opponent_rating").unwrap_or(None);
+        let date: Option<String> = row.try_get("date").unwrap_or(None);
+        let source: String = row.try_get("source").unwrap_or_default();
+        let external_id: Option<String> = row.try_get("chess_com_game_id").unwrap_or(None);
+        let moves: JsonValue = row.try_get("moves").unwrap_or(JsonValue::Null);
+
+        let is_white = user_color.to_lowercase() == "white";
+
+        let move_arr = match moves.as_array() {
+            Some(a) => a,
+            None => continue,
+        };
+
+        let evals: Vec<i64> = move_arr
+            .iter()
+            .filter_map(|m| {
+                let ev = m.get("move_eval")?.as_i64()?;
+                Some(if is_white { ev } else { -ev })
+            })
+            .collect();
+
+        if evals.len() < 25 {
+            continue;
+        }
+
+        // Find the lowest eval point that's <= -400
+        let (trough_idx, trough_val) = match evals.iter().enumerate()
+            .filter(|(_, &ev)| ev <= -400)
+            .min_by_key(|(_, &ev)| ev)
+        {
+            Some((i, &v)) => (i, v),
+            None => continue,
+        };
+
+        // Find first point after trough where eval >= +100
+        let recover_idx = match evals[trough_idx..].iter().position(|&ev| ev >= 100) {
+            Some(i) => trough_idx + i,
+            None => continue,
+        };
+
+        if recover_idx <= trough_idx + 1 {
+            continue;
+        }
+
+        // Compute max abs delta during the comeback
+        let deltas: Vec<f64> = (trough_idx..recover_idx)
+            .map(|i| (evals[i + 1] - evals[i]) as f64)
+            .collect();
+
+        let max_abs_delta = deltas.iter().map(|d| d.abs()).fold(0.0f64, f64::max).round() as i64;
+        if max_abs_delta < 1 { continue; }
+
+        candidates.push((max_abs_delta, serde_json::json!({
+            "gameId": game_id,
+            "opponent": opponent,
+            "userColor": user_color,
+            "userRating": user_rating,
+            "opponentRating": opp_rating,
+            "date": date,
+            "source": source,
+            "externalId": external_id,
+            "totalMoves": evals.len() / 2,
+            "troughMove": trough_idx / 2 + 1,
+            "troughEval": trough_val,
+            "recoverMove": recover_idx / 2 + 1,
+            "maxDelta": max_abs_delta,
+        })));
+    }
+
+    candidates.sort_by_key(|c| c.0);
+    Ok(candidates.into_iter().take(limit).map(|(_, v)| v).collect())
+}
+
 pub async fn get_roller_coaster_games(
     pool: &PgPool,
     user_id: i64,

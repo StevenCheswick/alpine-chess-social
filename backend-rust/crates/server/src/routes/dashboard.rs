@@ -20,8 +20,7 @@ struct CacheEntry {
 static STATS_CACHE: std::sync::LazyLock<RwLock<HashMap<i64, CacheEntry>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashMap::new()));
 
-// Cache TTL: 60 seconds (allows server-side analysis to appear within a minute)
-const CACHE_TTL: Duration = Duration::from_secs(60);
+const CACHE_TTL: Duration = Duration::from_secs(3600);
 
 pub fn invalidate_stats_cache() {
     if let Ok(mut cache) = STATS_CACHE.write() {
@@ -243,6 +242,7 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     let choke_clutch = analysis::get_user_choke_clutch_stats(pool, user_id).await?;
     let smoothest_wins = analysis::get_smoothest_wins(pool, user_id, 5).await?;
     let roller_coasters = analysis::get_roller_coaster_games(pool, user_id, 5).await?;
+    let swindles = analysis::get_swindle_games(pool, user_id, 5).await?;
 
     Ok(serde_json::json!({
         "totalAnalyzedGames": stats.len(),
@@ -262,6 +262,7 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         "chokeClutch": choke_clutch,
         "smoothestWins": smoothest_wins,
         "rollerCoasters": roller_coasters,
+        "swindles": swindles,
     }))
 }
 

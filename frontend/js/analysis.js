@@ -273,17 +273,14 @@ async function loadGameAnalysis(gameId) {
   const resultMap = { W: '1 - 0', L: '0 - 1', D: '½ - ½' };
   const resultColor = { W: 'text-good', L: 'text-bad', D: 'text-muted' };
 
-  document.getElementById('analysisHeader').innerHTML = `
-    <div class="flex items-center justify-between">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold text-white">${username}</span>
-          <span class="text-label font-mono text-muted">(${userRating})</span>
-          <span class="text-label ${resultColor[game.result] || 'text-muted'} font-semibold">${resultMap[game.result] || game.result}</span>
-          <span class="text-label font-mono text-muted">(${oppRating})</span>
-          <span class="text-sm font-semibold text-white">${game.opponent}</span>
-        </div>
-      </div>
+  document.getElementById('analysisHeader').style.display = 'none';
+  document.getElementById('analysisPlayerInfo').innerHTML = `
+    <div class="flex items-center gap-2">
+      <span class="text-sm font-semibold text-white">${username}</span>
+      <span class="text-label font-mono text-muted">(${userRating})</span>
+      <span class="text-label ${resultColor[game.result] || 'text-muted'} font-semibold">${resultMap[game.result] || game.result}</span>
+      <span class="text-label font-mono text-muted">(${oppRating})</span>
+      <span class="text-sm font-semibold text-white">${game.opponent}</span>
     </div>`;
 
   // Set board to starting position with user's color orientation
