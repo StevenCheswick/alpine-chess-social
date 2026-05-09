@@ -155,6 +155,7 @@ async function initDashboard() {
           <span class="text-label text-muted font-mono w-3 text-right shrink-0">${i+1}</span>
           <div class="min-w-0">
             <div class="flex items-center gap-1">
+              <span class="inline-block w-2.5 h-2.5 rounded-full shrink-0 ${g.result==='W'?'bg-good':g.result==='L'?'bg-bad':'bg-slate-400'}"></span>
               <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
               ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
             </div>
@@ -360,26 +361,20 @@ async function initDashboard() {
     swEl.innerHTML = '<div class="text-center text-label text-muted py-6">No qualifying games yet.</div>';
   } else {
     swEl.innerHTML = sw.map((g, i) => {
-      const scoreColor = g.maxDelta <= 20 ? 'text-good' : g.maxDelta <= 40 ? 'text-accent' : 'text-secondary';
-      const srcBadge = g.source === 'chess_com'
-        ? '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-good/20 text-good shrink-0">C</span>'
-        : '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-white/20 text-white shrink-0">L</span>';
+      const scoreColor = 'text-accent';
       return `
-      <div class="game-row flex items-center justify-between px-1.5 py-3 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
-        <div class="flex items-center gap-3 min-w-0">
+      <div class="game-row flex items-center justify-between px-1.5 py-2 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
+        <div class="flex items-center gap-2 min-w-0">
           <span class="text-label text-muted font-mono w-3 text-right shrink-0">${i+1}</span>
-          ${srcBadge}
           <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1">
+              <span class="inline-block w-2.5 h-2.5 rounded-full shrink-0 bg-good"></span>
               <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
               ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
             </div>
           </div>
         </div>
-        <div class="flex flex-col items-end shrink-0">
-          <span class="text-lg font-bold ${scoreColor} font-mono">${g.maxDelta}cp</span>
-          <span class="text-meta text-muted">max delta</span>
-        </div>
+        <span class="text-xs font-bold ${scoreColor} font-mono">${g.maxDelta}cp</span>
       </div>`;
     }).join('');
   }
@@ -392,27 +387,43 @@ async function initDashboard() {
   } else {
     rcEl.innerHTML = rc.map((g, i) => {
       const swingColor = g.swings >= 6 ? 'text-bad' : g.swings >= 4 ? 'text-warning' : 'text-accent';
-      const resultLabel = g.result === 'W' ? 'Won' : g.result === 'L' ? 'Lost' : 'Draw';
-      const resultColor = g.result === 'W' ? 'text-good' : g.result === 'L' ? 'text-bad' : 'text-muted';
-      const srcBadge = g.source === 'chess_com'
-        ? '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-good/20 text-good shrink-0">C</span>'
-        : '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-white/20 text-white shrink-0">L</span>';
       return `
-      <div class="game-row flex items-center justify-between px-1.5 py-3 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
-        <div class="flex items-center gap-3 min-w-0">
+      <div class="game-row flex items-center justify-between px-1.5 py-2 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
+        <div class="flex items-center gap-2 min-w-0">
           <span class="text-label text-muted font-mono w-3 text-right shrink-0">${i+1}</span>
-          ${srcBadge}
           <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1">
+              <span class="inline-block w-2.5 h-2.5 rounded-full shrink-0 ${g.result==='W'?'bg-good':g.result==='L'?'bg-bad':'bg-slate-400'}"></span>
               <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
               ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
             </div>
           </div>
         </div>
-        <div class="flex flex-col items-end shrink-0">
-          <span class="text-lg font-bold ${swingColor} font-mono">${g.swings}</span>
-          <span class="text-meta text-muted">swings</span>
+        <span class="text-xs font-bold ${swingColor} font-mono">${g.swings} swings</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Swindles ──
+  const swd = s.swindles || [];
+  const swdEl = document.getElementById('dashSwindles');
+  if (swd.length === 0) {
+    swdEl.innerHTML = '<div class="text-center text-label text-muted py-6">No qualifying games yet.</div>';
+  } else {
+    swdEl.innerHTML = swd.map((g, i) => {
+      return `
+      <div class="game-row flex items-center justify-between px-1.5 py-2 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-label text-muted font-mono w-3 text-right shrink-0">${i+1}</span>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1">
+              <span class="inline-block w-2.5 h-2.5 rounded-full shrink-0 bg-good"></span>
+              <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
+              ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
+            </div>
+          </div>
         </div>
+        <span class="text-xs font-bold text-accent font-mono">${g.maxDelta}cp</span>
       </div>`;
     }).join('');
   }

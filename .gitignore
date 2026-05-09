@@ -44,7 +44,7 @@ jan_result.json
 
 # Stockfish binary (used for integration tests)
 stockfish.exe
-stockfish
+/stockfish
 
 # OS
 .DS_Store

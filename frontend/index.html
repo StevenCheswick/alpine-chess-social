@@ -804,22 +804,16 @@ tailwind.config = {
   <div id="dashTab-games" class="dash-tab-panel" style="display:none">
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-    <div class="card p-5 fade-up">
-      <div class="mb-4">
-        <h2 class="text-xs font-semibold text-white">Smoothest Crushing Wins</h2>
-        <p class="text-meta text-muted mt-1">Steadiest climb to a decisive advantage. Zero blunders or mistakes.</p>
-      </div>
-      <div class="gradient-line-accent mb-3"></div>
+    <div class="card p-4 fade-up">
+      <h2 class="text-xs font-semibold text-white mb-2">Smoothest Crushing Wins</h2>
+      <div class="gradient-line-accent mb-2"></div>
       <div class="space-y-0" id="dashSmoothestWins">
         <div class="text-center text-label text-muted py-6">Loading...</div>
       </div>
     </div>
-    <div class="card p-5 fade-up" style="animation-delay: 0.05s">
-      <div class="mb-4">
-        <h2 class="text-xs font-semibold text-white">Roller Coaster Games</h2>
-        <p class="text-meta text-muted mt-1">Most swings between winning and losing (+/-150cp).</p>
-      </div>
-      <div class="gradient-line mb-3" style="background:rgba(239,68,68,0.25)"></div>
+    <div class="card p-4 fade-up" style="animation-delay: 0.05s">
+      <h2 class="text-xs font-semibold text-white mb-2">Roller Coaster Games</h2>
+      <div class="gradient-line mb-2" style="background:rgba(239,68,68,0.25)"></div>
       <div class="space-y-0" id="dashRollerCoasters">
         <div class="text-center text-label text-muted py-6">Loading...</div>
       </div>
@@ -828,6 +822,18 @@ tailwind.config = {
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
     <div class="card p-4 fade-up" style="animation-delay: 0.05s">
+      <h2 class="text-xs font-semibold text-white mb-2">Best Swindles</h2>
+      <div class="gradient-line-accent mb-2"></div>
+      <div class="space-y-0" id="dashSwindles">
+        <div class="text-center text-label text-muted py-6">Loading...</div>
+      </div>
+    </div>
+    <div class="card p-4 fade-up" style="animation-delay: 0.08s">
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+    <div class="card p-4 fade-up" style="animation-delay: 0.1s">
       <h2 class="text-xs font-semibold text-white mb-2">Most Accurate Games</h2>
       <div class="gradient-line-accent mb-2"></div>
       <div class="space-y-0" id="mostAccurateList"></div>
@@ -1041,14 +1047,6 @@ tailwind.config = {
 <!-- ╚══════════════════════════════════════════╝ -->
 <div id="page-analysis" class="page">
 
-  <!-- Back button -->
-  <div class="mb-3 fade-up">
-    <button id="analysisBackBtn" onclick="analysisGoBack()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-      <span id="analysisBackLabel">Back to Games</span>
-    </button>
-  </div>
-
   <!-- Game header -->
   <div class="card p-4 mb-4 fade-up" style="animation-delay: 0.05s" id="analysisHeader">
     <div class="flex items-center justify-center py-4"><span class="text-label text-muted">Select a game to analyze</span></div>
@@ -1057,21 +1055,22 @@ tailwind.config = {
   <div class="flex flex-col lg:flex-row gap-4">
 
     <!-- Board + Eval bar -->
-    <div class="flex flex-col gap-2 fade-up w-full lg:max-w-[548px]" style="animation-delay: 0.1s">
-      <div class="flex gap-1.5" id="analysisBoardRow">
-        <!-- Eval bar -->
-        <div class="eval-bar rounded-md" id="analysisEvalBar">
-          <div class="eval-bar-fill" id="analysisEvalFill" style="height: 50%"></div>
-          <div class="absolute inset-x-0 top-2 text-center text-meta font-mono font-bold text-muted" id="analysisEvalText">0.0</div>
+    <div class="flex flex-col gap-2 fade-up w-full lg:max-w-[520px]" style="animation-delay: 0.1s">
+      <!-- Live Stockfish eval -->
+      <div id="sfEvalBar" class="card px-1 py-1 text-label">
+        <div class="flex items-center gap-2 w-full px-1">
+          <span class="font-mono font-bold text-white">0.0</span>
+          <span class="text-muted">Stockfish loading...</span>
         </div>
-
+      </div>
+      <div id="analysisBoardRow">
         <!-- Chessboard -->
-        <div class="flex-1 aspect-square max-w-[520px] rounded-lg overflow-hidden" id="chessboardWrap">
+        <div class="aspect-square rounded-lg overflow-hidden" id="chessboardWrap">
           <div id="chessboard" class="w-full h-full"></div>
         </div>
       </div>
       <!-- Nav buttons under board -->
-      <div class="grid grid-cols-4 gap-1 mt-1" id="analysisNavBtns" style="margin-left: 26px;">
+      <div class="grid grid-cols-4 gap-1 mt-1" id="analysisNavBtns">
         <button onclick="analysisNav('first')" class="py-1.5 text-label text-muted rounded border border-slate-800 hover:border-slate-600 hover:text-white hover:bg-slate-800/50 transition-colors" title="First">⟨⟨</button>
         <button onclick="analysisNav('prev')" class="py-1.5 text-label text-muted rounded border border-slate-800 hover:border-slate-600 hover:text-white hover:bg-slate-800/50 transition-colors" title="Previous">⟨</button>
         <button onclick="analysisNav('next')" class="py-1.5 text-label text-muted rounded border border-slate-800 hover:border-slate-600 hover:text-white hover:bg-slate-800/50 transition-colors" title="Next">⟩</button>

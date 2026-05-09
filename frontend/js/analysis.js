@@ -4,6 +4,180 @@
 let _currentGameId = null;
 let _analysisSource = 'games'; // tracks where user came from: 'games' or 'dashboard'
 
+// ── Stockfish WASM ──
+let _sfWorker = null;
+let _sfReady = false;
+let _sfAnalysisId = 0;
+let _sfCurrentFen = null;
+let _sfLines = [{}, {}, {}];
+let _sfDepth = 0;
+let _sfRenderPending = false;
+
+function initStockfish() {
+  if (_sfWorker) return;
+  _sfWorker = new Worker('stockfish/stockfish.js');
+  _sfWorker.onmessage = function(e) {
+    const line = typeof e.data === 'string' ? e.data : '';
+    if (line === 'uciok') {
+      _sfWorker.postMessage('setoption name MultiPV value 3');
+      _sfWorker.postMessage('isready');
+    } else if (line === 'readyok') {
+      _sfReady = true;
+      if (_sfPendingFen) {
+        const fen = _sfPendingFen;
+        _sfPendingFen = null;
+        _sfWorker.postMessage('position fen ' + fen);
+        _sfWorker.postMessage('go infinite');
+      }
+    } else if (line.startsWith('info depth') && line.includes(' pv ')) {
+      handleSfInfo(line);
+    }
+  };
+  _sfWorker.postMessage('uci');
+}
+
+let _sfPendingFen = null;
+
+function sfAnalyzeCurrentPosition() {
+  if (!_sfWorker) return;
+  const fen = _analysisPositions ? _analysisPositions[(_analysisMoveIndex ?? -1) + 1] : null;
+  if (!fen) return;
+  _sfAnalysisId++;
+  _sfCurrentFen = fen;
+  _sfLines = [{}, {}, {}];
+  _sfDepth = 0;
+  renderSfLines();
+  if (!_sfReady) {
+    _sfPendingFen = fen;
+    return;
+  }
+  _sfWorker.postMessage('stop');
+  _sfWorker.postMessage('isready');
+  _sfPendingFen = fen;
+}
+
+function handleSfInfo(line) {
+  const depth = parseInt(line.match(/depth (\d+)/)?.[1] || '0');
+  const seldepth = parseInt(line.match(/seldepth (\d+)/)?.[1] || '0');
+  const multipvMatch = line.match(/multipv (\d+)/);
+  const pvIdx = multipvMatch ? parseInt(multipvMatch[1]) - 1 : 0;
+  const scoreMatch = line.match(/score (cp|mate) (-?\d+)/);
+  const pvMatch = line.match(/ pv (.+)/);
+  if (!scoreMatch || !pvMatch || depth < 6 || pvIdx > 2) return;
+
+  const scoreType = scoreMatch[1];
+  const scoreVal = parseInt(scoreMatch[2]);
+  const pv = pvMatch[1].split(' ');
+  const fen = _sfCurrentFen;
+  const sideToMove = fen ? fen.split(' ')[1] : 'w';
+
+  let evalText;
+  if (scoreType === 'mate') {
+    evalText = (scoreVal > 0 ? '+' : '') + 'M' + Math.abs(scoreVal);
+  } else {
+    const cpWhite = sideToMove === 'w' ? scoreVal : -scoreVal;
+    evalText = (cpWhite >= 0 ? '+' : '') + (cpWhite / 100).toFixed(1);
+  }
+
+  _sfLines[pvIdx] = { evalText, uci: pv[0], pvSan: pvToSan(fen, pv) };
+  _sfDepth = Math.max(_sfDepth, depth);
+  if (!_sfRenderPending) {
+    _sfRenderPending = true;
+    setTimeout(() => { _sfRenderPending = false; renderSfLines(); }, 500);
+  }
+}
+
+function renderSfLines() {
+  const container = document.getElementById('sfEvalBar');
+  if (!container) return;
+
+  const hasLines = _sfLines.some(l => l.pvSan);
+  if (!hasLines) {
+    container.innerHTML = `
+      <div class="flex items-center gap-3 w-full">
+        <span class="font-mono font-bold text-white">0.0</span>
+        <span class="text-muted">Stockfish loading...</span>
+      </div>`;
+    return;
+  }
+
+  let html = '';
+  _sfLines.forEach((l, i) => {
+    if (!l.pvSan) return;
+    const isTop = i === 0;
+    const evalBg = 'bg-slate-600/60';
+    html += `<div class="flex items-center gap-1.5 w-full px-1 py-px rounded cursor-pointer hover:bg-slate-600/40 transition-colors" onclick="playSfLine(${i})">
+      <span class="font-mono font-bold ${isTop ? 'text-white' : 'text-muted'} ${evalBg} rounded px-1.5 py-px text-center shrink-0" style="min-width:2.75rem">${l.evalText}</span>
+      <span class="${isTop ? 'text-white' : 'text-muted'} text-ellipsis overflow-hidden whitespace-nowrap">${l.pvSan}</span>
+    </div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function playSfLine(idx) {
+  const line = _sfLines[idx];
+  if (!line?.uci || !_sfCurrentFen || !Chess) return;
+  try {
+    const c = new Chess(_sfCurrentFen);
+    const from = line.uci.substring(0, 2);
+    const to = line.uci.substring(2, 4);
+    const promo = line.uci.length > 4 ? line.uci[4] : undefined;
+    const move = c.move({ from, to, promotion: promo });
+    if (!move) return;
+    const newFen = c.fen();
+    if (_cgInstance) {
+      _cgInstance.set({ fen: newFen, animation: { enabled: true } });
+    }
+    _sfCurrentFen = newFen;
+    _sfAnalysisId++;
+    _sfLines = [{}, {}, {}];
+    _sfDepth = 0;
+    renderSfLines();
+    _sfWorker.postMessage('stop');
+    _sfPendingFen = newFen;
+    _sfWorker.postMessage('isready');
+  } catch { /* ignore */ }
+}
+
+function pvToSan(fen, pv) {
+  if (!Chess || !fen || !pv || !pv.length) return '';
+  try {
+    const c = new Chess(fen);
+    const parts = [];
+    for (const uci of pv) {
+      if (uci.length < 4) break;
+      const fullMove = Math.floor((c.moveNumber ? c.moveNumber() - 1 : 0)) + 1;
+      const isWhite = c.turn() === 'w';
+      const from = uci.substring(0, 2);
+      const to = uci.substring(2, 4);
+      const promo = uci.length > 4 ? uci[4] : undefined;
+      const move = c.move({ from, to, promotion: promo });
+      if (!move) break;
+      if (isWhite) {
+        parts.push(fullMove + '. ' + move.san);
+      } else if (parts.length === 0) {
+        parts.push(fullMove + '... ' + move.san);
+      } else {
+        parts.push(move.san);
+      }
+    }
+    return parts.join(' ');
+  } catch { return ''; }
+}
+
+function uciToSan(fen, uci) {
+  if (!Chess || !uci || uci.length < 4) return uci;
+  try {
+    const c = new Chess(fen);
+    const from = uci.substring(0, 2);
+    const to = uci.substring(2, 4);
+    const promo = uci.length > 4 ? uci[4] : undefined;
+    const move = c.move({ from, to, promotion: promo });
+    return move ? move.san : uci;
+  } catch { return uci; }
+}
+
 function analysisGoBack() {
   switchPage(_analysisSource);
 }
@@ -17,6 +191,7 @@ function setAnalysisBackButton(source) {
 function initAnalysis() {
   window._analysisInit = true;
   setCgBoard('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'white');
+  initStockfish();
 }
 
 function setCgBoard(fen, orientation) {
@@ -108,11 +283,6 @@ async function loadGameAnalysis(gameId) {
           <span class="text-label font-mono text-muted">(${oppRating})</span>
           <span class="text-sm font-semibold text-white">${game.opponent}</span>
         </div>
-        <div class="flex items-center gap-3 mt-1 text-label text-muted">
-          ${game.timeControl ? `<span>${game.timeControl}</span><span>&middot;</span>` : ''}
-          <span>${moveCount} moves</span>
-          ${game.date ? `<span>&middot;</span><span>${new Date(game.date).toLocaleDateString('en', { month:'short', day:'numeric', year:'numeric' })}</span>` : ''}
-        </div>
       </div>
     </div>`;
 
@@ -179,6 +349,8 @@ async function loadGameAnalysis(gameId) {
 
   // Update eval bar to starting position
   updateEvalBar(-1);
+  initStockfish();
+  sfAnalyzeCurrentPosition();
 }
 
 // ── Move navigation ──
@@ -191,6 +363,7 @@ function analysisGoTo(idx) {
   }
   updateEvalBar(idx);
   highlightActiveMove(idx);
+  sfAnalyzeCurrentPosition();
 }
 
 function analysisNav(dir) {
