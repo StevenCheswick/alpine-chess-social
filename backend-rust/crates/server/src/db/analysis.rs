@@ -566,6 +566,286 @@ pub async fn get_user_endgame_stats(
     }))
 }
 
+/// Choke rate (lost from winning) and clutch rate (won from losing).
+/// Scans per-move evals to find max user advantage per game, cross-refs with result.
+pub async fn get_user_choke_clutch_stats(
+    pool: &PgPool,
+    user_id: i64,
+) -> Result<JsonValue, AppError> {
+    use sqlx::Row;
+
+    // For each game, find the max eval from the user's perspective across all moves.
+    // move_eval is from White's POV, so flip sign for Black.
+    // Threshold: 200cp (2 pawns) to count as "winning" or "losing".
+    let row = sqlx::query(
+        r#"
+        WITH game_evals AS (
+            SELECT
+                ug.id,
+                ug.result,
+                LOWER(ug.user_color) AS user_color,
+                MAX(CASE WHEN LOWER(ug.user_color) = 'white'
+                    THEN (m->>'move_eval')::int
+                    ELSE -(m->>'move_eval')::int
+                END) AS max_user_eval,
+                MIN(CASE WHEN LOWER(ug.user_color) = 'white'
+                    THEN (m->>'move_eval')::int
+                    ELSE -(m->>'move_eval')::int
+                END) AS min_user_eval
+            FROM user_games ug
+            INNER JOIN game_analysis ga ON ug.id = ga.game_id
+            CROSS JOIN LATERAL jsonb_array_elements(ga.moves) AS m
+            WHERE ug.user_id = $1
+              AND (m->>'move_eval') IS NOT NULL
+            GROUP BY ug.id, ug.result, ug.user_color
+        )
+        SELECT
+            COUNT(*) FILTER (WHERE max_user_eval >= 200) AS was_winning,
+            COUNT(*) FILTER (WHERE max_user_eval >= 200 AND result = 'L') AS choked,
+            COUNT(*) FILTER (WHERE min_user_eval <= -200) AS was_losing,
+            COUNT(*) FILTER (WHERE min_user_eval <= -200 AND result = 'W') AS clutched,
+            COUNT(*) AS total_games
+        FROM game_evals
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let was_winning: i64 = row.try_get("was_winning").unwrap_or(0);
+    let choked: i64 = row.try_get("choked").unwrap_or(0);
+    let was_losing: i64 = row.try_get("was_losing").unwrap_or(0);
+    let clutched: i64 = row.try_get("clutched").unwrap_or(0);
+    let total_games: i64 = row.try_get("total_games").unwrap_or(0);
+
+    let choke_rate = if was_winning > 0 {
+        (choked as f64 / was_winning as f64 * 1000.0).round() / 10.0
+    } else {
+        0.0
+    };
+    let clutch_rate = if was_losing > 0 {
+        (clutched as f64 / was_losing as f64 * 1000.0).round() / 10.0
+    } else {
+        0.0
+    };
+
+    Ok(serde_json::json!({
+        "chokeRate": choke_rate,
+        "choked": choked,
+        "wasWinning": was_winning,
+        "clutchRate": clutch_rate,
+        "clutched": clutched,
+        "wasLosing": was_losing,
+        "totalGames": total_games,
+    }))
+}
+
+/// Smoothest crushing wins: games that reach +300 from the user's perspective
+/// and never drop back, ranked by smoothness of the eval climb.
+pub async fn get_smoothest_wins(
+    pool: &PgPool,
+    user_id: i64,
+    limit: usize,
+) -> Result<Vec<JsonValue>, AppError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"SELECT ug.id, ug.opponent, ug.user_color, ug.user_rating, ug.opponent_rating,
+                  ug.date, ug.source, ug.chess_com_game_id,
+                  ga.moves,
+                  CASE WHEN LOWER(ug.user_color) = 'white'
+                       THEN ga.white_classifications
+                       ELSE ga.black_classifications END AS cls
+           FROM user_games ug
+           INNER JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE ug.user_id = $1 AND ug.result = 'W'"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let mut candidates: Vec<(i64, JsonValue)> = Vec::new();
+
+    for row in &rows {
+        let game_id: i64 = row.try_get("id").unwrap_or(0);
+        let opponent: String = row.try_get("opponent").unwrap_or_default();
+        let user_color: String = row.try_get("user_color").unwrap_or_default();
+        let user_rating: Option<i32> = row.try_get("user_rating").unwrap_or(None);
+        let opp_rating: Option<i32> = row.try_get("opponent_rating").unwrap_or(None);
+        let date: Option<String> = row.try_get("date").unwrap_or(None);
+        let source: String = row.try_get("source").unwrap_or_default();
+        let external_id: Option<String> = row.try_get("chess_com_game_id").unwrap_or(None);
+        let moves: JsonValue = row.try_get("moves").unwrap_or(JsonValue::Null);
+        let cls: JsonValue = row.try_get("cls").unwrap_or(JsonValue::Null);
+
+        let is_white = user_color.to_lowercase() == "white";
+
+        let blunders = cls.get("blunder").and_then(|v| v.as_i64()).unwrap_or(0);
+        let mistakes = cls.get("mistake").and_then(|v| v.as_i64()).unwrap_or(0);
+        let inaccuracies = cls.get("inaccuracy").and_then(|v| v.as_i64()).unwrap_or(0);
+
+        if blunders > 0 || mistakes > 0 {
+            continue;
+        }
+
+        let move_arr = match moves.as_array() {
+            Some(a) => a,
+            None => continue,
+        };
+
+        let evals: Vec<i64> = move_arr
+            .iter()
+            .filter_map(|m| {
+                let ev = m.get("move_eval")?.as_i64()?;
+                Some(if is_white { ev } else { -ev })
+            })
+            .collect();
+
+        if evals.len() < 25 {
+            continue;
+        }
+
+        // Find first move where eval >= 300
+        let reach_idx = match evals.iter().position(|&ev| ev >= 300) {
+            Some(i) => i,
+            None => continue,
+        };
+
+        // Must stay above 300 after that
+        if !evals[reach_idx..].iter().all(|&ev| ev >= 300) {
+            continue;
+        }
+
+        if reach_idx < 2 {
+            continue;
+        }
+
+        // Compute deltas up to reach point
+        let deltas: Vec<f64> = (0..reach_idx)
+            .map(|i| (evals[i + 1] - evals[i]) as f64)
+            .collect();
+
+        let max_abs_delta = deltas.iter().map(|d| d.abs()).fold(0.0f64, f64::max).round() as i64;
+        if max_abs_delta < 1 { continue; }
+
+        candidates.push((max_abs_delta, serde_json::json!({
+            "gameId": game_id,
+            "opponent": opponent,
+            "userColor": user_color,
+            "userRating": user_rating,
+            "opponentRating": opp_rating,
+            "date": date,
+            "source": source,
+            "externalId": external_id,
+            "reachMove": reach_idx / 2 + 1,
+            "totalMoves": evals.len() / 2,
+            "maxDelta": max_abs_delta,
+            "inaccuracies": inaccuracies,
+        })));
+    }
+
+    candidates.sort_by_key(|c| c.0);
+    Ok(candidates.into_iter().take(limit).map(|(_, v)| v).collect())
+}
+
+pub async fn get_roller_coaster_games(
+    pool: &PgPool,
+    user_id: i64,
+    limit: usize,
+) -> Result<Vec<JsonValue>, AppError> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        r#"SELECT ug.id, ug.opponent, ug.user_color, ug.user_rating, ug.opponent_rating,
+                  ug.date, ug.result, ug.source, ug.chess_com_game_id, ga.moves
+           FROM user_games ug
+           INNER JOIN game_analysis ga ON ug.id = ga.game_id
+           WHERE ug.user_id = $1"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(AppError::Sqlx)?;
+
+    let mut candidates: Vec<(i64, JsonValue)> = Vec::new();
+
+    for row in &rows {
+        let game_id: i64 = row.try_get("id").unwrap_or(0);
+        let opponent: String = row.try_get("opponent").unwrap_or_default();
+        let user_color: String = row.try_get("user_color").unwrap_or_default();
+        let user_rating: Option<i32> = row.try_get("user_rating").unwrap_or(None);
+        let opp_rating: Option<i32> = row.try_get("opponent_rating").unwrap_or(None);
+        let date: Option<String> = row.try_get("date").unwrap_or(None);
+        let result: String = row.try_get("result").unwrap_or_default();
+        let source: String = row.try_get("source").unwrap_or_default();
+        let external_id: Option<String> = row.try_get("chess_com_game_id").unwrap_or(None);
+        let moves: JsonValue = row.try_get("moves").unwrap_or(JsonValue::Null);
+
+        let is_white = user_color.to_lowercase() == "white";
+
+        let move_arr = match moves.as_array() {
+            Some(a) => a,
+            None => continue,
+        };
+
+        let evals: Vec<i64> = move_arr
+            .iter()
+            .filter_map(|m| {
+                let ev = m.get("move_eval")?.as_i64()?;
+                Some(if is_white { ev } else { -ev })
+            })
+            .collect();
+
+        if evals.len() < 25 {
+            continue;
+        }
+
+        #[derive(PartialEq, Clone, Copy)]
+        enum Side { Winning, Losing, Neutral }
+
+        let classify = |ev: i64| -> Side {
+            if ev >= 150 { Side::Winning }
+            else if ev <= -150 { Side::Losing }
+            else { Side::Neutral }
+        };
+
+        let mut swings: i64 = 0;
+        let mut last_side = Side::Neutral;
+        for &ev in &evals {
+            let side = classify(ev);
+            if side != Side::Neutral {
+                if last_side != Side::Neutral && side != last_side {
+                    swings += 1;
+                }
+                last_side = side;
+            }
+        }
+
+        if swings < 2 {
+            continue;
+        }
+
+        candidates.push((swings, serde_json::json!({
+            "gameId": game_id,
+            "opponent": opponent,
+            "userColor": user_color,
+            "userRating": user_rating,
+            "opponentRating": opp_rating,
+            "date": date,
+            "result": result,
+            "source": source,
+            "externalId": external_id,
+            "totalMoves": evals.len() / 2,
+            "swings": swings,
+        })));
+    }
+
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
+    Ok(candidates.into_iter().take(limit).map(|(_, v)| v).collect())
+}
+
 /// Puzzle performance stats: found vs missed, user vs opponent, by theme
 pub async fn get_user_puzzle_stats(
     pool: &PgPool,

@@ -117,6 +117,7 @@ async fn main() {
         .route("/api/admin/opening-book/reload", post(routes::opening_book::reload_book))
         .route("/api/admin/opening-book/reclassify", post(routes::opening_book::reclassify_book_moves))
         // Trainer
+        .route("/api/trainer/catalog", get(routes::trainer::catalog))
         .route("/api/trainer/openings", get(routes::trainer::list_openings))
         .route("/api/trainer/puzzles", get(routes::trainer::get_puzzles))
         .route("/api/trainer/progress", post(routes::trainer::mark_complete))
@@ -130,6 +131,17 @@ async fn main() {
         .route("/api/admin/trainer/hard-moves/list", get(routes::trainer::admin_list_hard_moves))
         .route("/api/admin/trainer/hard-moves/upload", post(routes::trainer::upload_hard_moves))
         .route("/api/admin/trainer/hard-moves/delete", post(routes::trainer::delete_hard_moves))
+        // Trainer trees (Chessable-style opening tree datasets)
+        .route("/api/trainer/trees", get(routes::trainer_trees::list_trees))
+        .route("/api/trainer/trees/{id}", get(routes::trainer_trees::get_tree))
+        .route("/api/trainer/trees/{id}/progress", get(routes::trainer_trees::get_progress).post(routes::trainer_trees::post_progress))
+        .route("/api/admin/trainer/trees/upload", post(routes::trainer_trees::upload_tree))
+        .route("/api/admin/trainer/trees/delete", post(routes::trainer_trees::delete_tree))
+        // Trainer Maia play-vs-bot positions
+        .route("/api/trainer/maia-positions", get(routes::trainer_maia::list_positions))
+        .route("/api/trainer/maia-positions/{id}", get(routes::trainer_maia::get_position))
+        .route("/api/admin/trainer/maia-positions/upload", post(routes::trainer_maia::upload_position))
+        .route("/api/admin/trainer/maia-positions/delete", post(routes::trainer_maia::delete_position))
         // User profile (parameterized — must be last)
         .route("/api/users/{username}", get(routes::profile::get_user_profile))
         // Shared state

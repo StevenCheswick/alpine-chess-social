@@ -410,3 +410,77 @@ pub async fn upsert_puzzles(
 
     Ok(count)
 }
+
+// ── Catalog (unified opening view) ─────────────────────────────────
+
+pub async fn get_catalog(pool: &PgPool) -> Result<Vec<(String, JsonValue)>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, JsonValue)>(
+        r#"
+        WITH puzzle_agg AS (
+            SELECT opening_name,
+                   COUNT(*) AS cnt,
+                   MIN(pre_mistake_fen) AS sample_fen
+            FROM trainer_puzzles GROUP BY opening_name
+        ),
+        hm_agg AS (
+            SELECT opening_name,
+                   COUNT(*) AS cnt,
+                   MIN(fen) AS sample_fen
+            FROM trainer_hard_moves GROUP BY opening_name
+        ),
+        tree_agg AS (
+            SELECT opening_name,
+                   json_agg(json_build_object(
+                       'id', id, 'name', name, 'color', color,
+                       'start_fen', start_fen,
+                       'nodes_count', nodes_count, 'lines_count', lines_count
+                   )) AS items
+            FROM trainer_trees WHERE opening_name IS NOT NULL
+            GROUP BY opening_name
+        ),
+        maia_agg AS (
+            SELECT opening_name,
+                   json_agg(json_build_object(
+                       'id', id, 'title', title, 'fen', fen,
+                       'user_side', user_side, 'notes', notes
+                   )) AS items
+            FROM trainer_maia_positions WHERE opening_name IS NOT NULL
+            GROUP BY opening_name
+        ),
+        all_names AS (
+            SELECT opening_name FROM puzzle_agg
+            UNION SELECT opening_name FROM hm_agg
+            UNION SELECT opening_name FROM tree_agg
+            UNION SELECT opening_name FROM maia_agg
+        )
+        SELECT a.opening_name,
+               json_build_object(
+                   'puzzle_count',     COALESCE(p.cnt, 0),
+                   'hard_move_count',  COALESCE(h.cnt, 0),
+                   'trees',            COALESCE(t.items, '[]'::json),
+                   'maia_positions',   COALESCE(m.items, '[]'::json),
+                   'root_fen',         meta.root_fen,
+                   'user_color',       COALESCE(meta.user_color, 'white')
+               ) AS data
+        FROM all_names a
+        LEFT JOIN puzzle_agg p ON p.opening_name = a.opening_name
+        LEFT JOIN hm_agg h ON h.opening_name = a.opening_name
+        LEFT JOIN tree_agg t ON t.opening_name = a.opening_name
+        LEFT JOIN maia_agg m ON m.opening_name = a.opening_name
+        LEFT JOIN trainer_opening_meta meta ON meta.opening_name = a.opening_name
+        ORDER BY a.opening_name
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn get_catalog_progress(
+    pool: &PgPool,
+    user_id: i64,
+) -> Result<(Vec<(String, i64)>, Vec<(String, i64)>), sqlx::Error> {
+    let puzzle_progress = get_user_progress(pool, user_id).await?;
+    let hm_progress = get_hard_move_user_progress(pool, user_id).await?;
+    Ok((puzzle_progress, hm_progress))
+}

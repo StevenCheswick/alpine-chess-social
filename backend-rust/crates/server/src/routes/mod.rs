@@ -9,3 +9,5 @@ pub mod profile;
 pub mod puzzles;
 pub mod titled_players;
 pub mod trainer;
+pub mod trainer_maia;
+pub mod trainer_trees;

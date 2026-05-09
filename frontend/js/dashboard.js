@@ -72,6 +72,13 @@ async function initDashboard() {
   document.getElementById('dash-winrate').textContent = Math.round(s.winRate) + '%';
   document.getElementById('dash-wld').textContent = s.wins + 'W / ' + s.losses + 'L / ' + s.draws + 'D';
 
+  // ── Choke & Clutch ──
+  const cc = s.chokeClutch || {};
+  document.getElementById('dash-choke').textContent = (cc.chokeRate ?? 0) + '%';
+  document.getElementById('dash-choke-detail').textContent = (cc.choked || 0) + ' of ' + (cc.wasWinning || 0) + ' winning games lost';
+  document.getElementById('dash-clutch').textContent = (cc.clutchRate ?? 0) + '%';
+  document.getElementById('dash-clutch-detail').textContent = (cc.clutched || 0) + ' of ' + (cc.wasLosing || 0) + ' losing games won';
+
   // ── Move Quality Breakdown ──
   const mqOrder = ['book','best','excellent','good','inaccuracy','mistake','blunder'];
   const mqLabels = { book:'', best:'Best', excellent:'Exc', good:'Good', inaccuracy:'', mistake:'', blunder:'' };
@@ -203,4 +210,231 @@ async function initDashboard() {
       <span class="text-xs font-bold text-bad font-mono">-${b.avgCpLoss} cp</span>
     </div>`;
   }).join('');
+
+  // ── Tactics stats ──
+  try {
+    const pRes = await fetch(API_URL + '/api/puzzles/stats', { headers });
+    if (pRes.ok) {
+      const stats = await pRes.json();
+      const PG = 2 * Math.PI * 50;
+      const user = stats.user || {};
+      const opp = stats.opponent || {};
+      const userRate = Math.round(user.rate || 0);
+      const oppRate = Math.round(opp.rate || 0);
+      const edge = userRate - oppRate;
+
+      document.getElementById('dashPuzzleGauges').innerHTML = `
+        <div class="flex flex-col items-center">
+          <div class="relative w-28 h-28">
+            <svg class="gauge-ring w-full h-full" viewBox="0 0 120 120">
+              <circle class="gauge-track" cx="60" cy="60" r="50" fill="none" stroke-width="8" />
+              <circle class="gauge-fill" cx="60" cy="60" r="50" fill="none"
+                stroke="url(#gGlacierDashPuzzle)" stroke-width="8"
+                stroke-dasharray="${PG}" stroke-dashoffset="${PG * (1 - userRate / 100)}" />
+              <defs><linearGradient id="gGlacierDashPuzzle" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="var(--good)" /><stop offset="100%" stop-color="var(--accent-bright)" />
+              </linearGradient></defs>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span class="text-xl font-bold text-good font-mono">${userRate}%</span>
+            </div>
+          </div>
+          <p class="text-label text-secondary font-medium mt-2">Your Find Rate</p>
+          <p class="text-meta text-muted font-mono">${user.found || 0} of ${user.total || 0} found</p>
+        </div>
+        <div class="flex flex-col items-center">
+          <div class="relative w-28 h-28">
+            <svg class="gauge-ring w-full h-full" viewBox="0 0 120 120">
+              <circle class="gauge-track" cx="60" cy="60" r="50" fill="none" stroke-width="8" />
+              <circle class="gauge-fill" cx="60" cy="60" r="50" fill="none"
+                stroke="var(--text-dim)" stroke-width="8"
+                stroke-dasharray="${PG}" stroke-dashoffset="${PG * (1 - oppRate / 100)}" />
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span class="text-xl font-bold text-secondary font-mono">${oppRate}%</span>
+            </div>
+          </div>
+          <p class="text-label text-secondary font-medium mt-2">Opponent Find Rate</p>
+          <p class="text-meta text-muted font-mono">${opp.found || 0} of ${opp.total || 0} found</p>
+        </div>
+        <div class="flex flex-col items-center justify-center">
+          <div class="card-neutral p-5 w-full text-center">
+            <p class="text-3xl font-bold ${edge >= 0 ? 'text-good' : 'text-bad'} font-mono leading-none">${edge >= 0 ? '+' : ''}${edge}%</p>
+            <p class="text-label text-secondary font-medium mt-2">Tactical Edge</p>
+            <p class="text-meta ${edge >= 0 ? 'text-good-dim' : 'text-bad'} mt-1">${edge >= 0 ? 'You outperform your opponents' : 'Opponents have the edge'}</p>
+          </div>
+        </div>`;
+
+      const positions = stats.byPosition || [];
+      const posLabels = { winning: 'Winning Positions', equal: 'Equal Positions', losing: 'Losing Positions' };
+      document.getElementById('dashPuzzlePositions').innerHTML = positions.map(p => {
+        const uRate = Math.round(p.user?.rate || 0);
+        const oRate = Math.round(p.opponent?.rate || 0);
+        return `<div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-label text-white font-medium">${posLabels[p.position] || p.position}</span>
+            <span class="text-meta text-muted font-mono">${p.user?.total || 0} puzzles</span>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-meta text-muted w-8">You</span>
+            <div class="flex-1 h-3 rounded-full bg-slate-800/60 overflow-hidden"><div class="h-full rounded-full bg-good" style="width:${uRate}%"></div></div>
+            <span class="text-meta font-mono text-good w-8 text-right">${uRate}%</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-meta text-muted w-8">Opp</span>
+            <div class="flex-1 h-3 rounded-full bg-slate-800/60 overflow-hidden"><div class="h-full rounded-full bg-slate-600/80" style="width:${oRate}%"></div></div>
+            <span class="text-meta font-mono text-muted w-8 text-right">${oRate}%</span>
+          </div>
+        </div>`;
+      }).join('');
+
+      const themes = (stats.byTheme || []).filter(t => (t.user?.total || 0) >= 10 && isVisibleTag(t.theme));
+      const alphaSort = (a, b) => tagDisplayName(a.theme).localeCompare(tagDisplayName(b.theme));
+      const mateThemes = themes.filter(t => t.theme.toLowerCase().includes('mate')).sort(alphaSort);
+      const tacticThemes = themes.filter(t => !t.theme.toLowerCase().includes('mate')).sort(alphaSort);
+
+      function dashThemeTable(title, items) {
+        if (items.length === 0) return '';
+        const rows = items.slice(0, 8).map((t, i) => {
+          const uR = Math.round(t.user?.rate || 0);
+          const oR = Math.round(t.opponent?.rate || 0);
+          const edge = uR - oR;
+          const edgeColor = edge > 0 ? 'text-good' : edge < 0 ? 'text-bad' : 'text-muted';
+          return `<div class="grid grid-cols-[1fr_40px_40px_44px_40px] gap-x-2 px-1 py-1.5 text-secondary ${i % 2 === 1 ? 'bg-slate-800/20 rounded' : ''}">
+            <span>${tagDisplayName(t.theme)}</span>
+            <span class="text-right font-mono text-white">${uR}%</span>
+            <span class="text-right font-mono text-muted">${oR}%</span>
+            <span class="text-right font-mono ${edgeColor}">${edge > 0 ? '+' : ''}${edge}%</span>
+            <span class="text-right font-mono text-muted">${t.user?.total || 0}</span>
+          </div>`;
+        }).join('');
+
+        return `<div class="card p-4 fade-up">
+          <h2 class="text-xs font-semibold text-white mb-3">${title}</h2>
+          <div class="text-meta">
+            <div class="grid grid-cols-[1fr_40px_40px_44px_40px] gap-x-2 px-1 py-1.5 text-secondary uppercase tracking-wider font-medium border-b border-slate-800/50">
+              <span>Theme</span><span class="text-right">You</span><span class="text-right">Opp</span><span class="text-right">Edge</span><span class="text-right">Total</span>
+            </div>
+            ${rows}
+          </div>
+        </div>`;
+      }
+
+      document.getElementById('dashPuzzleThemeTables').innerHTML =
+        dashThemeTable('By Tactic', tacticThemes) + dashThemeTable('By Checkmate Pattern', mateThemes);
+    }
+  } catch (err) {
+    document.getElementById('dashPuzzleGauges').innerHTML = '<div class="col-span-3 text-center text-label text-muted py-4">No puzzle data yet.</div>';
+  }
+
+  // ── Endgame stats ──
+  try {
+    const eRes = await fetch(API_URL + '/api/games/endgame-stats', { headers });
+    if (eRes.ok) {
+      const data = await eRes.json();
+      const egStats = (data.typeStats || []).sort((a, b) => {
+        return (b.opponentAvgCpLoss - b.userAvgCpLoss) - (a.opponentAvgCpLoss - a.userAvgCpLoss);
+      });
+
+      const tbody = document.getElementById('dashEndgameTableBody');
+      if (egStats.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-label text-muted">No endgame data yet.</td></tr>';
+      } else {
+        tbody.innerHTML = egStats.map((s, i) => {
+          const edge = s.opponentAvgCpLoss - s.userAvgCpLoss;
+          const edgeColor = Math.abs(edge) < 0.5 ? 'text-muted' : edge > 0 ? 'text-good' : 'text-bad';
+          return `
+            <tr class="border-t border-slate-800/50 ${i % 2 === 1 ? 'bg-slate-800/20' : ''}">
+              <td class="py-2.5 pr-4 text-white font-medium">${s.type}</td>
+              <td class="py-2.5 px-3 text-right font-mono text-white">${s.userAvgCpLoss.toFixed(1)}</td>
+              <td class="py-2.5 px-3 text-right font-mono text-muted">${s.opponentAvgCpLoss.toFixed(1)}</td>
+              <td class="py-2.5 px-3 text-right font-mono font-semibold ${edgeColor}">${edge > 0 ? '+' : ''}${edge.toFixed(1)}</td>
+              <td class="py-2.5 pl-3 text-right font-mono text-muted">${s.games}</td>
+            </tr>`;
+        }).join('');
+      }
+    }
+  } catch (err) {
+    document.getElementById('dashEndgameTableBody').innerHTML = '<tr><td colspan="5" class="text-center py-6 text-label text-muted">No endgame data yet.</td></tr>';
+  }
+
+  // ── Smoothest Wins ──
+  const sw = s.smoothestWins || [];
+  const swEl = document.getElementById('dashSmoothestWins');
+  if (sw.length === 0) {
+    swEl.innerHTML = '<div class="text-center text-label text-muted py-6">No qualifying games yet.</div>';
+  } else {
+    swEl.innerHTML = sw.map((g, i) => {
+      const scoreColor = g.maxDelta <= 20 ? 'text-good' : g.maxDelta <= 40 ? 'text-accent' : 'text-secondary';
+      const srcBadge = g.source === 'chess_com'
+        ? '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-good/20 text-good shrink-0">C</span>'
+        : '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-white/20 text-white shrink-0">L</span>';
+      return `
+      <div class="game-row flex items-center justify-between px-1.5 py-3 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="text-label text-muted font-mono w-3 text-right shrink-0">${i+1}</span>
+          ${srcBadge}
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
+              ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
+            </div>
+            <div class="flex items-center gap-1.5 text-meta text-muted mt-0.5">
+              <span>as ${g.userColor}</span>
+              <span class="text-slate-700">&middot;</span>
+              <span>${g.date}</span>
+              <span class="text-slate-700">&middot;</span>
+              <span>+300 at move ${g.reachMove}</span>
+              <span class="text-slate-700">&middot;</span>
+              <span>${g.inaccuracies === 0 ? 'Perfect' : g.inaccuracies + ' inacc'}</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-col items-end shrink-0">
+          <span class="text-lg font-bold ${scoreColor} font-mono">${g.maxDelta}cp</span>
+          <span class="text-meta text-muted">max delta</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Roller Coasters ──
+  const rc = s.rollerCoasters || [];
+  const rcEl = document.getElementById('dashRollerCoasters');
+  if (rc.length === 0) {
+    rcEl.innerHTML = '<div class="text-center text-label text-muted py-6">No qualifying games yet.</div>';
+  } else {
+    rcEl.innerHTML = rc.map((g, i) => {
+      const swingColor = g.swings >= 6 ? 'text-bad' : g.swings >= 4 ? 'text-warning' : 'text-accent';
+      const resultLabel = g.result === 'W' ? 'Won' : g.result === 'L' ? 'Lost' : 'Draw';
+      const resultColor = g.result === 'W' ? 'text-good' : g.result === 'L' ? 'text-bad' : 'text-muted';
+      const srcBadge = g.source === 'chess_com'
+        ? '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-good/20 text-good shrink-0">C</span>'
+        : '<span class="w-5 h-5 rounded text-meta font-bold flex items-center justify-center bg-white/20 text-white shrink-0">L</span>';
+      return `
+      <div class="game-row flex items-center justify-between px-1.5 py-3 rounded-lg min-w-0" onclick="openGame(${g.gameId}, 'dashboard')">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="text-label text-muted font-mono w-3 text-right shrink-0">${i+1}</span>
+          ${srcBadge}
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
+              ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
+            </div>
+            <div class="flex items-center gap-1.5 text-meta text-muted mt-0.5">
+              <span class="${resultColor}">${resultLabel}</span>
+              <span class="text-slate-700">&middot;</span>
+              <span>${g.date}</span>
+              <span class="text-slate-700">&middot;</span>
+              <span>${g.totalMoves} moves</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex flex-col items-end shrink-0">
+          <span class="text-lg font-bold ${swingColor} font-mono">${g.swings}</span>
+          <span class="text-meta text-muted">swings</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
 }

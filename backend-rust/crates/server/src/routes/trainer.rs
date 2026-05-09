@@ -25,6 +25,40 @@ pub fn check_admin_secret(headers: &HeaderMap, config: &Config) -> Result<(), Ap
     Ok(())
 }
 
+/// GET /api/trainer/catalog
+/// Unified view: all trainer types grouped by opening, with per-user progress.
+pub async fn catalog(
+    Extension(pool): Extension<PgPool>,
+    user: AuthUser,
+) -> Result<Json<JsonValue>, AppError> {
+    let catalog = trainer::get_catalog(&pool).await?;
+    let (puzzle_progress, hm_progress) = trainer::get_catalog_progress(&pool, user.id).await?;
+
+    let puzzle_map: HashMap<String, i64> = puzzle_progress.into_iter().collect();
+    let hm_map: HashMap<String, i64> = hm_progress.into_iter().collect();
+
+    let result: Vec<JsonValue> = catalog
+        .into_iter()
+        .map(|(name, data)| {
+            let puzzle_completed = puzzle_map.get(&name).copied().unwrap_or(0);
+            let hm_completed = hm_map.get(&name).copied().unwrap_or(0);
+            serde_json::json!({
+                "opening_name": name,
+                "puzzle_count": data["puzzle_count"],
+                "puzzle_completed": puzzle_completed,
+                "hard_move_count": data["hard_move_count"],
+                "hard_move_completed": hm_completed,
+                "trees": data["trees"],
+                "maia_positions": data["maia_positions"],
+                "root_fen": data["root_fen"],
+                "user_color": data["user_color"],
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!(result)))
+}
+
 /// GET /api/trainer/openings
 /// List available openings with puzzle counts + per-user progress.
 pub async fn list_openings(

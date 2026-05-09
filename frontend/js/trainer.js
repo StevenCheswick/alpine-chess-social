@@ -46,6 +46,8 @@ function getFinalFen(moves) {
   } catch { return null; }
 }
 
+let _trainerCatalog = [];
+
 async function initTrainer() {
   window._trainerInit = true;
   const token = localStorage.getItem('alpine_token');
@@ -53,58 +55,90 @@ async function initTrainer() {
 
   const grid = document.getElementById('trainerGrid');
 
-  // Fetch both opening types in parallel
-  const [puzzleRes, hmRes] = await Promise.allSettled([
-    fetch(API_URL + '/api/trainer/openings', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : []),
-    fetch(API_URL + '/api/trainer/hard-moves/openings', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : []),
-  ]);
+  const res = await fetch(API_URL + '/api/trainer/catalog', { headers: { 'Authorization': 'Bearer ' + token } });
+  if (!res.ok) { grid.innerHTML = '<div class="col-span-3 text-center text-label text-muted py-8">Failed to load trainer.</div>'; return; }
+  const catalog = await res.json();
+  _trainerCatalog = catalog;
 
-  const puzzleOpenings = puzzleRes.status === 'fulfilled' ? (puzzleRes.value || []) : [];
-  const hardMoveOpenings = hmRes.status === 'fulfilled' ? (hmRes.value || []) : [];
-
-  if (puzzleOpenings.length === 0 && hardMoveOpenings.length === 0) {
+  if (catalog.length === 0) {
     grid.innerHTML = '<div class="col-span-3 text-center text-label text-muted py-8">No trainer openings available yet.</div>';
     return;
   }
 
-  function trainerCard(o, type) {
-    const count = type === 'puzzle' ? o.puzzle_count : o.count;
-    const pct = count > 0 ? Math.round((o.completed_count / count) * 100) : 0;
-    const done = pct === 100;
-    const boardHtml = o.sample_fen ? fenToMiniBoard(o.sample_fen) : '<div class="aspect-square bg-slate-900/50 rounded"></div>';
-    const isPuzzle = type === 'puzzle';
-    const onclick = isPuzzle
-      ? `openTrainerOpening('${o.opening_name.replace(/'/g, "\\'")}')`
-      : `openHardMoveOpening('${o.opening_name.replace(/'/g, "\\'")}')`;
-    const hoverBorder = isPuzzle ? 'hover:border-sky-400/40' : 'hover:border-amber-400/40';
-    const badge = isPuzzle
-      ? '<span class="inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 mb-1.5">Punish Mistakes</span>'
-      : '<span class="inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 mb-1.5">Find the Move</span>';
-    const barColor = done ? 'var(--good)' : (isPuzzle ? 'var(--accent)' : '#f59e0b');
-
+  grid.innerHTML = catalog.map(o => {
+    const flip = o.user_color === 'black';
+    const boardHtml = o.root_fen ? fenToMiniBoard(o.root_fen, flip) : '<div class="aspect-square bg-slate-900/50 rounded"></div>';
+    const onclick = `openCatalogOpening('${o.opening_name.replace(/'/g, "\\'")}')`;
     return `
-    <div class="card p-0 cursor-pointer transition-all ${hoverBorder} group" style="border-radius:10px" onclick="${onclick}">
+    <div class="card p-0 cursor-pointer transition-all hover:border-sky-400/40 group" style="border-radius:10px" onclick="${onclick}">
       ${boardHtml}
-      <div class="p-3">
-        <div class="flex items-center gap-1.5 mb-0.5">
-          <span class="text-body text-white font-medium group-hover:text-white transition-colors">${o.opening_name}</span>
-          ${done ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--good)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg>' : ''}
-        </div>
-        ${badge}
-        <div class="flex items-center justify-between mb-1.5">
-          <span class="text-meta text-muted">${o.completed_count}/${count} completed</span>
-          <span class="text-meta font-mono ${done ? 'text-good' : 'text-muted'}">${pct}%</span>
-        </div>
-        <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
-          <div class="h-full rounded-full transition-all" style="width:${pct}%; background: ${barColor}"></div>
-        </div>
+      <div class="px-3 py-2">
+        <span class="text-body text-white font-medium group-hover:text-white transition-colors">${o.opening_name}</span>
       </div>
     </div>`;
+  }).join('');
+}
+
+let _catalogCurrentOpening = null;
+
+function openCatalogOpening(name) {
+  const o = _trainerCatalog.find(c => c.opening_name === name);
+  if (!o) return;
+  _catalogCurrentOpening = o;
+
+  if (o.maia_positions.length > 0 && typeof _maiaPositions !== 'undefined') {
+    _maiaPositions = o.maia_positions;
   }
 
-  grid.innerHTML =
-    puzzleOpenings.map(o => trainerCard(o, 'puzzle')).join('') +
-    hardMoveOpenings.map(o => trainerCard(o, 'hard-move')).join('');
+  if (o.trees.length > 0) {
+    openTreeViewer(o.trees[0].id);
+  } else if (o.puzzle_count > 0) {
+    openTrainerOpening(name);
+  } else if (o.hard_move_count > 0) {
+    openHardMoveOpening(name);
+  }
+}
+
+function injectCatalogTabs() {
+  const o = _catalogCurrentOpening;
+  if (!o) return;
+  const tabsEl = document.getElementById('treeTabs');
+  if (!tabsEl) return;
+
+  document.querySelectorAll('.catalog-extra-tab').forEach(el => el.remove());
+
+  if (o.puzzle_count > 0) {
+    tabsEl.insertAdjacentHTML('beforeend',
+      `<button data-tab="punish" class="catalog-extra-tab tree-tab px-3 py-1 text-xs rounded border border-slate-700 text-secondary hover:text-white"
+        onclick="switchTreeTab('punish')">Punish</button>`);
+  }
+  if (o.hard_move_count > 0) {
+    tabsEl.insertAdjacentHTML('beforeend',
+      `<button data-tab="moves" class="catalog-extra-tab tree-tab px-3 py-1 text-xs rounded border border-slate-700 text-secondary hover:text-white"
+        onclick="switchTreeTab('moves')">Moves</button>`);
+  }
+  if (o.maia_positions.length > 0) {
+    tabsEl.insertAdjacentHTML('beforeend',
+      `<button data-tab="maia" class="catalog-extra-tab tree-tab px-3 py-1 text-xs rounded border border-slate-700 text-secondary hover:text-white"
+        onclick="switchTreeTab('maia')">Maia</button>`);
+  }
+}
+
+function cleanupTrainerDrill() {
+  clearTimeout(_trainerAnimTimer);
+  clearTimeout(_trainerRestartTimer);
+  clearTimeout(_hmAnimTimer);
+  clearTimeout(_hmRestartTimer);
+  ++_trainerGen;
+  ++_hmGen;
+  _trainerPhase = 'idle';
+  _hmPhase = 'idle';
+  _trainerIsHardMoveMode = false;
+}
+
+function backToTrainerGrid() {
+  document.getElementById('trainerOpeningView').style.display = 'none';
+  document.getElementById('trainerSelectView').style.display = 'block';
 }
 
 // ══════════════════════════════════════════
@@ -301,10 +335,6 @@ async function openTrainerOpening(name) {
   const token = localStorage.getItem('alpine_token');
   if (!token || !Chess) return;
 
-  document.getElementById('trainerSelectView').style.display = 'none';
-  document.getElementById('trainerDrillView').style.display = '';
-  setTrainerStatus('Loading puzzles...', '', 'info');
-
   try {
     const res = await fetch(API_URL + '/api/trainer/puzzles?opening=' + encodeURIComponent(name), {
       headers: { 'Authorization': 'Bearer ' + token },
@@ -332,19 +362,8 @@ async function openTrainerOpening(name) {
 }
 
 function exitTrainerDrill() {
-  document.getElementById('trainerDrillView').style.display = 'none';
-  document.getElementById('trainerSelectView').style.display = '';
-  clearTimeout(_trainerAnimTimer);
-  clearTimeout(_trainerRestartTimer);
-  clearTimeout(_hmAnimTimer);
-  clearTimeout(_hmRestartTimer);
-  ++_trainerGen;
-  ++_hmGen;
-  _trainerPhase = 'idle';
-  _hmPhase = 'idle';
-  _trainerIsHardMoveMode = false;
-  window._trainerInit = false;
-  initTrainer();
+  cleanupTrainerDrill();
+  switchTreeTab('tree');
 }
 
 function updateTrainerProgress() {
@@ -862,10 +881,6 @@ async function openHardMoveOpening(name) {
   _trainerIsHardMoveMode = true;
   const token = localStorage.getItem('alpine_token');
   if (!token || !Chess) return;
-
-  document.getElementById('trainerSelectView').style.display = 'none';
-  document.getElementById('trainerDrillView').style.display = '';
-  setHmStatus('Loading...', '', 'info');
 
   try {
     const res = await fetch(API_URL + '/api/trainer/hard-moves?opening=' + encodeURIComponent(name), {

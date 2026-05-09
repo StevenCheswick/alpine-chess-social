@@ -35,7 +35,7 @@ STOCKFISH_PATH = "../backend-rust/stockfish.exe"
 MAIA_DIR = Path("C:/Users/steve/OneDrive/Desktop/maia")
 FIND_MISTAKES_BIN = Path(__file__).parent.parent / "lila-openingexplorer" / "target" / "release" / "find-mistakes.exe"
 EXPLORER_DB = Path(__file__).parent.parent / "lila-openingexplorer" / "_db"
-MAIA_RATING = 1900
+MAIA_RATING = 1800
 PREFILTER_NODES = 30_000
 VERIFY_NODES = 600_000
 
@@ -135,10 +135,12 @@ async def step3_maia_confirm(candidates, maia):
 # ── Step 4: SF Pre-filter ────────────────────────────────────────────────────
 
 
-async def step4_sf_prefilter(candidates, sf, min_loss, max_loss):
-    """SF at 30K nodes: confirm loss is in range."""
-    print(f"Step 4: SF pre-filter at {PREFILTER_NODES} nodes ({len(candidates)} candidates)")
+async def step4_sf_prefilter(candidates, sf, maia, min_loss, max_loss, max_maia=None):
+    """SF at 30K nodes: confirm loss is in range. If max_maia set, also check
+    Maia probability for the best move and reject early if too high."""
+    print(f"Step 4: SF pre-filter at {PREFILTER_NODES} nodes ({len(candidates)} candidates{f', max_maia={max_maia}%' if max_maia else ''})")
     confirmed = []
+    maia_rejected = 0
 
     for i, m in enumerate(candidates):
         board = chess.Board(m["fen"])
@@ -158,16 +160,28 @@ async def step4_sf_prefilter(candidates, sf, min_loss, max_loss):
         board.pop()
 
         sf_loss = sf_best_eval - sf_mistake_eval
-        if sf_loss >= min_loss and sf_loss <= max_loss:
-            m["prefilter_best_move"] = sf_best_move
-            m["prefilter_best_eval"] = sf_best_eval
-            m["prefilter_loss"] = sf_loss
-            confirmed.append(m)
+        if sf_loss < min_loss or sf_loss > max_loss:
+            continue
+
+        # Early Maia check on best move — skip expensive 600K if best move is too obvious
+        if max_maia is not None:
+            maia_result = await maia.analyze_fen(m["fen"], top_n=10)
+            maia_moves = {mv["san"]: mv["probability"] for mv in maia_result["moves"]}
+            best_pct = maia_moves.get(sf_best_move, 0.0)
+            if best_pct > max_maia:
+                maia_rejected += 1
+                continue
+            m["prefilter_best_maia_pct"] = best_pct
+
+        m["prefilter_best_move"] = sf_best_move
+        m["prefilter_best_eval"] = sf_best_eval
+        m["prefilter_loss"] = sf_loss
+        confirmed.append(m)
 
         if (i + 1) % 100 == 0:
             print(f"  [{i+1}/{len(candidates)}] confirmed={len(confirmed)}")
 
-    print(f"  -> {len(confirmed)} confirmed")
+    print(f"  -> {len(confirmed)} confirmed{f' ({maia_rejected} rejected by Maia)' if maia_rejected else ''}")
     return confirmed
 
 
@@ -338,8 +352,8 @@ async def run(args):
             print("No candidates survived Maia. Trying next batch...")
             continue
 
-        # Step 4: SF pre-filter
-        candidates = await step4_sf_prefilter(candidates, sf, args.min_loss, args.max_loss)
+        # Step 4: SF pre-filter + early Maia check
+        candidates = await step4_sf_prefilter(candidates, sf, maia, args.min_loss, args.max_loss, max_maia=args.max_maia)
         if not candidates:
             print("No candidates survived SF pre-filter. Trying next batch...")
             continue
@@ -359,12 +373,7 @@ async def run(args):
     await sf.quit()
     await maia.close()
 
-    # Final: filter by max_maia, sort by games, take top N
-    if args.max_maia is not None:
-        before = len(results)
-        results = [r for r in results if r["best_maia_pct"] <= args.max_maia]
-        print(f"\nMaia filter: {len(results)} with best_maia_pct <= {args.max_maia}% (dropped {before - len(results)})")
-
+    # Sort by games, take top N (Maia filter already applied in step 4)
     results.sort(key=lambda x: -x["games"])
     results = results[:args.count]
 

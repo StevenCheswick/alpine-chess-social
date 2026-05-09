@@ -240,6 +240,10 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
     let total_games = stats.len() as f64;
     let win_rate = if total_games > 0.0 { (wins as f64 / total_games * 1000.0).round() / 10.0 } else { 0.0 };
 
+    let choke_clutch = analysis::get_user_choke_clutch_stats(pool, user_id).await?;
+    let smoothest_wins = analysis::get_smoothest_wins(pool, user_id, 5).await?;
+    let roller_coasters = analysis::get_roller_coaster_games(pool, user_id, 5).await?;
+
     Ok(serde_json::json!({
         "totalAnalyzedGames": stats.len(),
         "winRate": win_rate,
@@ -255,6 +259,9 @@ async fn build_game_stats(pool: &PgPool, user_id: i64) -> Result<JsonValue, AppE
         "leastAccurateGames": least_accurate,
         "openingBlunders": opening_blunders,
         "cleanestLines": cleanest_lines,
+        "chokeClutch": choke_clutch,
+        "smoothestWins": smoothest_wins,
+        "rollerCoasters": roller_coasters,
     }))
 }
 

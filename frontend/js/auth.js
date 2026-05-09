@@ -6,7 +6,7 @@ function showApp() {
   document.getElementById('app-shell').style.display = 'flex';
   document.getElementById('mobile-nav').style.display = '';
   let page = location.pathname.slice(1) || 'dashboard';
-  if (page === 'tactics') page = 'puzzles';
+  if (page === 'tactics' || page === 'puzzles' || page === 'endgames') page = 'dashboard';
   switchPage(page, true);
 }
 
@@ -89,6 +89,6 @@ window.registerUser = async function(username, password) {
 // Navigate to path on initial load (must be after all variable declarations)
 (function() {
   let page = location.pathname.slice(1) || 'dashboard';
-  if (page === 'tactics') page = 'puzzles';
+  if (page === 'tactics' || page === 'puzzles' || page === 'endgames') page = 'dashboard';
   if (document.getElementById('page-' + page)) switchPage(page, true);
 })();

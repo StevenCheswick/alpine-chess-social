@@ -1,5 +1,9 @@
 # Alpine Chess - Development Guide
 
+## ⚠️ CRITICAL: Lichess Explorer RocksDB
+
+**NEVER delete, overwrite, or run destructive operations near `lila-openingexplorer/_db`.** This database takes MULTIPLE DAYS to rebuild. No `rm`, no `--clean`, no `cargo clean` in that directory, no commands that could touch `_db`. If a build or command fails, investigate — do not nuke anything. Ask the user before running ANY unfamiliar command in `lila-openingexplorer/`.
+
 ## Starting the Full Stack
 
 Before doing any development, testing, or debugging, **all three services must be running**:
@@ -37,6 +41,10 @@ The Lichess puzzler source is cloned at `C:\Users\steve\OneDrive\Desktop\lichess
 - `tagger/model.py` — data model (our `analysis-worker/src/puzzle/mod.rs`)
 - `tagger/util.py` — utilities (our `analysis-worker/src/board_utils.rs`)
 - `tagger/zugzwang.py` — zugzwang detection (our `analysis-worker/src/tactics/zugzwang.rs`)
+
+## Port Assignments
+
+See `docs/PORTS.md` for the full list. Key ports: **5432** Postgres, **5174** frontend, **8000** backend, **9002** explorer API, **9080** explorer viewer. Do not use these ports for other services.
 
 ## Stale Process Cleanup
 

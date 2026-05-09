@@ -23,7 +23,7 @@ FIND_MISTAKES_BIN = Path(__file__).parent.parent / "lila-openingexplorer" / "tar
 EXPLORER_DB = Path(__file__).parent.parent / "lila-openingexplorer" / "_db"
 MIN_GAMES = 2
 SF_NODES = 200_000
-MAIA_RATING = 1900
+MAIA_RATING = 1800
 MAIA_OPP_NODES = 100
 MAIA_MIN_PROB = 20.0
 SOLVER_MAIA_MIN = 5.0
@@ -36,7 +36,7 @@ OPP_FLAT = 50
 
 def find_mistakes(play, side, threshold, eco="", target=100):
     """Find common mistakes by shelling out to the Rust find-mistakes binary."""
-    stop_at = target * 3
+    stop_at = target * 10
     print(f"Phase 1: Finding mistakes via Rust binary (RocksDB direct)")
     print(f"  Binary: {FIND_MISTAKES_BIN}")
     print(f"  DB: {EXPLORER_DB}")
@@ -72,7 +72,7 @@ def find_mistakes(play, side, threshold, eco="", target=100):
 async def maia_filter(mistakes, maia, target=None):
     """Drop mistakes where Maia gives 0% to the mistake move.
     If target is set, stop early once we have enough candidates (with buffer)."""
-    stop_at = int(target * 1.5) + 10 if target else None
+    stop_at = int(target * 3) + 10 if target else None
     print(f"\nPhase 2: Maia filter ({len(mistakes)} candidates{f', need ~{stop_at}' if stop_at else ''})")
     kept = []
     dropped = 0

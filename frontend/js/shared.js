@@ -67,10 +67,19 @@ function resizeBoards() {
     const inner = document.getElementById('trainerBoard');
     if (inner && w > 0) { inner.style.width = w + 'px'; inner.style.height = w + 'px'; }
   }
+  // Resize maia board
+  const mbWrap = document.getElementById('maiaBoardWrap');
+  if (mbWrap) {
+    const w = mbWrap.clientWidth;
+    const inner = document.getElementById('maiaBoard');
+    if (inner && w > 0) { inner.style.width = w + 'px'; inner.style.height = w + 'px'; }
+  }
   // Redraw active Chessground instances
   if (_cgInstance) _cgInstance.redrawAll();
   if (_trainerCgInstance) _trainerCgInstance.redrawAll();
-  if (_solveCg) _solveCg.redrawAll();
+  if (typeof _solveCg !== 'undefined' && _solveCg) _solveCg.redrawAll();
+  if (typeof _treeCgInstance !== 'undefined' && _treeCgInstance) _treeCgInstance.redrawAll();
+  if (typeof _maiaCg !== 'undefined' && _maiaCg) _maiaCg.redrawAll();
 }
 let _resizeTimer = null;
 window.addEventListener('resize', () => {
@@ -79,26 +88,36 @@ window.addEventListener('resize', () => {
 });
 
 // ══════════════════════════════════════════
+// DASHBOARD TABS
+// ══════════════════════════════════════════
+function switchDashTab(tab) {
+  document.querySelectorAll('.dash-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.dash-tab-panel').forEach(p => {
+    p.style.display = p.id === 'dashTab-' + tab ? '' : 'none';
+  });
+  // Re-trigger fade-up animations in the newly visible panel
+  const panel = document.getElementById('dashTab-' + tab);
+  if (panel) {
+    panel.querySelectorAll('.fade-up').forEach(el => {
+      el.style.animation = 'none';
+      el.offsetHeight;
+      el.style.animation = '';
+    });
+  }
+}
+
+// ══════════════════════════════════════════
 // PAGE SWITCHING
 // ══════════════════════════════════════════
 function switchPage(name, skipHash) {
-  // Clean up puzzle solve board if leaving
-  if (_solveCg) { _solveCg.destroy(); _solveCg = null; }
   // Kill trainer timers when navigating away
-  if (name !== 'trainer' && typeof _trainerGen !== 'undefined') {
-    clearTimeout(_trainerAnimTimer);
-    clearTimeout(_trainerRestartTimer);
-    ++_trainerGen;
-    _trainerPhase = 'idle';
-    const drillView = document.getElementById('trainerDrillView');
-    if (drillView) drillView.style.display = 'none';
-    if (typeof _hmGen !== 'undefined') {
-      clearTimeout(_hmAnimTimer);
-      clearTimeout(_hmRestartTimer);
-      ++_hmGen;
-      _hmPhase = 'idle';
-      _trainerIsHardMoveMode = false;
-    }
+  if (name !== 'trainer') {
+    if (typeof cleanupTrainerDrill === 'function') cleanupTrainerDrill();
+    if (typeof cleanupMaiaDrill === 'function') cleanupMaiaDrill();
+    const treeView = document.getElementById('treeViewerView');
+    if (treeView) treeView.style.display = 'none';
+    const selectView = document.getElementById('trainerSelectView');
+    if (selectView) selectView.style.display = '';
   }
 
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -108,7 +127,7 @@ function switchPage(name, skipHash) {
   document.querySelector(`.sidebar-item[data-page="${name}"]`)?.classList.add('active');
   document.querySelector(`.mobile-nav-item[data-page="${name}"]`)?.classList.add('active');
 
-  const urlName = name === 'dashboard' ? '' : name === 'puzzles' ? 'tactics' : name;
+  const urlName = name === 'dashboard' ? '' : name;
   if (!skipHash) history.pushState(null, '', '/' + urlName);
 
   // Re-trigger animations
@@ -120,8 +139,6 @@ function switchPage(name, skipHash) {
 
   // Init charts/board on first visit
   if (name === 'dashboard' && !window._dashInit) initDashboard();
-  if (name === 'puzzles' && !window._puzzlesInit) initPuzzles();
-  if (name === 'endgames' && !window._endgamesInit) initEndgames();
   if (name === 'trainer' && !window._trainerInit) initTrainer();
   if (name === 'games' && !window._gamesInit) initGames();
   if (name === 'analysis' && !window._analysisInit) initAnalysis();
@@ -134,7 +151,7 @@ function switchPage(name, skipHash) {
 // Handle browser back/forward
 window.addEventListener('popstate', () => {
   let page = location.pathname.slice(1) || 'dashboard';
-  if (page === 'tactics') page = 'puzzles';
+  if (page === 'tactics' || page === 'puzzles' || page === 'endgames') page = 'dashboard';
   if (document.getElementById('page-' + page)) switchPage(page, true);
 });
 

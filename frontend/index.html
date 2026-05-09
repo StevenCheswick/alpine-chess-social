@@ -261,6 +261,27 @@ tailwind.config = {
   .mobile-nav-item.active { color: var(--accent); }
   .mobile-nav-item:hover { color: var(--text-muted); }
 
+  /* ─── Dashboard Tabs ─── */
+  .dash-tab {
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: var(--font-body);
+    font-weight: 600;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.02em;
+  }
+  .dash-tab:hover { color: var(--text-secondary); background: rgba(51,65,85,0.2); border-color: rgba(51,65,85,0.5); }
+  .dash-tab.active {
+    color: var(--accent);
+    background: rgba(125,211,252,0.1);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(125,211,252,0.15);
+  }
+
   /* ─── Game rows ─── */
   .game-row {
     transition: background 0.15s ease;
@@ -375,57 +396,113 @@ tailwind.config = {
   .mini-board .sq-piece { display: flex; align-items: center; justify-content: center; }
   .mini-board .sq-piece img { width: 85%; height: 85%; }
 
-  /* ─── Trainer Drill View (responsive) ─── */
-  #trainerDrillView .drill-inner {
-    height: 100vh;
-    height: 100dvh;
+  /* ─── Tree tabs ─── */
+  .tree-tab.active {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.5);
+    color: #6ee7b7;
+  }
+
+  /* ─── Tree Viewer (in-page) ─── */
+  #treeViewerView .drill-inner {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 12px 16px;
+    padding: 0;
   }
-  #trainerDrillView .drill-panel {
+  /* Escape main's p-4 on mobile so the tree viewer goes edge-to-edge */
+  @media (max-width: 767px) {
+    #treeViewerView {
+      margin-left: -16px;
+      margin-right: -16px;
+    }
+  }
+  #treeViewerView .drill-panel { width: 100%; max-width: min(560px, 95vw); }
+
+  /* Mobile-first: stacked column (header, board, content) */
+  #treeViewerView .tree-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
     width: 100%;
-    max-width: min(480px, 90vw);
+    justify-items: center;
   }
-  #trainerDrillView #trainerBoardWrap {
-    width: min(480px, 90vw, calc(100dvh - 220px));
+  #treeViewerView .tree-header,
+  #treeViewerView .tree-content,
+  #treeViewerView .tree-board {
+    width: 100%;
+    max-width: min(560px, 95vw);
+  }
+  #treeViewerView #treeBoardWrap,
+  #treeViewerView #trainerBoardWrap,
+  #treeViewerView #maiaBoardWrap {
+    width: min(480px, 90vw, calc(100dvh - 320px));
     aspect-ratio: 1 / 1;
   }
   @media (max-width: 767px) {
-    #trainerDrillView .drill-inner { padding: 6px 0; }
-    #trainerDrillView .drill-panel {
-      max-width: 100%;
-      padding-left: 6px;
-      padding-right: 6px;
-    }
-    #trainerDrillView #trainerBoardWrap {
-      width: min(100%, calc(100dvh - 260px));
+    #treeViewerView #treeBoardWrap,
+    #treeViewerView #trainerBoardWrap,
+    #treeViewerView #maiaBoardWrap {
+      width: min(95vw, calc(100dvh - 360px));
       border-radius: 0;
     }
-    #trainerDrillView .drill-actions {
+  }
+
+  /* Make the tab-content card a flex column so inner list can scroll */
+  #treeViewerView .tree-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #treeViewerView #treeTabContent-tree,
+  #treeViewerView #treeTabContent-learn,
+  #treeViewerView #treeTabContent-train,
+  #treeViewerView #treeTabContent-drill,
+  #treeViewerView #treeTabContent-maia {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Desktop: board on the left, header top-right, continuations bottom-right */
+  @media (min-width: 768px) {
+    #treeViewerView .tree-layout {
+      grid-template-columns: auto minmax(320px, 480px);
+      grid-template-rows: auto 1fr;
+      grid-template-areas:
+        "board header"
+        "board content";
+      justify-items: stretch;
+      max-width: 1100px;
+      gap: 16px;
+      /* Pin grid height to the board's height so the 1fr row is bounded
+         and the content card can overflow-scroll instead of growing. */
+      height: min(520px, calc(100dvh - 160px));
+    }
+    #treeViewerView .tree-board   { grid-area: board; align-self: start; }
+    #treeViewerView .tree-header  { grid-area: header; max-width: none; align-self: start; }
+    #treeViewerView .tree-content { grid-area: content; max-width: none; align-self: stretch; }
+    #treeViewerView #treeBoardWrap,
+    #treeViewerView #trainerBoardWrap,
+    #treeViewerView #maiaBoardWrap {
+      width: min(520px, calc(100dvh - 160px));
+    }
+    /* Continuations list scrolls inside the card (which is capped to board height via grid) */
+    #treeViewerView #treeContinuations {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+    }
+  }
+
+  /* Drill actions wrap on mobile */
+  @media (max-width: 767px) {
+    #treeViewerView .drill-actions {
       flex-wrap: wrap;
       gap: 6px;
       row-gap: 4px;
     }
-    /* Fixed card heights so the board doesn't move as text/buttons change */
-    #trainerDrillView .card.drill-panel.mb-2 {
-      height: 6rem;
-      overflow: hidden;
-    }
-    #trainerDrillView .card.drill-panel.mt-2 {
-      height: 6.5rem;
-      overflow: hidden;
-    }
-    /* Flip on mobile: action card above board, status card below */
-    #trainerDrillView .drill-inner { gap: 8px; }
-    #trainerDrillView .drill-inner .card.drill-panel {
-      margin-top: 0;
-      margin-bottom: 0;
-    }
-    #trainerDrillView .card.drill-panel.mt-2 { order: 2; }
-    #trainerDrillView .drill-inner > .flex-1 { order: 3; }
-    #trainerDrillView .card.drill-panel.mb-2 { order: 4; }
   }
 </style>
 </head>
@@ -471,7 +548,7 @@ tailwind.config = {
 <!-- ══════════════════════════════════════════ -->
 <!-- LAYOUT: Sidebar + Content                 -->
 <!-- ══════════════════════════════════════════ -->
-<div id="app-shell" class="flex min-h-screen overflow-x-hidden" style="display:none">
+<div id="app-shell" class="flex min-h-screen" style="display:none">
 
   <!-- ─── Sidebar ─── -->
   <aside class="w-56 border-r border-slate-800/50 p-4 hidden lg:flex flex-col gap-1 shrink-0 sticky top-0 h-screen" style="z-index:45">
@@ -486,14 +563,6 @@ tailwind.config = {
     <div onclick="switchPage('dashboard')" class="sidebar-item active" data-page="dashboard">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Dashboard
-    </div>
-    <div onclick="switchPage('puzzles')" class="sidebar-item" data-page="puzzles">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      Tactics
-    </div>
-    <div onclick="switchPage('endgames')" class="sidebar-item" data-page="endgames">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-      Endgames
     </div>
     <div onclick="switchPage('trainer')" class="sidebar-item" data-page="trainer">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19h16M4 15h16M4 11h8"/></svg>
@@ -511,7 +580,7 @@ tailwind.config = {
   </aside>
 
   <!-- ─── Main Content ─── -->
-  <main class="flex-1 p-4 lg:p-6 pb-20 lg:pb-6 max-w-[1100px] mx-auto">
+  <main class="flex-1 p-4 lg:p-6 pb-20 lg:pb-6 max-w-[1100px] mx-auto overflow-x-hidden min-w-0">
 
 <!-- ╔══════════════════════════════════════════╗ -->
 <!-- ║  PAGE 1: DASHBOARD                       ║ -->
@@ -536,7 +605,8 @@ tailwind.config = {
   </div>
 
   <div id="dashContent">
-  <!-- Hero metrics -->
+
+  <!-- Hero metrics (always visible) -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 fade-up" style="animation-delay: 0.05s">
 
     <!-- Accuracy gauge -->
@@ -592,6 +662,17 @@ tailwind.config = {
 
   </div>
 
+  <!-- Tab bar -->
+  <div class="flex items-center gap-1 mb-4 fade-up" style="animation-delay: 0.08s">
+    <button onclick="switchDashTab('overview')" class="dash-tab active" data-tab="overview">Overview</button>
+    <button onclick="switchDashTab('tactics')" class="dash-tab" data-tab="tactics">Tactics</button>
+    <button onclick="switchDashTab('endgames')" class="dash-tab" data-tab="endgames">Endgames</button>
+    <button onclick="switchDashTab('games')" class="dash-tab" data-tab="games">Games</button>
+  </div>
+
+  <!-- ═══ TAB: Overview ═══ -->
+  <div id="dashTab-overview" class="dash-tab-panel">
+
   <!-- Move Quality Breakdown -->
   <div class="card p-4 mb-4 fade-up" style="animation-delay: 0.1s">
     <h2 class="text-xs font-semibold text-white mb-3">Move Quality Breakdown</h2>
@@ -636,21 +717,20 @@ tailwind.config = {
     </div>
   </div>
 
-  <!-- Game lists -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-    <!-- Most Accurate -->
-    <div class="card p-4 fade-up" style="animation-delay: 0.25s">
-      <h2 class="text-xs font-semibold text-white mb-2">Most Accurate Games</h2>
-      <div class="gradient-line-accent mb-2"></div>
-      <div class="space-y-0" id="mostAccurateList"></div>
+  <!-- Choke & Clutch -->
+  <div class="grid grid-cols-2 gap-3 mb-4 fade-up" style="animation-delay: 0.22s">
+    <div class="card p-4">
+      <p class="text-meta uppercase tracking-[0.14em] text-secondary font-medium mb-1.5">Choke Rate</p>
+      <p id="dash-choke" class="text-2xl font-bold text-bad font-mono leading-none">—%</p>
+      <p id="dash-choke-detail" class="text-label text-muted mt-1">Lost from winning</p>
     </div>
-    <!-- Least Accurate -->
-    <div class="card p-4 fade-up" style="animation-delay: 0.28s">
-      <h2 class="text-xs font-semibold text-white mb-2">Least Accurate Games</h2>
-      <div class="gradient-line mb-2" style="background:rgba(239,68,68,0.25)"></div>
-      <div class="space-y-0" id="leastAccurateList"></div>
+    <div class="card p-4">
+      <p class="text-meta uppercase tracking-[0.14em] text-secondary font-medium mb-1.5">Clutch Rate</p>
+      <p id="dash-clutch" class="text-2xl font-bold text-good font-mono leading-none">—%</p>
+      <p id="dash-clutch-detail" class="text-label text-muted mt-1">Won from losing</p>
     </div>
   </div>
+
 
   <!-- Opening habits -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
@@ -668,91 +748,41 @@ tailwind.config = {
       <div class="space-y-0" id="costliestHabitsList"></div>
     </div>
   </div>
-  </div><!-- /dashContent -->
-</div>
 
-<!-- ╔══════════════════════════════════════════╗ -->
-<!-- ║  PAGE 2: PUZZLES                         ║ -->
-<!-- ╚══════════════════════════════════════════╝ -->
-<div id="page-puzzles" class="page">
+  </div><!-- /dashTab-overview -->
 
-  <!-- Tactical Performance Stats -->
-  <div class="card p-5 mb-4 fade-up" style="animation-delay: 0.05s">
+  <!-- ═══ TAB: Tactics ═══ -->
+  <div id="dashTab-tactics" class="dash-tab-panel" style="display:none">
+
+  <!-- Tactical Performance -->
+  <div class="card p-5 mb-4 fade-up">
     <h2 class="text-xs font-semibold text-white mb-4">Tactical Performance</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6" id="puzzleGauges">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6" id="dashPuzzleGauges">
       <div class="flex flex-col items-center justify-center"><span class="text-label text-muted">Loading...</span></div>
     </div>
   </div>
 
   <!-- Position Type Breakdown -->
-  <div class="card p-5 mb-4 fade-up" style="animation-delay: 0.1s">
+  <div class="card p-5 mb-4 fade-up">
     <h2 class="text-xs font-semibold text-white mb-3">Performance by Position Type</h2>
-    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4" id="puzzlePositions"></div>
+    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4" id="dashPuzzlePositions"></div>
   </div>
 
   <!-- Theme Breakdown -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4" id="puzzleThemeTables"></div>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4" id="dashPuzzleThemeTables"></div>
 
-  <!-- Theme Filters -->
-  <div class="mb-3 fade-up" style="animation-delay: 0.2s" id="puzzleFilters"></div>
+  </div><!-- /dashTab-tactics -->
 
-  <!-- Puzzle count -->
-  <div class="flex items-center justify-between mb-3 fade-up" style="animation-delay: 0.22s" id="puzzleCountBar"></div>
+  <!-- ═══ TAB: Endgames ═══ -->
+  <div id="dashTab-endgames" class="dash-tab-panel" style="display:none">
 
-  <!-- Puzzle List -->
-  <div class="space-y-2 mb-4 fade-up" style="animation-delay: 0.25s" id="puzzleGrid"></div>
-
-  <!-- Pagination -->
-  <div class="flex items-center justify-center gap-1 mb-4" id="puzzlePagination"></div>
-
-  <!-- Empty state -->
-  <div id="puzzleEmptyState" class="hidden"></div>
-</div>
-
-<!-- Puzzle Solve View (replaces the page when active) -->
-<div id="puzzleSolveView" class="page">
-  <!-- Back button -->
-  <button onclick="closePuzzleSolve()" class="flex items-center gap-2 text-muted hover:text-white transition-colors mb-5">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-    Back to Tactics
-  </button>
-
-  <div class="flex flex-col lg:flex-row gap-6">
-    <!-- Left: Board -->
-    <div class="flex-1 max-w-[560px]">
-      <div id="puzzleSolveBoard" class="aspect-square w-full"></div>
-      <!-- Status -->
-      <div class="text-center mt-3" id="puzzleSolveStatus">
-        <p class="text-body text-secondary">Find the best move</p>
-      </div>
-    </div>
-
-    <!-- Right: Info panel -->
-    <div class="lg:w-80 space-y-4">
-      <!-- Themes -->
-      <div class="card p-4" id="puzzleSolveThemes"></div>
-      <!-- Source game -->
-      <div class="card p-4" id="puzzleSolveSource"></div>
-      <!-- Puzzle info -->
-      <div class="card p-4" id="puzzleSolveInfo"></div>
-      <!-- Actions -->
-      <div class="flex flex-col gap-2" id="puzzleSolveActions"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ╔══════════════════════════════════════════╗ -->
-<!-- ║  PAGE 3: ENDGAMES                        ║ -->
-<!-- ╚══════════════════════════════════════════╝ -->
-<div id="page-endgames" class="page">
-
-  <div class="card p-5 fade-up" style="animation-delay: 0.05s">
+  <div class="card p-5 mb-4 fade-up">
     <div class="mb-4">
-      <h2 class="text-xs font-semibold text-white">By Endgame Type</h2>
+      <h2 class="text-xs font-semibold text-white">Endgame Performance</h2>
       <p class="text-meta text-muted mt-1">Average centipawn loss per endgame. Lower is better.</p>
     </div>
     <div class="gradient-line-accent mb-3"></div>
-    <div id="endgameContent" class="overflow-x-auto">
+    <div id="dashEndgameContent" class="overflow-x-auto">
       <table class="w-full text-label min-w-[400px]">
         <thead>
           <tr class="text-meta text-muted uppercase tracking-wider">
@@ -763,18 +793,64 @@ tailwind.config = {
             <th class="text-right py-2 pl-3 font-medium">Games</th>
           </tr>
         </thead>
-        <tbody class="text-secondary" id="endgameTableBody"></tbody>
+        <tbody class="text-secondary" id="dashEndgameTableBody"></tbody>
       </table>
     </div>
   </div>
+
+  </div><!-- /dashTab-endgames -->
+
+  <!-- ═══ TAB: Games ═══ -->
+  <div id="dashTab-games" class="dash-tab-panel" style="display:none">
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+    <div class="card p-5 fade-up">
+      <div class="mb-4">
+        <h2 class="text-xs font-semibold text-white">Smoothest Crushing Wins</h2>
+        <p class="text-meta text-muted mt-1">Steadiest climb to a decisive advantage. Zero blunders or mistakes.</p>
+      </div>
+      <div class="gradient-line-accent mb-3"></div>
+      <div class="space-y-0" id="dashSmoothestWins">
+        <div class="text-center text-label text-muted py-6">Loading...</div>
+      </div>
+    </div>
+    <div class="card p-5 fade-up" style="animation-delay: 0.05s">
+      <div class="mb-4">
+        <h2 class="text-xs font-semibold text-white">Roller Coaster Games</h2>
+        <p class="text-meta text-muted mt-1">Most swings between winning and losing (+/-150cp).</p>
+      </div>
+      <div class="gradient-line mb-3" style="background:rgba(239,68,68,0.25)"></div>
+      <div class="space-y-0" id="dashRollerCoasters">
+        <div class="text-center text-label text-muted py-6">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+    <div class="card p-4 fade-up" style="animation-delay: 0.05s">
+      <h2 class="text-xs font-semibold text-white mb-2">Most Accurate Games</h2>
+      <div class="gradient-line-accent mb-2"></div>
+      <div class="space-y-0" id="mostAccurateList"></div>
+    </div>
+    <div class="card p-4 fade-up" style="animation-delay: 0.08s">
+      <h2 class="text-xs font-semibold text-white mb-2">Least Accurate Games</h2>
+      <div class="gradient-line mb-2" style="background:rgba(239,68,68,0.25)"></div>
+      <div class="space-y-0" id="leastAccurateList"></div>
+    </div>
+  </div>
+
+  </div><!-- /dashTab-games -->
+
+  </div><!-- /dashContent -->
 </div>
+
 
 <!-- ╔══════════════════════════════════════════╗ -->
 <!-- ║  PAGE 4: TRAINER                         ║ -->
 <!-- ╚══════════════════════════════════════════╝ -->
 <div id="page-trainer" class="page">
 
-  <!-- Opening selection view -->
+  <!-- Opening selection view (catalog grid) -->
   <div id="trainerSelectView">
     <div class="mb-5 fade-up">
       <h1 class="text-2xl font-bold text-white">Opening Trainer</h1>
@@ -782,55 +858,143 @@ tailwind.config = {
     <div class="grid grid-cols-2 lg:grid-cols-3 gap-3" id="trainerGrid"></div>
   </div>
 
-  <!-- Drill view (centered fullscreen overlay) -->
-  <div id="trainerDrillView" style="display:none; position:fixed; top:0; right:0; bottom:0; left:0; z-index:60; background:var(--bg-primary); overflow:hidden;">
+  <!-- Opening detail view (trainer types for one opening) -->
+  <div id="trainerOpeningView" style="display:none;">
+    <button onclick="backToTrainerGrid()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors mb-4">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      Back
+    </button>
+    <h1 class="text-2xl font-bold text-white mb-4" id="trainerOpeningTitle"></h1>
+    <div class="flex flex-wrap gap-2" id="trainerOpeningTypes"></div>
+  </div>
+
+  <!-- Tree viewer (in-page) — hub for all trainer types -->
+  <div id="treeViewerView" style="display:none;">
     <div class="drill-inner">
-      <!-- Back button -->
       <div class="drill-panel">
-        <button onclick="exitTrainerDrill()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors mb-2">
+        <button onclick="exitTreeViewer()" class="flex items-center gap-1 text-label text-muted hover:text-white transition-colors mb-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
           Back
         </button>
       </div>
 
-      <!-- Status (above board) -->
-      <div class="card p-2.5 mb-2 drill-panel">
-        <h3 class="text-sm font-semibold" id="trainerStatusTitle"></h3>
-        <p class="text-muted text-sm mt-0.5" id="trainerStatusMsg"></p>
-      </div>
-
-      <!-- Board (fills available space) -->
-      <div class="flex-1 flex items-center justify-center w-full" style="min-height:0;">
-        <div id="trainerBoardWrap" class="rounded-lg overflow-hidden">
-          <div id="trainerBoard" class="w-full h-full"></div>
-        </div>
-      </div>
-
-      <!-- Nav + buttons (below board) -->
-      <div class="card p-2.5 mt-2 drill-panel">
-        <div class="flex items-center justify-between mb-1.5 drill-actions">
-          <div class="flex items-center gap-2">
-            <button onclick="trainerPrevPuzzle()" id="btnTrainerPrev" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
-            <span class="text-label text-white font-medium" id="trainerDrillCounter"></span>
-            <button onclick="trainerNextPuzzle()" id="btnTrainerNextPuzzle" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-meta text-muted" id="trainerVarCounter" style="display:none">Main line</span>
-            <button onclick="trainerHint()" id="btnTrainerHint" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Hint</button>
-            <button onclick="trainerSkip()" id="btnTrainerSkip" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Skip</button>
-            <button onclick="trainerRetry()" id="btnTrainerRetry" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Retry</button>
-            <button onclick="startDeepDrill()" id="btnTrainerDeepDrill" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 hover:border-sky-400/60 transition-colors" style="display:none">Drill Deeper</button>
-            <button onclick="trainerNext()" id="btnTrainerNext" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next Puzzle</button>
+      <div class="tree-layout">
+        <div class="card p-2.5 tree-header">
+          <h3 class="text-sm font-semibold text-white" id="treeViewerTitle">Loading…</h3>
+          <p class="text-muted text-xs mt-0.5" id="treeViewerStatus"></p>
+          <div class="flex items-center gap-1 mt-2" id="treeTabs">
+            <button data-tab="tree"  onclick="switchTreeTab('tree')"  class="tree-tab px-3 py-1 text-xs rounded border border-slate-700 text-secondary hover:text-white">Tree</button>
+            <button data-tab="learn" onclick="switchTreeTab('learn')" class="tree-tab px-3 py-1 text-xs rounded border border-slate-700 text-secondary hover:text-white">Learn</button>
+            <button data-tab="train" onclick="switchTreeTab('train')" class="tree-tab px-3 py-1 text-xs rounded border border-slate-700 text-secondary hover:text-white">Train</button>
           </div>
         </div>
-        <div class="flex items-center justify-between text-meta text-muted mb-1">
-          <span id="trainerProgressLabel">0/0 completed</span>
-          <span class="font-mono" id="trainerProgressPct">0%</span>
+
+        <div class="tree-board flex items-center justify-center" style="min-height:0;">
+          <div id="treeBoardWrap" class="rounded-lg overflow-hidden">
+            <div id="treeBoard" class="w-full h-full"></div>
+          </div>
+          <div id="trainerBoardWrap" class="rounded-lg overflow-hidden" style="display:none">
+            <div id="trainerBoard" class="w-full h-full"></div>
+          </div>
+          <div id="maiaBoardWrap" class="rounded-lg overflow-hidden" style="display:none">
+            <div id="maiaBoard" class="w-full h-full"></div>
+          </div>
         </div>
-        <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
-          <div class="h-full rounded-full transition-all" style="background: var(--accent)" id="trainerProgressBar"></div>
+
+        <div class="card p-2.5 tree-content">
+        <!-- TREE tab content -->
+        <div id="treeTabContent-tree">
+          <div id="treeMoveLine" class="text-xs leading-relaxed mb-2"></div>
+          <div id="treeContinuations" class="space-y-1"></div>
         </div>
-      </div>
+
+        <!-- LEARN tab content -->
+        <div id="treeTabContent-learn" style="display:none">
+          <div class="flex items-center justify-between mb-2 drill-actions">
+            <div class="flex items-center gap-2">
+              <button id="btnLearnNext" class="px-3 py-1.5 text-label rounded border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next Line</button>
+              <button onclick="exitTrainerMode()" id="btnLearnExit" class="px-3 py-1.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Exit</button>
+            </div>
+            <div class="text-meta text-muted font-mono" id="treeTrainStats">0 ✓ · 0 ✗ · line 1</div>
+          </div>
+          <div class="text-sm" id="treeTrainStatus" style="display:none"></div>
+        </div>
+
+        <!-- TRAIN tab content -->
+        <div id="treeTabContent-train" style="display:none">
+          <div class="flex items-center justify-between mb-2 drill-actions">
+            <div class="flex items-center gap-2">
+              <button onclick="trainModeStart()" id="btnTrainStart" class="px-3 py-1.5 text-label rounded border border-emerald-500/50 text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors">Start</button>
+              <button onclick="trainModeNext()" id="btnTrainNextLine" class="px-3 py-1.5 text-label rounded border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next Line</button>
+              <button onclick="trainModeExit()" id="btnTrainExit" class="px-3 py-1.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Exit</button>
+            </div>
+            <div class="text-meta text-muted font-mono" id="trainModeStats">0 ✓ · 0 ✗</div>
+          </div>
+          <div class="text-sm" id="trainModeStatus" style="display:none"></div>
+        </div>
+        <!-- DRILL tab content (Punish Mistakes / Find the Move) -->
+        <div id="treeTabContent-drill" style="display:none">
+          <div style="display:none">
+            <h3 id="trainerStatusTitle"></h3>
+            <p id="trainerStatusMsg"></p>
+          </div>
+          <div class="flex items-center justify-between mb-1.5 drill-actions">
+            <div class="flex items-center gap-2">
+              <button onclick="trainerPrevPuzzle()" id="btnTrainerPrev" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
+              <span class="text-label text-white font-medium" id="trainerDrillCounter"></span>
+              <button onclick="trainerNextPuzzle()" id="btnTrainerNextPuzzle" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-meta text-muted" id="trainerVarCounter" style="display:none">Main line</span>
+              <button onclick="trainerHint()" id="btnTrainerHint" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">Hint</button>
+              <button onclick="trainerSkip()" id="btnTrainerSkip" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Skip</button>
+              <button onclick="trainerRetry()" id="btnTrainerRetry" class="px-3 py-1.5 text-label font-medium rounded-lg border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors" style="display:none">Retry</button>
+              <button onclick="startDeepDrill()" id="btnTrainerDeepDrill" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 hover:border-sky-400/60 transition-colors" style="display:none">Drill Deeper</button>
+              <button onclick="trainerNext()" id="btnTrainerNext" class="px-3 py-1.5 text-label font-medium rounded-lg border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors" style="display:none">Next Puzzle</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between text-meta text-muted mb-1">
+            <span id="trainerProgressLabel">0/0 completed</span>
+            <span class="font-mono" id="trainerProgressPct">0%</span>
+          </div>
+          <div class="h-1.5 rounded-full bg-slate-800/60 overflow-hidden">
+            <div class="h-full rounded-full transition-all" style="background: var(--accent)" id="trainerProgressBar"></div>
+          </div>
+        </div>
+
+        <!-- MAIA tab content -->
+        <div id="treeTabContent-maia" style="display:none">
+          <div style="display:none">
+            <h3 id="maiaDrillTitle"></h3>
+            <p id="maiaDrillNotes"></p>
+            <p id="maiaDrillStatus"></p>
+          </div>
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-2">
+              <button onclick="maiaPrevPosition()" id="btnMaiaPrev" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&larr;</button>
+              <span class="text-label text-white font-medium" id="maiaDrillCounter"></span>
+              <button onclick="maiaNextPosition()" id="btnMaiaNext" class="px-1.5 py-0.5 text-label rounded border border-slate-700 text-secondary hover:text-white hover:border-slate-500 transition-colors">&rarr;</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="startMaiaGame()" class="px-3 py-1.5 text-label rounded border border-sky-500/50 text-white bg-sky-500/20 hover:bg-sky-500/30 transition-colors">Restart</button>
+              <select id="maiaRatingSelect" onchange="onMaiaRatingChange(event)"
+                      class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-label text-white font-mono">
+                <option value="1100">1100</option>
+                <option value="1200">1200</option>
+                <option value="1300">1300</option>
+                <option value="1400">1400</option>
+                <option value="1500" selected>1500</option>
+                <option value="1600">1600</option>
+                <option value="1700">1700</option>
+                <option value="1800">1800</option>
+                <option value="1900">1900</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        </div><!-- /.tree-content -->
+      </div><!-- /.tree-layout -->
     </div>
   </div>
 
@@ -1043,9 +1207,9 @@ tailwind.config = {
 <script src="js/libs.js"></script>
 <script src="js/shared.js"></script>
 <script src="js/dashboard.js"></script>
-<script src="js/puzzles.js"></script>
-<script src="js/endgames.js"></script>
 <script src="js/trainer.js"></script>
+<script src="js/trainer_trees.js"></script>
+<script src="js/maia_trainer.js"></script>
 <script src="js/games.js"></script>
 <script src="js/analysis.js"></script>
 <script src="js/profile.js"></script>
@@ -1056,10 +1220,6 @@ tailwind.config = {
   <button onclick="switchPage('dashboard')" class="mobile-nav-item active" data-page="dashboard">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span class="text-[10px] mt-0.5">Dashboard</span>
-  </button>
-  <button onclick="switchPage('puzzles')" class="mobile-nav-item" data-page="puzzles">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-    <span class="text-[10px] mt-0.5">Tactics</span>
   </button>
   <button onclick="switchPage('trainer')" class="mobile-nav-item" data-page="trainer">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19h16M4 15h16M4 11h8"/></svg>

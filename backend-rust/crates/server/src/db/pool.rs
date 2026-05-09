@@ -192,6 +192,32 @@ CREATE TABLE IF NOT EXISTS trainer_progress (
 );
 CREATE INDEX IF NOT EXISTS idx_trainer_progress_user ON trainer_progress (user_id);
 
+-- Opening trainer trees (Chessable-style move trees built from popularity + theory)
+CREATE TABLE IF NOT EXISTS trainer_trees (
+    id           TEXT PRIMARY KEY,           -- slug, e.g. "evans-gambit-white"
+    name         TEXT NOT NULL,              -- display name, e.g. "Evans Gambit Accepted - White"
+    color        TEXT NOT NULL,              -- "white" | "black"
+    start_moves  TEXT NOT NULL DEFAULT '',   -- e.g. "e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4"
+    start_fen    TEXT NOT NULL,              -- root FEN (4-field)
+    nodes_count  INTEGER NOT NULL,           -- post-prune node count
+    tree         JSONB NOT NULL,             -- full tree JSON
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trainer_trees_name ON trainer_trees (name);
+ALTER TABLE trainer_trees ADD COLUMN IF NOT EXISTS lines_count INTEGER NOT NULL DEFAULT 0;
+
+-- Per-user, per-tree learned moves (FEN, move) pairs
+CREATE TABLE IF NOT EXISTS trainer_tree_progress (
+    user_id    BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    tree_id    TEXT NOT NULL REFERENCES trainer_trees(id) ON DELETE CASCADE,
+    fen        TEXT NOT NULL,
+    move_san   TEXT NOT NULL,
+    learned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, tree_id, fen, move_san)
+);
+CREATE INDEX IF NOT EXISTS idx_ttp_user_tree ON trainer_tree_progress (user_id, tree_id);
+
 -- Precomputed opening mistakes (one row per mistake per game)
 CREATE TABLE IF NOT EXISTS game_opening_mistakes (
     game_id     BIGINT NOT NULL REFERENCES user_games(id) ON DELETE CASCADE,
@@ -250,4 +276,51 @@ CREATE TABLE IF NOT EXISTS trainer_hard_move_progress (
     PRIMARY KEY (user_id, hard_move_id)
 );
 CREATE INDEX IF NOT EXISTS idx_trainer_hm_progress_user ON trainer_hard_move_progress (user_id);
+
+-- Play-vs-Maia trainer card positions
+CREATE TABLE IF NOT EXISTS trainer_maia_positions (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    fen        TEXT NOT NULL,
+    user_side  TEXT NOT NULL CHECK (user_side IN ('white', 'black')),
+    notes      TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trainer_maia_positions_title ON trainer_maia_positions (title);
+
+-- opening_name on trees and maia positions (for catalog grouping)
+ALTER TABLE trainer_trees ADD COLUMN IF NOT EXISTS opening_name TEXT;
+ALTER TABLE trainer_maia_positions ADD COLUMN IF NOT EXISTS opening_name TEXT;
+
+-- Opening metadata (root FEN + user color for catalog cards)
+CREATE TABLE IF NOT EXISTS trainer_opening_meta (
+    opening_name TEXT PRIMARY KEY,
+    root_fen     TEXT NOT NULL,
+    user_color   TEXT NOT NULL DEFAULT 'white'
+);
+ALTER TABLE trainer_opening_meta ADD COLUMN IF NOT EXISTS user_color TEXT NOT NULL DEFAULT 'white';
+INSERT INTO trainer_opening_meta (opening_name, root_fen, user_color) VALUES
+    ('Evans Gambit',              'r1bqk1nr/pppp1ppp/2n5/2b1p3/1PB1P3/5N2/P1PP1PPP/RNBQK2R b KQkq -', 'white'),
+    ('Kings Gambit',              'rnbqkbnr/pppp1ppp/8/4p3/4PP2/8/PPPP2PP/RNBQKBNR b KQkq -',          'white'),
+    ('Italian Game Knight Attack','r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq -',  'white'),
+    ('Knight Attack Traps',       'r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq -',  'white'),
+    ('Sicilian Dragon',           'rnbqkb1r/pp2pp1p/3p1np1/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq -',     'black'),
+    ('Smith-Morra Gambit',        'rnbqkbnr/pp1ppppp/8/8/3pP3/2P5/PP3PPP/RNBQKBNR b KQkq -',           'white'),
+    ('Stafford Gambit',           'r1bqkb1r/pppp1ppp/2n2n2/4N3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq -',     'black')
+ON CONFLICT (opening_name) DO UPDATE SET root_fen = EXCLUDED.root_fen, user_color = EXCLUDED.user_color;
+
+-- Backfill: trees — strip " Accepted", " (White)", " (Black)" to get canonical opening name
+UPDATE trainer_trees SET opening_name = TRIM(
+    REGEXP_REPLACE(
+        REGEXP_REPLACE(name, '\s*\((White|Black)\)\s*$', ''),
+        '\s+Accepted\s*$', ''
+    )
+) WHERE opening_name IS NULL;
+
+-- Backfill: maia — use title prefix before ":"
+UPDATE trainer_maia_positions SET opening_name = TRIM(SPLIT_PART(title, ':', 1))
+WHERE opening_name IS NULL AND title LIKE '%:%';
+UPDATE trainer_maia_positions SET opening_name = title
+WHERE opening_name IS NULL;
 "#;
