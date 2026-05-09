@@ -201,24 +201,36 @@ async def _solver_node(sf, maia, board, solver_color, root_eval, stats, depth, l
     elif root_eval >= 300: gap = 30
     else: gap = 20
 
+    solver_log = {"fen": fen, "type": "solver", "depth": depth, "root_eval": root_eval,
+                  "best_cp": best_cp, "cp_gap": gap, "max_accepted": max_accepted, "candidates": []}
+
     for pv_info in mpv:
         move = pv_info["pv"][0]
         cp = score_cp(pv_info["score"], solver_color)
         mate = _mate_in(pv_info["score"], solver_color)
         san = board.san(move)
         prob = maia_map.get(san, 0.0)
+        entry = {"san": san, "cp": cp, "maia_pct": prob}
 
         if best_mate is not None and mate != best_mate:
+            entry["rejected"] = f"mate_mismatch"
+            solver_log["candidates"].append(entry)
             print(f"    SF: {san} cp={cp} maia={prob:.1f}% — REJECTED (mate mismatch)")
             break
 
         if best_mate is None and best_cp - cp > gap:
+            entry["rejected"] = f"cp_gap ({best_cp - cp} > {gap})"
+            solver_log["candidates"].append(entry)
             print(f"    SF: {san} cp={cp} maia={prob:.1f}% — REJECTED (gap {best_cp - cp} > {gap})")
             break
         if len(candidates) >= max_accepted:
+            entry["rejected"] = f"max_accepted ({max_accepted})"
+            solver_log["candidates"].append(entry)
             print(f"    SF: {san} cp={cp} maia={prob:.1f}% — REJECTED (max {max_accepted})")
             break
 
+        entry["accepted"] = True
+        solver_log["candidates"].append(entry)
         print(f"    SF: {san} cp={cp} maia={prob:.1f}% — ACCEPTED")
         candidates.append((move, san, cp, mate, prob))
 
@@ -229,7 +241,11 @@ async def _solver_node(sf, maia, board, solver_color, root_eval, stats, depth, l
             dropped = [c[1] for c in candidates if c[4] < SOLVER_MAIA_MIN]
             if dropped:
                 print(f"    Maia filter dropped: {dropped}")
+                solver_log["maia_dropped"] = dropped
             candidates = filtered
+
+    solver_log["final"] = [c[1] for c in candidates]
+    stats["log"].append(solver_log)
 
     moves = {}
     for move, san, cp, mate, prob in candidates:
@@ -281,6 +297,10 @@ async def _opponent_node(sf, maia, board, solver_color, root_eval, stats, depth,
     maia_result = await maia.analyze_fen(fen, top_n=10, nodes=MAIA_OPP_NODES)
     stats["maia_evals"] += 1
     all_moves = maia_result["moves"]
+
+    opp_log = {"fen": fen, "type": "opponent", "depth": depth, "nodes": MAIA_OPP_NODES,
+               "all_maia": [{"san": m["san"], "prob": m["probability"]} for m in all_moves[:5]]}
+
     if all_moves:
         if linear:
             maia_moves = [all_moves[0]]  # linear mode: top move only
@@ -291,6 +311,9 @@ async def _opponent_node(sf, maia, board, solver_color, root_eval, stats, depth,
                 maia_moves.append(extras[0])  # at most 1 extra (2 total)
     else:
         maia_moves = []
+
+    opp_log["selected"] = [{"san": m["san"], "prob": m["probability"]} for m in maia_moves]
+    stats["log"].append(opp_log)
 
     move_summary = [(m["san"], f"{m['probability']}%") for m in maia_moves]
     print(f"  [{stats['nodes']}] opponent depth={depth} maia({MAIA_OPP_NODES}n): {move_summary}{' [linear]' if linear else ''}")
@@ -555,7 +578,7 @@ async def generate_puzzles(args):
                 print(f"  [W{worker_id}] #{idx+1} {eco_code}_{mistake_san} SKIPPED — root={root_eval}cp < 200")
                 continue
 
-            stats = {"nodes": 0, "max_depth": 0, "sf_evals": 1, "maia_evals": 0}
+            stats = {"nodes": 0, "max_depth": 0, "sf_evals": 1, "maia_evals": 0, "log": []}
             tree = await build_tree(sf, w_maia, board, solver_color, root_eval, stats)
             n_before = count_nodes(tree)
             n_pruned = 0
@@ -590,6 +613,7 @@ async def generate_puzzles(args):
                 "cp_loss": mistake["cp_loss"],
                 "games": mistake["games"],
                 "tree": tree,
+                "_decision_log": stats["log"],
             }
 
             async with lock:

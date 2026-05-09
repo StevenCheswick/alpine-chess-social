@@ -158,11 +158,6 @@ async function initDashboard() {
               <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
               ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
             </div>
-            <div class="flex items-center gap-1.5 text-meta">
-              <span class="${g.result==='W'?'text-good':g.result==='L'?'text-bad':'text-secondary'}">${resultLabel[g.result]||g.result}</span>
-              <span class="text-slate-700">&middot;</span>
-              <span class="text-secondary">${g.date}</span>
-            </div>
           </div>
         </div>
         <span class="text-xs font-bold ${good?'text-good':'text-bad'} font-mono">${g.accuracy}%</span>
@@ -411,13 +406,6 @@ async function initDashboard() {
             <div class="flex items-center gap-1.5">
               <span class="text-body text-white font-medium truncate">vs ${g.opponent}</span>
               ${g.opponentRating ? `<span class="text-meta text-muted font-mono">(${g.opponentRating})</span>` : ''}
-            </div>
-            <div class="flex items-center gap-1.5 text-meta text-muted mt-0.5">
-              <span class="${resultColor}">${resultLabel}</span>
-              <span class="text-slate-700">&middot;</span>
-              <span>${g.date}</span>
-              <span class="text-slate-700">&middot;</span>
-              <span>${g.totalMoves} moves</span>
             </div>
           </div>
         </div>
