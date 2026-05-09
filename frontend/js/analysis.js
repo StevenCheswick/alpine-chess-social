@@ -95,7 +95,8 @@ function handleSfInfo(line) {
   _sfDepth = Math.max(_sfDepth, depth);
   if (!_sfRenderPending) {
     _sfRenderPending = true;
-    setTimeout(() => { _sfRenderPending = false; renderSfLines(); }, 500);
+    const delay = _sfDepth <= 8 ? 0 : 500;
+    setTimeout(() => { _sfRenderPending = false; renderSfLines(); }, delay);
   }
 }
 
