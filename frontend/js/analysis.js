@@ -15,6 +15,12 @@ let _sfRenderPending = false;
 
 function initStockfish() {
   if (_sfWorker) return;
+  _createSfWorker();
+}
+
+function _createSfWorker() {
+  if (_sfWorker) { _sfWorker.terminate(); }
+  _sfReady = false;
   _sfWorker = new Worker('stockfish/stockfish.js');
   _sfWorker.onmessage = function(e) {
     const line = typeof e.data === 'string' ? e.data : '';
@@ -32,6 +38,12 @@ function initStockfish() {
     } else if (line.startsWith('info depth') && line.includes(' pv ')) {
       handleSfInfo(line);
     }
+  };
+  _sfWorker.onerror = function() {
+    _sfWorker.terminate();
+    _sfWorker = null;
+    _sfReady = false;
+    setTimeout(() => { _createSfWorker(); sfAnalyzeCurrentPosition(); }, 500);
   };
   _sfWorker.postMessage('uci');
 }
@@ -91,26 +103,23 @@ function renderSfLines() {
   const container = document.getElementById('sfEvalBar');
   if (!container) return;
 
-  const hasLines = _sfLines.some(l => l.pvSan);
-  if (!hasLines) {
-    container.innerHTML = `
-      <div class="flex items-center gap-3 w-full">
-        <span class="font-mono font-bold text-white">0.0</span>
-        <span class="text-muted">Stockfish loading...</span>
-      </div>`;
-    return;
-  }
-
   let html = '';
-  _sfLines.forEach((l, i) => {
-    if (!l.pvSan) return;
+  for (let i = 0; i < 3; i++) {
+    const l = _sfLines[i];
     const isTop = i === 0;
     const evalBg = 'bg-slate-600/60';
-    html += `<div class="flex items-center gap-1.5 w-full px-1 py-px rounded cursor-pointer hover:bg-slate-600/40 transition-colors" onclick="playSfLine(${i})">
-      <span class="font-mono font-bold ${isTop ? 'text-white' : 'text-muted'} ${evalBg} rounded px-1.5 py-px text-center shrink-0" style="min-width:2.75rem">${l.evalText}</span>
-      <span class="${isTop ? 'text-white' : 'text-muted'} text-ellipsis overflow-hidden whitespace-nowrap">${l.pvSan}</span>
-    </div>`;
-  });
+    if (l && l.pvSan) {
+      html += `<div class="flex items-center gap-1.5 w-full px-1 py-px rounded cursor-pointer hover:bg-slate-600/40 transition-colors" onclick="playSfLine(${i})">
+        <span class="font-mono font-bold ${isTop ? 'text-white' : 'text-muted'} ${evalBg} rounded px-1.5 py-px text-center shrink-0" style="min-width:2.75rem">${l.evalText}</span>
+        <span class="${isTop ? 'text-white' : 'text-muted'} text-ellipsis overflow-hidden whitespace-nowrap">${l.pvSan}</span>
+      </div>`;
+    } else {
+      html += `<div class="flex items-center gap-1.5 w-full px-1 py-px">
+        <span class="font-mono font-bold text-muted ${evalBg} rounded px-1.5 py-px text-center shrink-0 opacity-30" style="min-width:2.75rem">&mdash;</span>
+        <span class="text-muted opacity-30">&nbsp;</span>
+      </div>`;
+    }
+  }
 
   container.innerHTML = html;
 }
