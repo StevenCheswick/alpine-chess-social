@@ -85,16 +85,19 @@ pub async fn upsert_position(
     fen: &str,
     user_side: &str,
     notes: Option<&str>,
+    opening_name: Option<&str>,
 ) -> Result<(), sqlx::Error> {
+    let oname = opening_name.or(Some(title.split(':').next().unwrap_or(title).trim()));
     sqlx::query(
         r#"
-        INSERT INTO trainer_maia_positions (id, title, fen, user_side, notes, updated_at)
-        VALUES ($1, $2, $3, $4, $5, NOW())
+        INSERT INTO trainer_maia_positions (id, title, fen, user_side, notes, opening_name, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
         ON CONFLICT (id) DO UPDATE SET
             title = EXCLUDED.title,
             fen = EXCLUDED.fen,
             user_side = EXCLUDED.user_side,
             notes = EXCLUDED.notes,
+            opening_name = EXCLUDED.opening_name,
             updated_at = NOW()
         "#,
     )
@@ -103,6 +106,7 @@ pub async fn upsert_position(
     .bind(fen)
     .bind(user_side)
     .bind(notes)
+    .bind(oname)
     .execute(pool)
     .await?;
     Ok(())

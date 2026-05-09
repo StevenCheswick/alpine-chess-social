@@ -307,7 +307,8 @@ INSERT INTO trainer_opening_meta (opening_name, root_fen, user_color) VALUES
     ('Knight Attack Traps',       'r1bqkb1r/pppp1ppp/2n2n2/4p1N1/2B1P3/8/PPPP1PPP/RNBQK2R b KQkq -',  'white'),
     ('Sicilian Dragon',           'rnbqkb1r/pp2pp1p/3p1np1/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq -',     'black'),
     ('Smith-Morra Gambit',        'rnbqkbnr/pp1ppppp/8/8/3pP3/2P5/PP3PPP/RNBQKBNR b KQkq -',           'white'),
-    ('Stafford Gambit',           'r1bqkb1r/pppp1ppp/2n2n2/4N3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq -',     'black')
+    ('Stafford Gambit',           'r1bqkb1r/pppp1ppp/2n2n2/4N3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq -',     'black'),
+    ('Traxler Counterattack',     'r1bqk2r/pppp1ppp/2n2n2/2b1p1N1/2B1P3/8/PPPP1PPP/RNBQK2R w KQkq -', 'black')
 ON CONFLICT (opening_name) DO UPDATE SET root_fen = EXCLUDED.root_fen, user_color = EXCLUDED.user_color;
 
 -- Backfill: trees — strip " Accepted", " (White)", " (Black)" to get canonical opening name

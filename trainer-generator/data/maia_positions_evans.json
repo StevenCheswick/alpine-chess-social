@@ -1,0 +1,18 @@
+[
+  {
+    "id": "evans-h6",
+    "title": "Evans Gambit: 8...h6",
+    "fen": "r1bqk1nr/ppp2pp1/2np3p/b7/2BPP3/5N2/P4PPP/RNBQ1RK1 w kq - 0 9",
+    "user_side": "white",
+    "notes": "Practice converting the open lines after Black plays the slow ...h6",
+    "opening_name": "Evans Gambit"
+  },
+  {
+    "id": "evans-bd5-bg4-pin",
+    "title": "Evans Gambit: Bd5 with ...Bg4 pin",
+    "fen": "r2qk1nr/ppp1bppp/2n5/3B4/3PP1b1/5N2/P4PPP/RNBQK2R w KQkq - 1 9",
+    "user_side": "white",
+    "notes": "White is up in development with Bd5 active. Black pins the f3 knight — handle the pin and convert.",
+    "opening_name": "Evans Gambit"
+  }
+]

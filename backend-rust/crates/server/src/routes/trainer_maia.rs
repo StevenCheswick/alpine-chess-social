@@ -57,6 +57,7 @@ pub struct UploadBody {
     pub user_side: String,
     #[serde(default)]
     pub notes: Option<String>,
+    pub opening_name: Option<String>,
 }
 
 /// POST /api/admin/trainer/maia-positions/upload
@@ -79,6 +80,7 @@ pub async fn upload_position(
         &body.fen,
         &body.user_side,
         body.notes.as_deref(),
+        body.opening_name.as_deref(),
     )
     .await?;
     Ok(Json(serde_json::json!({

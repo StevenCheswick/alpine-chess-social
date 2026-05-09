@@ -88,11 +88,16 @@ pub async fn upsert_tree(
     nodes_count: i32,
     lines_count: i32,
     tree: &JsonValue,
+    opening_name: Option<&str>,
 ) -> Result<(), sqlx::Error> {
+    let oname = opening_name.unwrap_or(name);
+
+    let mut tx = pool.begin().await?;
+
     sqlx::query(
         r#"
-        INSERT INTO trainer_trees (id, name, color, start_moves, start_fen, nodes_count, lines_count, tree, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        INSERT INTO trainer_trees (id, name, color, start_moves, start_fen, nodes_count, lines_count, tree, opening_name, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             color = EXCLUDED.color,
@@ -101,6 +106,7 @@ pub async fn upsert_tree(
             nodes_count = EXCLUDED.nodes_count,
             lines_count = EXCLUDED.lines_count,
             tree = EXCLUDED.tree,
+            opening_name = EXCLUDED.opening_name,
             updated_at = NOW()
         "#,
     )
@@ -112,8 +118,26 @@ pub async fn upsert_tree(
     .bind(nodes_count)
     .bind(lines_count)
     .bind(tree)
-    .execute(pool)
+    .bind(oname)
+    .execute(&mut *tx)
     .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO trainer_opening_meta (opening_name, root_fen, user_color)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (opening_name) DO UPDATE SET
+            root_fen = EXCLUDED.root_fen,
+            user_color = EXCLUDED.user_color
+        "#,
+    )
+    .bind(oname)
+    .bind(start_fen)
+    .bind(color)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
     Ok(())
 }
 

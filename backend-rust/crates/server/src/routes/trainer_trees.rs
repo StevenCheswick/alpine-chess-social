@@ -59,6 +59,7 @@ pub struct UploadBody {
     #[serde(default)]
     pub lines_count: i32,
     pub tree: JsonValue,
+    pub opening_name: Option<String>,
 }
 
 /// POST /api/admin/trainer/trees/upload
@@ -70,6 +71,7 @@ pub async fn upload_tree(
 ) -> Result<Json<JsonValue>, AppError> {
     check_admin_secret(&headers, &config)?;
     let start_moves = body.start_moves.unwrap_or_default();
+    let opening_name = body.opening_name.as_deref();
     trainer_trees::upsert_tree(
         &pool,
         &body.id,
@@ -80,6 +82,7 @@ pub async fn upload_tree(
         body.nodes_count,
         body.lines_count,
         &body.tree,
+        opening_name,
     )
     .await?;
     Ok(Json(serde_json::json!({
