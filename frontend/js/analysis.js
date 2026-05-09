@@ -91,7 +91,18 @@ function handleSfInfo(line) {
     evalText = (cpWhite >= 0 ? '+' : '') + (cpWhite / 100).toFixed(1);
   }
 
-  _sfLines[pvIdx] = { evalText, uci: pv[0], pvSan: pvToSan(fen, pv) };
+  const firstSan = uciToSan(fen, pv[0]);
+  let contFen = fen;
+  if (Chess && pv.length > 1) {
+    try {
+      const c = new Chess(fen);
+      const from = pv[0].substring(0, 2), to = pv[0].substring(2, 4);
+      const promo = pv[0].length > 4 ? pv[0][4] : undefined;
+      if (c.move({ from, to, promotion: promo })) contFen = c.fen();
+    } catch {}
+  }
+  const contSan = pv.length > 1 ? pvToSan(contFen, pv.slice(1)) : '';
+  _sfLines[pvIdx] = { evalText, uci: pv[0], firstSan, contSan };
   _sfDepth = Math.max(_sfDepth, depth);
   if (!_sfRenderPending) {
     _sfRenderPending = true;
@@ -109,10 +120,11 @@ function renderSfLines() {
     const l = _sfLines[i];
     const isTop = i === 0;
     const evalBg = 'bg-slate-600/60';
-    if (l && l.pvSan) {
+    if (l && l.firstSan) {
       html += `<div class="flex items-center gap-1.5 w-full px-1 py-px rounded cursor-pointer hover:bg-slate-600/40 transition-colors" onclick="playSfLine(${i})">
         <span class="font-mono font-bold ${isTop ? 'text-white' : 'text-muted'} ${evalBg} rounded px-1.5 py-px text-center shrink-0" style="min-width:2.75rem">${l.evalText}</span>
-        <span class="${isTop ? 'text-white' : 'text-muted'} text-ellipsis overflow-hidden whitespace-nowrap">${l.pvSan}</span>
+        <span class="font-semibold ${isTop ? 'text-white' : 'text-muted'} shrink-0">${l.firstSan}</span>
+        <span class="text-muted text-ellipsis overflow-hidden whitespace-nowrap" style="opacity:0.5">${l.contSan}</span>
       </div>`;
     } else {
       html += `<div class="flex items-center gap-1.5 w-full px-1 py-px">
