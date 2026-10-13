@@ -34,8 +34,9 @@ OPP_FLAT = 50
 # ── Phase 1: Find Mistakes ──────────────────────────────────────────────────
 
 
-def find_mistakes(play, side, threshold, eco="", target=100):
-    """Find common mistakes by shelling out to the Rust find-mistakes binary."""
+def find_mistakes(play, side, threshold, eco="", target=100, eval_cache=None):
+    """Find common mistakes by shelling out to the Rust find-mistakes binary.
+    eval_cache: optional backfill-evals JSON ("fen::uci" -> cp) used for moves with no eval in RocksDB."""
     stop_at = target * 10
     print(f"Phase 1: Finding mistakes via Rust binary (RocksDB direct)")
     print(f"  Binary: {FIND_MISTAKES_BIN}")
@@ -56,6 +57,12 @@ def find_mistakes(play, side, threshold, eco="", target=100):
         "--eco", eco,
         "--db", str(EXPLORER_DB),
     ]
+    if eval_cache:
+        print(f"  Eval cache: {eval_cache}")
+        cmd += ["--eval-cache", eval_cache]
+    else:
+        print("  WARNING: No eval cache: mistakes after moves with no stored eval will be skipped.")
+        print("           Generate one with backfill-evals and pass it with --eval-cache.")
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     mistakes = json.loads(result.stdout)
 
@@ -64,6 +71,44 @@ def find_mistakes(play, side, threshold, eco="", target=100):
         print(result.stderr, end="")
 
     return mistakes
+
+
+def _fen_key(fen):
+    """Position identity without move counters: board, side, castling, en passant."""
+    return " ".join(fen.split()[:4])
+
+
+def merge_transpositions(mistakes):
+    """Collapse candidates that reach the same position after the mistake by different
+    move orders. Keeps the most-played one, gives it the group's total games and lists
+    the other move orders in also_reached_by. Different blunders from one position lead
+    to different positions, so they stay separate."""
+    groups = {}
+    order = []
+    for m in mistakes:
+        try:
+            board = chess.Board(m["fen"])
+            board.push_san(m["move"])
+            key = _fen_key(board.fen())
+        except ValueError:
+            key = ("unparsed", len(order))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(m)
+
+    merged = []
+    for key in order:
+        group = sorted(groups[key], key=lambda m: m["games"], reverse=True)
+        kept = group[0]
+        if len(group) > 1:
+            kept["also_reached_by"] = [{"sequence": m["sequence"], "games": m["games"]} for m in group[1:]]
+            kept["games"] = sum(m["games"] for m in group)
+        merged.append(kept)
+
+    merged.sort(key=lambda m: m["games"], reverse=True)
+    print(f"  Merged transpositions: {len(mistakes)} candidates -> {len(merged)} unique positions")
+    return merged
 
 
 # ── Phase 2: Maia Filter ────────────────────────────────────────────────────
@@ -488,7 +533,7 @@ def dedup_puzzles(puzzles):
         if not isinstance(node, dict):
             return fens
         if depth > 0 and "fen" in node:
-            fens.add(node["fen"])
+            fens.add(_fen_key(node["fen"]))
         for m in node.get("moves", {}).values():
             if "result" in m:
                 _collect_internal_fens(m["result"], depth + 1, fens)
@@ -500,7 +545,7 @@ def dedup_puzzles(puzzles):
 
     kept = []
     for p in puzzles:
-        if p["post_mistake_fen"] in all_internal:
+        if _fen_key(p["post_mistake_fen"]) in all_internal:
             print(f"  DEDUP: {p['id']} — root FEN is inside another puzzle's tree")
         else:
             kept.append(p)
@@ -518,10 +563,15 @@ async def generate_puzzles(args):
     eco_label = eco
 
     # Phase 1: Find mistakes via explorer API
-    mistakes = find_mistakes(args.play, side, args.threshold, eco=eco, target=count)
+    eval_cache = str(Path(args.eval_cache).resolve()) if args.eval_cache else None
+    if eval_cache and not Path(eval_cache).exists():
+        print(f"ERROR: eval cache not found: {eval_cache}")
+        sys.exit(1)
+    mistakes = find_mistakes(args.play, side, args.threshold, eco=eco, target=count, eval_cache=eval_cache)
     if not mistakes:
         print("No mistakes found. Exiting.")
         return
+    mistakes = merge_transpositions(mistakes)
 
     # Start single Maia for phase 2 (lightweight)
     sys.path.insert(0, str(MAIA_DIR))
@@ -599,6 +649,13 @@ async def generate_puzzles(args):
             if n_trimmed > 0: flag += f" (trimmed {n_trimmed} opp-leaves)"
             if stats["nodes"] >= MAX_NODES: flag += " *** HIT NODE LIMIT ***"
             print(f"  [W{worker_id}] #{idx+1} {eco_code}_{mistake_san} => {n} nodes, depth={stats['max_depth']}{flag}")
+            if stats["nodes"] >= MAX_NODES:
+                # Known bug (G1), never seen in practice: when the budget runs out, the cut-short
+                # lines are relabelled advantage_secured (_opponent_node) and prune_tree's
+                # "prefer clean" rule can then delete SF#1 for an unexplored alternative.
+                print(f"  [W{worker_id}] !!! G1 BUDGET BUG TRIGGERED: {eco_code}_{mistake_san} hit MAX_NODES={MAX_NODES}. "
+                      f"Check this puzzle by hand and fix G1 (budget-cut lines treated as secured). "
+                      f"post_mistake_fen={board.fen()}")
 
             puzzle = {
                 "id": f"{eco_code}_{mistake_san}_{idx}",
@@ -612,6 +669,8 @@ async def generate_puzzles(args):
                 "root_eval": root_eval,
                 "cp_loss": mistake["cp_loss"],
                 "games": mistake["games"],
+                "also_reached_by": mistake.get("also_reached_by", []),
+                "eval_cache": eval_cache,
                 "tree": tree,
                 "_decision_log": stats["log"],
             }
@@ -677,6 +736,9 @@ def main():
                         help="Output file (default: puzzles_{eco}.json)")
     parser.add_argument("--threshold", type=int, default=200,
                         help="Minimum cp loss to qualify as mistake (default: 200)")
+    parser.add_argument("--eval-cache",
+                        help="backfill-evals JSON for moves missing evals in RocksDB "
+                             "(e.g. ../lila-openingexplorer/evals_evans.json)")
     args = parser.parse_args()
     asyncio.run(generate_puzzles(args))
 
